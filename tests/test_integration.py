@@ -6,7 +6,7 @@ import pytest
 import numpy as np
 from beam_fea import (
     BeamSolver, MeshGenerator, get_material,
-    rectangular, LoadCase, create_simple_supports
+    rectangular, LoadCase, BoundaryConditionSet
 )
 
 
@@ -26,11 +26,13 @@ class TestSimpleBeamAnalysis:
         solver = BeamSolver(mesh, material, section)
         
         # Setup boundary conditions (pinned at both ends)
-        bc_set = create_simple_supports(0, 20, 'pinned')
+        bc_set = BoundaryConditionSet()
+        bc_set.pinned_support(0)
+        bc_set.pinned_support(20)
         
         # Apply central point load
         load_case = LoadCase("Central Point Load")
-        load_case.add_point_load(node=10, fy=-1000)  # 1000 N downward
+        load_case.point_load(node=10, fy=-1000)  # 1000 N downward
         
         # Solve
         displacements = solver.solve_static(load_case, bc_set)
@@ -61,11 +63,12 @@ class TestSimpleBeamAnalysis:
         solver = BeamSolver(mesh, material, section)
         
         # Fixed support at left end
-        bc_set = create_simple_supports(0, 0, 'fixed')
+        bc_set = BoundaryConditionSet()
+        bc_set.fixed_support(0)
         
         # Apply end load
         load_case = LoadCase("End Load")
-        load_case.add_point_load(node=10, fy=-500)
+        load_case.point_load(node=10, fy=-500)
         
         # Solve
         displacements = solver.solve_static(load_case, bc_set)
@@ -92,7 +95,9 @@ class TestSimpleBeamAnalysis:
         solver = BeamSolver(mesh, material, section)
         
         # Simply supported
-        bc_set = create_simple_supports(0, 20, 'pinned')
+        bc_set = BoundaryConditionSet()
+        bc_set.pinned_support(0)
+        bc_set.pinned_support(20)
         
         # Solve for first 5 modes
         frequencies, mode_shapes = solver.solve_modal(bc_set, num_modes=5)
@@ -127,12 +132,14 @@ class TestDistributedLoad:
         solver = BeamSolver(mesh, material, section)
         
         # Simply supported
-        bc_set = create_simple_supports(0, 10, 'pinned')
+        bc_set = BoundaryConditionSet()
+        bc_set.pinned_support(0)
+        bc_set.pinned_support(10)
         
         # Apply distributed load to all elements
         load_case = LoadCase("UDL")
         for i in range(10):
-            load_case.add_distributed_load(element=i, wy=-10)  # 10 N/mm
+            load_case.uniform_load(element=i, wy=-10)  # 10 N/mm
         
         # Solve
         displacements = solver.solve_static(load_case, bc_set)
@@ -165,16 +172,15 @@ class TestMultiSpanBeam:
         solver = BeamSolver(mesh, material, section)
         
         # Pinned supports at nodes 0, 10, and 20
-        from beam_fea.boundary_conditions import BoundaryConditionSet, PinnedSupport
         bc_set = BoundaryConditionSet()
-        bc_set.add_pinned_support(0)
-        bc_set.add_pinned_support(10)
-        bc_set.add_pinned_support(20)
+        bc_set.pinned_support(0)
+        bc_set.pinned_support(10)
+        bc_set.pinned_support(20)
         
         # Apply loads
         load_case = LoadCase("Point Loads")
-        load_case.add_point_load(node=5, fy=-1000)
-        load_case.add_point_load(node=15, fy=-1000)
+        load_case.point_load(node=5, fy=-1000)
+        load_case.point_load(node=15, fy=-1000)
         
         # Solve
         displacements = solver.solve_static(load_case, bc_set)

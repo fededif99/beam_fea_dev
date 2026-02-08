@@ -20,7 +20,6 @@ Usage Example:
 --------------
 >>> from beam_fea import BeamSolver, MeshGenerator, get_material
 >>> from beam_fea.cross_sections import rectangular
->>> from beam_fea.boundary_conditions import create_simple_supports
 >>> from beam_fea.loads import LoadCase
 >>> 
 >>> # Create mesh
@@ -34,7 +33,9 @@ Usage Example:
 >>> solver = BeamSolver(mesh, material, section)
 >>> 
 >>> # Setup and solve
->>> bc_set = create_simple_supports(0, 20, 'pinned')
+>>> bc_set = BoundaryConditionSet()
+>>> bc_set.pinned_support(0)
+>>> bc_set.pinned_support(20)
 >>> load_case = LoadCase("Point Load")
 >>> load_case.add_point_load(node=10, fy=-100)
 >>> 
@@ -67,7 +68,7 @@ from .visualizer import BeamVisualizer
 from .solver import BeamSolver
 from .report_generator import BeamReportGenerator
 
-__version__ = '2.1.0'
+__version__ = '1.0.0'
 __author__ = 'Beam FEA Development Team'
 
 __all__ = [

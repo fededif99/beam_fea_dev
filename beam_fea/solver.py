@@ -62,7 +62,7 @@ class BeamSolver:
         self.last_bc_set = None
     
     def assemble_global_matrices(self):
-        """Assemble global stiffness and mass matrices using sparse format."""
+        """Assemble global stiffness and mass matrices."""
         from scipy.sparse import coo_matrix
         
         num_dofs = self.mesh.num_dofs
@@ -144,19 +144,10 @@ class BeamSolver:
         
         F = load_case.create_force_vector(self.mesh.num_dofs, self.mesh)
         
-        # Note: bc_set.apply_to_system needs to handle sparse matrices now
-        # or we update it. For now, we'll let static_solver handle it if possible,
-        # but bc_set modifies K inplace often.
-        # We need to ensure apply_to_system works with CSR or we modify it.
-        # Let's assume we need to update boundary_conditions.py too, 
-        # but for now let's see if we can pass it through.
-        
         K_bc, F_bc = bc_set.apply_to_system(self.K_global, F)
         
         self.displacements = self.static_solver.solve(K_bc, F_bc)
         
-        # Reaction calculation might be expensive with dense multiply if we convert back
-        # but static_solver.calculate_reactions should handle sparse K
         self.reactions = self.static_solver.calculate_reactions(self.K_global, F)
         
         return self.displacements

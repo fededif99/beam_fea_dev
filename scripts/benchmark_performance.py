@@ -62,7 +62,7 @@ def run_benchmark(num_elements):
     return assembly_time, static_time, modal_time
 
 if __name__ == "__main__":
-    print("Running Performance Benchmark (Optimized)...")
+    print("Running Performance Benchmark...")
     print("============================================")
     
     sizes = [100, 1000, 5000, 10000]

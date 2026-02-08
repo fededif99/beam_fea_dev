@@ -76,7 +76,7 @@ The system uses a 2D beam element with **3 Degrees of Freedom (DOFs)** per node,
 
 ### 3.1 Direct Stiffness Assembly
 
-Global matrices are assembled using sparse triplet formats (`coo_matrix`) to minimize memory overhead when analyzing large assemblies (e.g., full fuselage mockups).
+Global matrices are assembled using sparse triplet formats (`coo_matrix`) for efficient memory management during large-scale structural analysis.
 
 ### 3.2 Boundary Conditions (Fixtures)
 
@@ -90,7 +90,7 @@ The package treats supports as **Kinematic Constraints**:
 
 ## 4. Numerical Solvers
 
-- **Statics**: LU-decomposition optimized for sparse CSR matrices (`spsolve`).
+- **Statics**: LU-decomposition utilizing sparse CSR matrices (`spsolve`).
 - **Dynamics**: Lanczos algorithm (`eigsh`) to extract the fundamental natural frequencies and mode shapes, avoiding the expensive computation of high-frequency noise.
 
 ---

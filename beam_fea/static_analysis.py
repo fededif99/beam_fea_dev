@@ -20,14 +20,14 @@ from scipy.sparse.linalg import spsolve
 class StaticAnalysis:
     """Static linear analysis solver."""
     
-    def __init__(self, use_sparse: bool = False):
+    def __init__(self, use_sparse: bool = True):
         """
         Initialize static analysis.
         
         Parameters:
         -----------
         use_sparse : bool
-            Use sparse matrix solver (for large systems)
+            Use sparse matrix solver (default: True)
         """
         self.use_sparse = use_sparse
         self.displacements = None
@@ -58,13 +58,11 @@ class StaticAnalysis:
         
         from scipy.sparse import issparse
         
-        # Check if sparse
         if issparse(K) or self.use_sparse:
             from scipy.sparse.linalg import spsolve
-            # Skip condition number check for sparse matrices (too expensive)
             self.displacements = spsolve(K, F)
         else:
-            # Check for singularity (dense only)
+            # Dense fallback
             try:
                 cond_number = np.linalg.cond(K)
                 if cond_number > 1e12:
@@ -99,7 +97,6 @@ class StaticAnalysis:
             raise ValueError("Must solve system before calculating reactions")
         
         # R = K*u - F
-        # Works for both dense and sparse K
         self.reactions = K_original @ self.displacements - F_applied
         
         return self.reactions

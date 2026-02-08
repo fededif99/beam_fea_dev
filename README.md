@@ -2,28 +2,18 @@
 
 A high-performance Python package for finite element analysis of beam structures. Designed for engineers and researchers, it supports static and modal analysis with exact Euler-Bernoulli and Timoshenko formulations.
 
-> [!NOTE]
-> **Optimized Performance**: The latest version utilizes `scipy.sparse` matrices, enabling analysis of structures with >10,000 elements in sub-second time.
-
 ---
 
 ## 📅 Version History
 
-### **v2.0.0 - Professional Engineering Grade (Current)**
+### **v1.0.0 - Initial Release (Current)**
 
-* **Sparse Matrix Implementation**: Replaced dense numpy arrays with `scipy.sparse.csr_matrix` for global stiffness and mass matrices.
-* **Performance Boost**: Verified **~2200x speedup** for static solution of large models (1000+ elements).
-* **Centralized Physics**: Moved force interpolation (BMD/SFD) to element classes for on-demand calculation.
+* **Standard Sparse Matrix Engine**: Native implementation using `scipy.sparse.csr_matrix` for high-performance assembly and solving.
+* **Centralized Physics**: Force interpolation (BMD/SFD) handled by element classes for on-demand calculation.
 * **Professional Reporting**: Integrated `BeamReportGenerator` for automated Markdown/PDF report creation with embedded plots.
-* **Advanced Meshing**: Added `MeshRefinement` and `graded_mesh` utilities for convergence studies.
-* **Aerospace Material Library**: Expanded to 20+ aerospace materials (Ti-6Al-4V, Al 7075-T6, Inconel 718) with standard strengths.
-* **Rigorous Validation**: Added unit tests and benchmarks against Roark's formulas.
-
-### **v1.0.0 - Initial Release**
-
-* Basic Euler-Bernoulli and Timoshenko beam elements.
-* Static and Modal analysis solvers.
-* Modular architecture (materials, sections, mesh, loads).
+* **Advanced Meshing**: Built-in `MeshRefinement` and `graded_mesh` utilities for structural convergence studies.
+* **Engineering Material Library**: Comprehensive aerospace and mechanical material database (Ti-6Al-4V, Al 7075-T6, Inconel 718, etc.).
+* **Rigorous Validation**: Verified against classical analytical solutions and Roark's formulas.
 
 ---
 

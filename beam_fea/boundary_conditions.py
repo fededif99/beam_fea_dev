@@ -376,7 +376,6 @@ class BoundaryConditionSet:
         return f"{self.name}:\n  {bc_summary}"
 
 
-# Convenience functions removed as per user request to favor intentional "bc.pinned_support()" style.
 
 if __name__ == "__main__":
     # Demonstration
