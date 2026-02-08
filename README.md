@@ -1,6 +1,6 @@
 # Beam FEA Package
 
-A high-performance Python package for finite element analysis of beam structures. Designed for engineers and researchers, it supports static and modal analysis with exact Euler-Bernoulli and Timoshenko formulations.
+A Python package for finite element analysis of beam structures. Designed for engineers and researchers, it supports static and modal analysis with exact Euler-Bernoulli and Timoshenko formulations.
 
 ---
 
