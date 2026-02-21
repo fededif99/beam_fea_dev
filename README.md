@@ -303,9 +303,9 @@ Static utilities for rapid meshing.
 
 #### Understanding the Load Structure
 
-**`LoadCase`** is a **collector** for all loads that occur simultaneously in one loading scenario (e.g., "Dead Load", "Live Load", "Wind").
+**`LoadCase`** is a **collector** for all loads that occur simultaneously in one engineering scenario (e.g., "Cruise Lift", "Engine Thrust", "Internal Pressure").
 
-**`LoadCombination`** groups multiple `LoadCase` objects with factors for design code compliance (e.g., `1.2×Dead + 1.6×Live`).
+**`LoadCombination`** groups multiple `LoadCase` objects with factors for safety margin or design conditions (e.g., `1.5×Cruise + 2.0×Gust`).
 
 ---
 
@@ -314,10 +314,9 @@ Static utilities for rapid meshing.
 A container for loads applied together.
 
 ```python
-lc = LoadCase("Dead Load")
-lc.point_load(node=5, fy=-1000)
-lc.uniform_load(element=1, wy=-10)
-lc.triangular_load(element=3, w_peak=-5, peak_loc='start')
+lc = LoadCase("Aerodynamic Lift")
+lc.point_load(x=1200, fy=5000) # Concentrated force
+lc.uniform_load(x_start=0, x_end=2000, wy=1.5) # Pressure distribution
 ```
 
 Supports defining loads by **Node/Element IDs** or by **Global Coordinates**.
@@ -357,12 +356,12 @@ lc.uniform_load(x_start=0, x_end=1000, wy=-2.0)
 
 #### `LoadCombination` Class
 
-Combines multiple `LoadCase` objects with load factors.
+Combines multiple `LoadCase` objects with design factors or safety margins.
 
 ```python
-combo = LoadCombination("LRFD Ultimate")
-combo.load_case(dead_load, factor=1.2)
-combo.load_case(live_load, factor=1.6)
+combo = LoadCombination("Ultimate Limit State (ULS)")
+combo.load_case(lift_load, factor=1.5)
+combo.load_case(engine_mass, factor=1.0)
 ```
 
 - **`load_case(load_case, factor)`**: Adds a `LoadCase` with a scalar multiplier.
