@@ -119,33 +119,6 @@ class StaticAnalysis:
         
         return self.strain_energy
     
-    def calculate_element_forces(self, elem_K: np.ndarray, 
-                                 elem_dofs: np.ndarray) -> np.ndarray:
-        """
-        Calculate internal forces in an element.
-        
-        Parameters:
-        -----------
-        elem_K : np.ndarray
-            Element stiffness matrix
-        elem_dofs : np.ndarray
-            Element DOF indices
-            
-        Returns:
-        --------
-        forces : np.ndarray
-            Internal element forces
-        """
-        if self.displacements is None:
-            raise ValueError("Must solve system first")
-        
-        # Extract element displacements
-        u_elem = self.displacements[elem_dofs]
-        
-        # F_elem = K_elem * u_elem
-        forces = elem_K @ u_elem
-        
-        return forces
 
 
 

@@ -307,9 +307,9 @@ class TimoshenkoElement(BeamElementMatrices):
         V1, M1 = forces[1], forces[2]
         V2, M2 = forces[4], forces[5]
         
-        # Consistent with EulerBernoulliElement signs: Shear=V1, Moment=-M1
+        # Consistent with EulerBernoulliElement signs: Shear=V1, Moment=-M1 at start, M2 at end
         shear_force = V1 
-        bending_moment = -M1 * (1-xi) - M2 * xi
+        bending_moment = -M1 * (1-xi) + M2 * xi
         
         return shear_force, bending_moment
 

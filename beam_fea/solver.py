@@ -190,49 +190,84 @@ class BeamSolver:
             raise ValueError("Must run solve_static() first")
             
         coords = self.mesh.get_node_coords()
-        beam_length = np.max(coords[:, 0]) - np.min(coords[:, 0])
+        x_min, x_max = np.min(coords[:, 0]), np.max(coords[:, 0])
+        beam_length = x_max - x_min
         
         # Create evaluation points
-        positions = np.linspace(0, beam_length, num_points)
+        positions = np.linspace(x_min, x_max, num_points)
         shear_forces = np.zeros(num_points)
         bending_moments = np.zeros(num_points)
         
         # Determine evaluation points per element to avoid redundant element instantiation
+        from .element_matrices import EulerBernoulliElement, TimoshenkoElement
+        
+        current_elem_idx = -1
+        element_expert = None
+        u_local = None
+        
         for i, x in enumerate(positions):
-            # Find element (simple linear mapping for now, assuming nodes are sorted by x)
-            elem_idx = int(x / beam_length * self.mesh.num_elements)
-            if elem_idx >= self.mesh.num_elements:
-                elem_idx = self.mesh.num_elements - 1
+            # Find element containing point x
+            # For robustness, we search for the element where x falls within node boundaries
+            # In most meshes, elements are ordered by x
+            found_idx = -1
             
-            elem = self.mesh.elements[elem_idx]
-            L = elem.length(self.mesh.nodes)
+            # Optimization: check current element first
+            if current_elem_idx != -1:
+                elem = self.mesh.elements[current_elem_idx]
+                x1 = coords[elem.node1, 0]
+                x2 = coords[elem.node2, 0]
+                if x1 <= x <= x2:
+                    found_idx = current_elem_idx
             
-            # Local element displacements
-            dof_indices = np.array([
-                3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
-                3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2
-            ])
-            u_local = self.displacements[dof_indices]
+            if found_idx == -1:
+                # Linear search for the element
+                # If meshes are very large, we could use binary search
+                for idx, elem in enumerate(self.mesh.elements):
+                    x1 = coords[elem.node1, 0]
+                    x2 = coords[elem.node2, 0]
+                    if x1 <= x <= x2:
+                        found_idx = idx
+                        break
+            
+            # Fallback for numerical precision at ends
+            if found_idx == -1:
+                if x <= x_min:
+                    found_idx = 0
+                elif x >= x_max:
+                    found_idx = self.mesh.num_elements - 1
+            
+            # Re-instantiate expert only if element changes
+            if found_idx != current_elem_idx:
+                current_elem_idx = found_idx
+                elem = self.mesh.elements[current_elem_idx]
+                L = elem.length(self.mesh.nodes)
+                
+                # Local element displacements
+                dof_indices = np.array([
+                    3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
+                    3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2
+                ])
+                u_local = self.displacements[dof_indices]
+                
+                # Instantiate the correct element type expert
+                if self.element_type == 'euler':
+                    element_expert = EulerBernoulliElement(
+                        E=self.material.E, G=self.material.G, I=self.section.Iy,
+                        A=self.section.A, L=L, rho=self.material.rho
+                    )
+                else:
+                    element_expert = TimoshenkoElement(
+                        E=self.material.E, G=self.material.G, I=self.section.Iy,
+                        A=self.section.A, L=L, rho=self.material.rho
+                    )
             
             # Local position xi [0, 1]
-            x_local = x - coords[elem.node1, 0]
-            xi = np.clip(x_local / L, 0, 1)
+            elem = self.mesh.elements[current_elem_idx]
+            x1 = coords[elem.node1, 0]
+            L = elem.length(self.mesh.nodes)
+            xi = np.clip((x - x1) / L, 0, 1) if L > 0 else 0
             
-            # Instantiate the correct element type expert
-            if self.element_type == 'euler':
-                from .element_matrices import EulerBernoulliElement
-                element = EulerBernoulliElement(
-                    E=self.material.E, G=self.material.G, I=self.section.Iy,
-                    A=self.section.A, L=L, rho=self.material.rho
-                )
-            else:
-                from .element_matrices import TimoshenkoElement
-                element = TimoshenkoElement(
-                    E=self.material.E, G=self.material.G, I=self.section.Iy,
-                    A=self.section.A, L=L, rho=self.material.rho
-                )
-            
-            V, M = element.interpolate_internal_forces(u_local, xi)
+            V, M = element_expert.interpolate_internal_forces(u_local, xi)
             shear_forces[i] = V
             bending_moments[i] = M
             

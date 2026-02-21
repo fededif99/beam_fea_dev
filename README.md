@@ -20,6 +20,12 @@
 
 ## 📅 Version History
 
+### v1.1.1 *(2026-02-21)*
+
+- Optimized `BeamSolver.calculate_internal_forces` (object caching, robust element lookup)
+- Fixed sign convention bug in `TimoshenkoElement` force recovery
+- Removed orphaned `StaticAnalysis.calculate_element_forces` method
+
 ### v1.1.0 *(2026-02-21)*
 
 - Removed `NonlinearStaticAnalysis` (Newton-Raphson) and `InfluenceLineAnalysis` (unimplemented stub) from `static_analysis.py`
