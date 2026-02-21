@@ -11,10 +11,7 @@ Where:
 """
 
 import numpy as np
-from typing import Tuple, Optional
 import warnings
-from scipy.sparse import csr_matrix
-from scipy.sparse.linalg import spsolve
 
 
 class StaticAnalysis:
@@ -151,111 +148,6 @@ class StaticAnalysis:
         return forces
 
 
-class NonlinearStaticAnalysis:
-    """Nonlinear static analysis using Newton-Raphson iteration."""
-    
-    def __init__(self, max_iterations: int = 50, tolerance: float = 1e-6):
-        """
-        Initialize nonlinear analysis.
-        
-        Parameters:
-        -----------
-        max_iterations : int
-            Maximum number of iterations
-        tolerance : float
-            Convergence tolerance
-        """
-        self.max_iterations = max_iterations
-        self.tolerance = tolerance
-        self.displacements = None
-        self.converged = False
-        self.num_iterations = 0
-    
-    def solve_newton_raphson(self, K_func, F: np.ndarray,
-                            u0: Optional[np.ndarray] = None) -> np.ndarray:
-        """
-        Solve nonlinear system using Newton-Raphson.
-        
-        Parameters:
-        -----------
-        K_func : callable
-            Function that returns tangent stiffness matrix K(u)
-        F : np.ndarray
-            Applied force vector
-        u0 : np.ndarray, optional
-            Initial guess (default: zero)
-            
-        Returns:
-        --------
-        u : np.ndarray
-            Displacement vector
-        """
-        n = len(F)
-        u = u0 if u0 is not None else np.zeros(n)
-        
-        for iteration in range(self.max_iterations):
-            # Get tangent stiffness at current displacement
-            K_tangent = K_func(u)
-            
-            # Residual: R = F - K(u)*u
-            R = F - K_tangent @ u
-            
-            # Check convergence
-            norm_R = np.linalg.norm(R)
-            if norm_R < self.tolerance:
-                self.converged = True
-                self.num_iterations = iteration + 1
-                break
-            
-            # Solve for displacement increment: K_tangent * du = R
-            du = np.linalg.solve(K_tangent, R)
-            
-            # Update displacement
-            u += du
-        
-        if not self.converged:
-            warnings.warn(
-                f"Newton-Raphson did not converge in {self.max_iterations} iterations. "
-                f"Final residual norm: {norm_R:.2e}"
-            )
-        
-        self.displacements = u
-        return u
-    
-    def solve_load_increment(self, K_func, F_total: np.ndarray,
-                            num_steps: int = 10) -> list:
-        """
-        Solve using incremental loading.
-        
-        Parameters:
-        -----------
-        K_func : callable
-            Stiffness matrix function
-        F_total : np.ndarray
-            Total applied force
-        num_steps : int
-            Number of load steps
-            
-        Returns:
-        --------
-        results : list
-            List of displacement vectors at each step
-        """
-        n = len(F_total)
-        u = np.zeros(n)
-        results = []
-        
-        dF = F_total / num_steps
-        
-        for step in range(num_steps):
-            F_step = (step + 1) * dF
-            
-            # Use previous solution as initial guess
-            u = self.solve_newton_raphson(K_func, F_step, u0=u)
-            results.append(u.copy())
-        
-        return results
-
 
 class StressAnalysis:
     """Post-processing for stress analysis."""
@@ -341,47 +233,6 @@ class StressAnalysis:
             von Mises stress (MPa)
         """
         return np.sqrt(sigma_x**2 + sigma_y**2 - sigma_x*sigma_y + 3*tau_xy**2)
-
-
-class InfluenceLineAnalysis:
-    """Influence line analysis for beams."""
-    
-    @staticmethod
-    def calculate_influence_line(mesh, bc_set, node: int, dof: int,
-                                num_positions: int = 50) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Calculate influence line for a specific DOF.
-        
-        Parameters:
-        -----------
-        mesh : Mesh
-            Finite element mesh
-        bc_set : BoundaryConditionSet
-            Boundary conditions
-        node : int
-            Node where response is measured
-        dof : int
-            DOF index (0=u, 1=v, 2=θ)
-        num_positions : int
-            Number of load positions
-            
-        Returns:
-        --------
-        positions : np.ndarray
-            Load positions along beam
-        responses : np.ndarray
-            Response values at each position
-        """
-        # This is a simplified example
-        # Full implementation would require assembly and solving for each load position
-        
-        total_length = mesh.nodes[-1].x
-        positions = np.linspace(0, total_length, num_positions)
-        responses = np.zeros(num_positions)
-        
-        # Would implement unit load at each position and record response
-        
-        return positions, responses
 
 
 if __name__ == "__main__":

@@ -5,10 +5,8 @@ Load definitions and application for finite element analysis.
 
 Supports:
 - Point loads
-- Distributed loads
-- Moments
-- Temperature loads
-- Initial displacements
+- Distributed loads (uniform and trapezoidal)
+- Concentrated moments
 """
 
 import numpy as np
@@ -182,35 +180,6 @@ class TrapezoidalDistributedLoad(Load):
     def __str__(self):
         return f"Trapezoidal load on element {self.element}: wy={self.wy1:.4f} to {self.wy2:.4f} N/mm"
 
-
-@dataclass
-class ThermalLoad(Load):
-    """
-    Thermal load (temperature change).
-    
-    Attributes:
-    -----------
-    element : int or list
-        Element ID(s)
-    delta_T : float
-        Temperature change (°C)
-    alpha : float
-        Coefficient of thermal expansion (1/°C)
-    """
-    
-    element: int or List[int]
-    delta_T: float
-    alpha: float  # e.g., 1.2e-5 for steel
-    
-    def apply_to_force_vector(self, F: np.ndarray, mesh) -> np.ndarray:
-        """
-        Apply thermal load.
-        """
-        # Placeholder for thermal load implementation
-        return F
-    
-    def __str__(self):
-        return f"Thermal load: ΔT={self.delta_T}°C, α={self.alpha}"
 
 
 class LoadCase:

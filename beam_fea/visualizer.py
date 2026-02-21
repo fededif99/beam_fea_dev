@@ -60,8 +60,7 @@ class BeamVisualizer:
                            show_undeformed: bool = True,
                            figsize: Tuple = (12, 6),
                            dpi: int = 100,
-                           output_path: Optional[str] = None,
-                           return_base64: bool = False):
+                           output_path: Optional[str] = None):
         """
         Plot deformed shape of beam.
         
@@ -74,9 +73,7 @@ class BeamVisualizer:
         show_undeformed : bool
             Show original shape
         output_path : str, optional
-            Path to save the plot
-        return_base64 : bool
-            Return as base64 string
+            Path to save the plot (if None, displays interactively)
         """
         if scale_factor is None:
             scale_factor = self._auto_scale_factor(displacements)
@@ -109,22 +106,9 @@ class BeamVisualizer:
         
         if output_path:
             plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
-            
-        result = None
-        if return_base64:
-            import io
-            import base64
-            buffer = io.BytesIO()
-            plt.savefig(buffer, format='png', dpi=dpi, bbox_inches='tight')
-            buffer.seek(0)
-            result = base64.b64encode(buffer.read()).decode()
-            
-        if not output_path and not return_base64:
-            plt.show()
-        else:
             plt.close()
-            
-        return result
+        else:
+            plt.show()
     
     def plot_mode_shape(self, mode_shape: np.ndarray, mode_num: int,
                         frequency: float, scale: float = 1.0):
@@ -149,7 +133,7 @@ class BeamVisualizer:
         plt.show()
     
     def plot_bending_moment(self, moments: np.ndarray, positions: np.ndarray,
-                           output_path: Optional[str] = None, return_base64: bool = False, dpi: int = 100):
+                           output_path: Optional[str] = None, dpi: int = 100):
         """Plot bending moment diagram."""
         fig, ax = plt.subplots(figsize=(12, 5), dpi=dpi)
         
@@ -170,25 +154,12 @@ class BeamVisualizer:
         
         if output_path:
             plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
-            
-        result = None
-        if return_base64:
-            import io
-            import base64
-            buffer = io.BytesIO()
-            plt.savefig(buffer, format='png', dpi=dpi, bbox_inches='tight')
-            buffer.seek(0)
-            result = base64.b64encode(buffer.read()).decode()
-            
-        if not output_path and not return_base64:
-            plt.show()
-        else:
             plt.close()
-            
-        return result
+        else:
+            plt.show()
 
     def plot_shear_force(self, forces: np.ndarray, positions: np.ndarray,
-                         output_path: Optional[str] = None, return_base64: bool = False, dpi: int = 100):
+                         output_path: Optional[str] = None, dpi: int = 100):
         """Plot shear force diagram."""
         fig, ax = plt.subplots(figsize=(12, 5), dpi=dpi)
         
@@ -210,26 +181,12 @@ class BeamVisualizer:
         
         if output_path:
             plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
-            
-        result = None
-        if return_base64:
-            import io
-            import base64
-            buffer = io.BytesIO()
-            plt.savefig(buffer, format='png', dpi=dpi, bbox_inches='tight')
-            buffer.seek(0)
-            result = base64.b64encode(buffer.read()).decode()
-            
-        if not output_path and not return_base64:
-            plt.show()
-        else:
             plt.close()
-            
-        return result
+        else:
+            plt.show()
 
     def plot_section_properties(self, props, title: str = "Cross-Section Analysis",
                                output_path: Optional[str] = None,
-                               return_base64: bool = False,
                                dpi: int = 100):
         """
         Visualize cross-section properties, centroid, and extreme fibers.
@@ -302,22 +259,9 @@ class BeamVisualizer:
         
         if output_path:
             plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
-            
-        result = None
-        if return_base64:
-            import io
-            import base64
-            buffer = io.BytesIO()
-            plt.savefig(buffer, format='png', dpi=dpi, bbox_inches='tight')
-            buffer.seek(0)
-            result = base64.b64encode(buffer.read()).decode()
-            
-        if not output_path and not return_base64:
-            plt.show()
-        else:
             plt.close()
-            
-        return result
+        else:
+            plt.show()
 
 
 if __name__ == "__main__":

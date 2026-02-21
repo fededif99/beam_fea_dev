@@ -1,19 +1,40 @@
-# Beam FEA Package
+# Beam FEA
 
-A Python package for finite element analysis of beam structures. Designed for engineers and researchers, it supports static and modal analysis with exact Euler-Bernoulli and Timoshenko formulations.
+`beam_fea` is a Python library for linear static and modal analysis of 1D beam structures. It takes a discretised geometry (nodes, elements, cross-section, material), applies loads and boundary conditions, and returns displacements, reaction forces, internal force distributions, and natural frequencies. Element formulations and numerical implementation are documented in [THEORY.md](THEORY.md).
+
+**Capabilities:**
+
+- **Static analysis** — solves K·u = F with a sparse direct solver; supports point forces/moments, uniform and trapezoidal distributed loads (N/mm), and load combinations with scalar factors
+- **Modal analysis** — extracts natural frequencies (Hz) and mode shapes via the generalised eigenvalue problem, using the ARPACK Lanczos algorithm
+- **Internal force recovery** — shear force V(x) and bending moment M(x) computed analytically from element shape functions, not post-processed
+- **Element types** — Euler-Bernoulli (slender, L/h > 10) and Timoshenko (shear-deformable, L/h < 10) via a single `element_type` argument
+- **Cross-sections** — rectangular, circular, hollow, I-beam, T-beam, C-channel, box, L-angle; centroid tracking and parallel-axis offset
+- **Material library** — 20+ pre-defined materials (structural steels, Al/Ti alloys, composites) plus user-defined entries
+- **Mesh utilities** — uniform, graded, multi-span, and curved (arc) mesh generation; uniform refinement
+- **Boundary conditions** — fixed, pinned, roller, elastic spring, and prescribed (non-zero) displacement constraints
+- **Reporting** — Markdown report with PNG plots (deformed shape, SFD, BMD, cross-section) saved to a `<report_name>_images/` folder
+
+**Validation:** < 0.003% error on cantilever tip deflection, < 0.001% on fixed-fixed UDL midspan, < 0.007% on fundamental natural frequency (20-element mesh, closed-form reference).
 
 ---
 
 ## 📅 Version History
 
-### **v1.0.0 - Initial Release (Current)**
+### v1.1.0 *(2026-02-21)*
 
-* **Standard Sparse Matrix Engine**: Native implementation using `scipy.sparse.csr_matrix` for high-performance assembly and solving.
-* **Centralized Physics**: Force interpolation (BMD/SFD) handled by element classes for on-demand calculation.
-* **Professional Reporting**: Integrated `BeamReportGenerator` for automated Markdown/PDF report creation with embedded plots.
-* **Advanced Meshing**: Built-in `MeshRefinement` and `graded_mesh` utilities for structural convergence studies.
-* **Engineering Material Library**: Comprehensive aerospace and mechanical material database (Ti-6Al-4V, Al 7075-T6, Inconel 718, etc.).
-* **Rigorous Validation**: Verified against classical analytical solutions and Roark's formulas.
+- Removed `NonlinearStaticAnalysis` (Newton-Raphson) and `InfluenceLineAnalysis` (unimplemented stub) from `static_analysis.py`
+- Removed `ThermalLoad` placeholder class from `loads.py`
+- Removed base64 image embedding from `report_generator.py` and `visualizer.py`; reports now save PNG files to `<report_name>_images/`
+- Removed `embed_images` parameter from `BeamSolver.generate_report()`
+- README: refactored introduction; removed thermal load documentation
+
+### v1.0.0 *(2026-02-08)*
+
+- Sparse CSR assembly and `spsolve` / ARPACK backend
+- Internal force recovery via element shape function derivatives
+- Engineering material library (20+ entries)
+- Graded, curved, and multi-span mesh generation
+- Markdown report generation with saved PNG plots
 
 ---
 
@@ -22,14 +43,14 @@ A Python package for finite element analysis of beam structures. Designed for en
 1. [File Organization](#-file-organization)
 2. [Getting Started](#-getting-started)
 3. [Detailed API Reference](#-detailed-api-reference)
-   * 3.1 [Materials](#31-materials-beam_feamaterials)
-   * 3.2 [Cross-Sections](#32-cross-sections-beam_feacross_sections)
-   * 3.3 [Mesh Generation](#33-mesh-generation-beam_feamesh)
-   * 3.4 [Loads](#34-loads-beam_fealoads)
-   * 3.5 [Boundary Conditions](#35-boundary-conditions-beam_feaboundary_conditions)
-   * 3.6 [Solver & Analysis](#36-solver--analysis-beam_feasolver)
-   * 3.7 [Visualization](#37-visualization-beam_feavisualizer)
-   * 3.8 [Report Generation](#38-report-generation-beam_feareport_generator)
+   - 3.1 [Materials](#31-materials-beam_feamaterials)
+   - 3.2 [Cross-Sections](#32-cross-sections-beam_feacross_sections)
+   - 3.3 [Mesh Generation](#33-mesh-generation-beam_feamesh)
+   - 3.4 [Loads](#34-loads-beam_fealoads)
+   - 3.5 [Boundary Conditions](#35-boundary-conditions-beam_feaboundary_conditions)
+   - 3.6 [Solver & Analysis](#36-solver--analysis-beam_feasolver)
+   - 3.7 [Visualization](#37-visualization-beam_feavisualizer)
+   - 3.8 [Report Generation](#38-report-generation-beam_feareport_generator)
 4. [Validation & Theory](#-validation--theory)
 
 ---
@@ -111,7 +132,7 @@ solver.generate_report("cantilever_report.md")
 **This package uses a consistent unit system throughout:**
 
 | Quantity | Unit | Symbol | Notes |
-|:---------|:-----|:-------|:------|
+| :--------- | :----- | :------- | :----- |
 | **Length** | millimeters | mm | Mesh coordinates, dimensions |
 | **Force** | Newtons | N | Point loads, reactions |
 | **Distributed Load** | Newtons/mm | N/mm | `wy`, `wx` in UDL |
@@ -154,15 +175,15 @@ Defines material properties for analysis.
 Material(name: str, E: float, nu: float, rho: float, yield_strength: float = None)
 ```
 
-* **E**: Young's Modulus (MPa)
-* **nu**: Poisson's Ratio
-* **rho**: Density (kg/mm³)
+- **E**: Young's Modulus (MPa)
+- **nu**: Poisson's Ratio
+- **rho**: Density (kg/mm³)
 
 #### Functions
 
-* **`get_material(name)`**: Returns a predefined `Material` object.
-  * *Options*: `'steel_a36'`, `'aluminum_7075_t6'`, `'titanium_6al_4v'`, `'carbon_fiber_p100'`, etc.
-* **`list_materials()`**: Prints all available materials to console.
+- **`get_material(name)`**: Returns a predefined `Material` object.
+  - *Options*: `'steel_a36'`, `'aluminum_7075_t6'`, `'titanium_6al_4v'`, `'carbon_fiber_p100'`, etc.
+- **`list_materials()`**: Prints all available materials to console.
 
 ---
 
@@ -186,21 +207,21 @@ All classes calculate properties via `.properties()`.
 
 The `.properties()` method returns a `SectionProperties` object containing:
 
-* **Centroid Tracking**: `y_centroid`, `z_centroid` (location relative to section reference)
-* **Extreme Fibers**: `y_top`, `y_bottom`, `z_left`, `z_right` (distances from centroid)
-* **Standard Properties**: `A`, `Iy`, `Iz`, `J`, `Sy`, `Sz`
+- **Centroid Tracking**: `y_centroid`, `z_centroid` (location relative to section reference)
+- **Extreme Fibers**: `y_top`, `y_bottom`, `z_left`, `z_right` (distances from centroid)
+- **Standard Properties**: `A`, `Iy`, `Iz`, `J`, `Sy`, `Sz`
 
 #### Utilities
 
-* **`offset_section(props, offset_y, offset_z)`**: Repositions a section relative to the neutral axis using the **Parallel Axis Theorem**. Useful for modeling composite structures or eccentric beams.
+- **`offset_section(props, offset_y, offset_z)`**: Repositions a section relative to the neutral axis using the **Parallel Axis Theorem**. Useful for modeling composite structures or eccentric beams.
 | **`BoxSection`** | `width`, `height`, `thickness` | Rectangular tube |
 | **`TBeamSection`** | `flange_width`, `flange_thickness`, `web_height`, `web_thickness` | T-profile |
 | **`CChannelSection`** | `height`, `flange_width`, `web_thickness`, `flange_thickness` | C-profile |
 
 #### Helper Functions
 
-* `rectangular(w, h)` -> `SectionProperties`
-* `circular(d)` -> `SectionProperties`
+- `rectangular(w, h)` -> `SectionProperties`
+- `circular(d)` -> `SectionProperties`
 
 ---
 
@@ -210,22 +231,22 @@ The `.properties()` method returns a `SectionProperties` object containing:
 
 Manages nodes and elements.
 
-* **`add_node(x, y, z=0)`**: Adds a node, returns ID.
-* **`add_element(n1, n2)`**: Connects two nodes, returns ID.
+- **`add_node(x, y, z=0)`**: Adds a node, returns ID.
+- **`add_element(n1, n2)`**: Connects two nodes, returns ID.
 
 #### `MeshGenerator` Class
 
 Static utilities for rapid meshing.
 
-* **`beam_mesh_1d(length, num_elements)`**: Creates a simple straight line mesh.
-* **`line_mesh(start_xy, end_xy, num_elements)`**: Meshes a line between two points.
-* **`multi_span_beam(lengths, elements_per_span)`**: Creates a continuous beam mesh over multiple supports.
-* **`graded_mesh(start, end, n, grading_ratio)`**: Meshes with variable element sizes (Ratio > 1 increases size).
-* **`curved_beam(radius, start_ang, end_ang, n)`**: Meshes a circular arc.
+- **`beam_mesh_1d(length, num_elements)`**: Creates a simple straight line mesh.
+- **`line_mesh(start_xy, end_xy, num_elements)`**: Meshes a line between two points.
+- **`multi_span_beam(lengths, elements_per_span)`**: Creates a continuous beam mesh over multiple supports.
+- **`graded_mesh(start, end, n, grading_ratio)`**: Meshes with variable element sizes (Ratio > 1 increases size).
+- **`curved_beam(radius, start_ang, end_ang, n)`**: Meshes a circular arc.
 
 #### `MeshRefinement` Class
 
-* **`refine_uniform(mesh, level)`**: Subdivides every element `level` times.
+- **`refine_uniform(mesh, level)`**: Subdivides every element `level` times.
 
 ---
 
@@ -253,7 +274,7 @@ lc.triangular_load(element=3, w_peak=-5, peak_loc='start')
 **Available Load Types:**
 
 | Method | Description | Parameters |
-|:-------|:------------|:-----------|
+| :-------- | :----------- | :---------- |
 | **`point_load(...)`** | Concentrated force/moment at a node | `node`, `fx`, `fy`, `mz` |
 | **`uniform_load(...)`** | Constant distributed load (UDL) | `element`, `wy`, `wx=0` |
 | **`trapezoidal_load(...)`** | Linearly varying load | `element`, `wy1`, `wy2`, `wx1=0`, `wx2=0` |
@@ -261,19 +282,9 @@ lc.triangular_load(element=3, w_peak=-5, peak_loc='start')
 
 **Notes:**
 
-* `wy`: Transverse load (N/mm) — causes bending
-* `wx`: Axial load (N/mm) — optional, causes axial deformation
-* `element` can be an `int` or `list` of element IDs
-
-**Thermal Loads**:
-
-Thermal loads are supported via the `ThermalLoad` class but require manual instantiation:
-
-```python
-from beam_fea.loads import ThermalLoad
-thermal = ThermalLoad(element=[0,1,2], delta_T=50, alpha=1.2e-5)
-lc.loads.append(thermal)  # Add manually
-```
+- `wy`: Transverse load (N/mm) — causes bending
+- `wx`: Axial load (N/mm) — optional, causes axial deformation
+- `element` can be an `int` or `list` of element IDs
 
 ---
 
@@ -287,7 +298,7 @@ combo.load_case(dead_load, factor=1.2)
 combo.load_case(live_load, factor=1.6)
 ```
 
-* **`load_case(load_case, factor)`**: Adds a `LoadCase` with a scalar multiplier.
+- **`load_case(load_case, factor)`**: Adds a `LoadCase` with a scalar multiplier.
 
 ---
 
@@ -312,7 +323,7 @@ Manages all structural supports.
 **Available Support Types:**
 
 | Method | Constrains | Description |
-|:-------|:-----------|:------------|
+| :-------- | :---------- | :------------ |
 | **`fixed_support(node)`** | $u, v, \theta$ | Complete restraint (cantilever) |
 | **`pinned_support(node)`** | $u, v$ | Prevents translation, allows rotation |
 | **`roller_support(node, direction='y')`** | $v$ (default) | Single-direction constraint |
@@ -345,15 +356,15 @@ The main interface for running analyses.
 solver = BeamSolver(mesh, material, section, element_type='euler')
 ```
 
-* `element_type`: `'euler'` (default) or `'timoshenko'` (shear deformable).
+- `element_type`: `'euler'` (default) or `'timoshenko'` (shear deformable).
 
 **Methods:**
 
-* **`solve_static(load_case, bc_set)`**: Runs linear static analysis.
-* **`solve_modal(bc_set, num_modes)`**: Runs eigenvalue analysis (Frequencies & Mode Shapes).
-* **`calculate_internal_forces(num_points=100)`**: Calculates Shear Force (V) and Bending Moment (M) on-demand along the beam length.
-* **`visualize(analysis_type, **kwargs)`**: Orchestrates plots (see 3.7).
-* **`generate_report(filepath, ...)`**: Generates professional engineering report (see 3.8).
+- **`solve_static(load_case, bc_set)`**: Runs linear static analysis.
+- **`solve_modal(bc_set, num_modes)`**: Runs eigenvalue analysis (Frequencies & Mode Shapes).
+- **`calculate_internal_forces(num_points=100)`**: Calculates Shear Force (V) and Bending Moment (M) on-demand along the beam length.
+- **`visualize(analysis_type, **kwargs)`**: Orchestrates plots (see 3.7).
+- **`generate_report(filepath, ...)`**: Generates professional engineering report (see 3.8).
 
 ---
 
@@ -382,10 +393,10 @@ solver.visualize('shear', num_points=200)
 
 Generates comprehensive engineering reports in Markdown format, which can be easily converted to PDF or HTML.
 
-* **Embedded Graphics**: Automatically generates and embeds Base64 plots for deformation, SFD, and BMD.
-* **Mathematical Precision**: Uses LaTeX math formatting for material and section properties.
-* **Structural Summary**: Tabulates all nodes, elements, boundary conditions, and applied loads.
-* **Result Recovery**: Lists maximum displacements, rotations, and critical internal forces.
+- **Saved Graphics**: Automatically generates PNG plots (deformation, SFD, BMD, cross-section) saved to a `<report_name>_images/` folder and referenced via relative links.
+- **Mathematical Precision**: Uses LaTeX math formatting for material and section properties.
+- **Structural Summary**: Tabulates all nodes, elements, boundary conditions, and applied loads.
+- **Result Recovery**: Lists maximum displacements, rotations, and critical internal forces.
 
 ```python
 # Generate full report
@@ -410,7 +421,7 @@ This codebase has been rigorously validated against classical analytical solutio
 
 ### Theoretical Background
 
-* **Euler-Bernoulli**: Standard beam theory, ignores shear. Good for $L/h > 15$.
-* **Timoshenko**: Includes shear deformation and rotational inertia. Essential for stout beams.
+- **Euler-Bernoulli**: Standard beam theory, ignores shear. Good for $L/h > 15$.
+- **Timoshenko**: Includes shear deformation and rotational inertia. Essential for stout beams.
 
 See the **[Theoretical Manual](THEORY.md)** for matrix formulations.

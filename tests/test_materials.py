@@ -90,13 +90,13 @@ class TestGetMaterial:
     def test_get_steel(self):
         """Test getting steel material"""
         steel = get_material('steel')
-        assert steel.name == "Steel ASTM A36"
+        assert steel.name == "Steel (Generic Structural)"
         assert steel.E == 200000
     
     def test_get_aluminum(self):
         """Test getting aluminum material"""
         aluminum = get_material('aluminum')
-        assert aluminum.name == "Aluminum 6061-T6"
+        assert aluminum.name == "Aluminum (Generic)"
     
     def test_case_insensitive(self):
         """Test that material lookup is case insensitive"""

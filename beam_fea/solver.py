@@ -242,23 +242,21 @@ class BeamSolver:
             'bending_moments': bending_moments
         }
     
-    def generate_report(self, output_path: str, embed_images: bool = True, deformation_scale: float = 1.0):
+    def generate_report(self, output_path: str, deformation_scale: float = 1.0):
         """
         Generate a professional markdown report of the analysis.
+        Images are saved to a ``<report_name>_images/`` folder alongside the report.
         
         Parameters:
         -----------
         output_path : str
             Path to save the report (e.g., 'report.md')
-        embed_images : bool, optional
-            If True, embed images as Base64 strings. If False, save as external PNGs. Default is True.
-        deformation_scale : float, optional
+        deformation_scale : float or 'auto', optional
             Scale factor for deformed shape plots. Default is 1.0.
         """
         if self.displacements is None or self.last_load_case is None:
             raise ValueError("Must run solve_static() before generating a report")
             
-        # Lazy import to avoid circular dependencies if any
         from .report_generator import BeamReportGenerator
         
         report_gen = BeamReportGenerator(
@@ -272,7 +270,7 @@ class BeamSolver:
             reactions=self.reactions
         )
         
-        return report_gen.generate_report(output_path, deformation_scale, embed_images)
+        return report_gen.generate_report(output_path, deformation_scale)
     
     def visualize(self, analysis_type: str = 'static', **kwargs):
         """
