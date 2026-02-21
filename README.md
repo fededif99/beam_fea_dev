@@ -74,18 +74,19 @@
 ```text
 beam_fea_optimized/
 ├── beam_fea/                    # Core Library
-│   ├── modules...               # (materials, sections, mesh, etc.)
+│   ├── modules...               # (materials, sections, mesh, loads, etc.)
 ├── examples/                    # Usage Examples & Case Studies
 │   ├── ex01_cantilever.py       # (Cantilever Verification)
-│   ├── ex02_fixed_beam.py       # (UDL Analysis)
+│   ├── ex02_fixed_fixed_beam.py # (UDL Analysis)
 │   ├── ex03_vibration.py       # (Modal Analysis)
 │   └── example_walkthrough.py   # (Full Tutorial)
 ├── tests/                       # Unit & Logic Tests
-│   ├── test_sections.py
+│   ├── test_coordinate_loads.py
 │   └── ...
 ├── scripts/                     # Performance & Validation Utilities
 │   ├── benchmark_performance.py
 │   └── validate_accuracy.py
+├── THEORY.md                    # Theoretical Foundation & Formulations
 └── README.md                    # This Manual
 ```
 
