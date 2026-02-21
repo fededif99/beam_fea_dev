@@ -402,10 +402,10 @@ Manages all structural supports.
 bc = BoundaryConditionSet("Cantilever")
 bc.fixed_support(0)  # Left end completely restrained
 
-# Advanced: Settlement modeling
-bc2 = BoundaryConditionSet("With Settlement")
+# Advanced: Prescribed displacement (e.g., thermal strain or jigging)
+bc2 = BoundaryConditionSet("Prescribed Displacement")
 bc2.pinned_support(0)
-bc2.prescribed_displacement(10, dy=-5)  # 5mm settlement at right support
+bc2.prescribed_displacement(10, dy=-5)  # 5mm prescribed downward deflection at node 10
 ```
 
 ---
