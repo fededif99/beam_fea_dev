@@ -173,6 +173,36 @@ class Mesh:
         """Total number of degrees of freedom (3 per node for 2D beam)."""
         return 3 * self.num_nodes
     
+    def find_element_at_x(self, x: float) -> int:
+        """
+        Find the element ID containing the global coordinate x.
+        
+        Parameters:
+        -----------
+        x : float
+            Global x-coordinate
+            
+        Returns:
+        --------
+        element_id : int
+            ID of the containing element, or -1 if not found
+        """
+        coords = self.get_node_coords()
+        
+        # Linear search (robust for any mesh)
+        for idx, elem in enumerate(self.elements):
+            x1 = coords[elem.node1, 0]
+            x2 = coords[elem.node2, 0]
+            if min(x1, x2) <= x <= max(x1, x2):
+                return idx
+        
+        # Tolerance check for precision at ends
+        x_min, x_max = np.min(coords[:, 0]), np.max(coords[:, 0])
+        if abs(x - x_min) < 1e-9: return 0
+        if abs(x - x_max) < 1e-9: return self.num_elements - 1
+            
+        return -1
+
     def __str__(self):
         return f"Mesh: {self.num_nodes} nodes, {self.num_elements} elements"
 

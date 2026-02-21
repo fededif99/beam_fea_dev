@@ -10,7 +10,7 @@ Supports:
 """
 
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
@@ -42,12 +42,14 @@ class Load(ABC):
 @dataclass
 class PointLoad(Load):
     """
-    Point load at a specific node.
+    Point load at a specific node or global x-coordinate.
     
     Attributes:
     -----------
-    node : int
+    node : int, optional
         Node ID where load is applied
+    x : float, optional
+        Global x-coordinate (mm). Used if node is None.
     fx : float
         Force in x-direction (N)
     fy : float
@@ -56,19 +58,67 @@ class PointLoad(Load):
         Moment about z-axis (N·mm)
     """
     
-    node: int
+    node: Optional[int] = None
+    x: Optional[float] = None
     fx: float = 0.0
     fy: float = 0.0
     mz: float = 0.0
     
     def apply_to_force_vector(self, F: np.ndarray, mesh) -> np.ndarray:
-        """Apply point load to force vector."""
-        F[3 * self.node] += self.fx
-        F[3 * self.node + 1] += self.fy
-        F[3 * self.node + 2] += self.mz
+        """Apply point load to global force vector."""
+        if self.node is not None:
+            # Use direct node index
+            F[3 * self.node] += self.fx
+            F[3 * self.node + 1] += self.fy
+            F[3 * self.node + 2] += self.mz
+        elif self.x is not None:
+            # Resolve x to element and nodes
+            elem_idx = mesh.find_element_at_x(self.x)
+            if elem_idx == -1:
+                # Outside mesh, ignore or warn? For now, ignore (standard FEA)
+                return F
+            
+            elem = mesh.elements[elem_idx]
+            coords = mesh.get_node_coords()
+            x1 = coords[elem.node1, 0]
+            L = elem.length(mesh.nodes)
+            xi = (self.x - x1) / L if L > 0 else 0
+            xi = np.clip(xi, 0, 1) # Clamp to element
+            
+            # Axial components (linear)
+            F[3 * elem.node1] += self.fx * (1 - xi)
+            F[3 * elem.node2] += self.fx * xi
+            
+            # Transverse components (fy) using Hermite shape functions
+            # N1, N2, N3, N4
+            N = np.array([
+                1 - 3*xi**2 + 2*xi**3,
+                L * (xi - 2*xi**2 + xi**3),
+                3*xi**2 - 2*xi**3,
+                L * (-xi**2 + xi**3)
+            ])
+            F[3 * elem.node1 + 1] += self.fy * N[0]
+            F[3 * elem.node1 + 2] += self.fy * N[1]
+            F[3 * elem.node2 + 1] += self.fy * N[2]
+            F[3 * elem.node2 + 2] += self.fy * N[3]
+            
+            # Point moment (mz) using shape function derivatives (work-equivalent)
+            # Ni' = dNi/dx = dNi/dxi * (1/L)
+            dN = np.array([
+                (-6*xi + 6*xi**2) / L,
+                1 - 4*xi + 3*xi**2,
+                (6*xi - 6*xi**2) / L,
+                -2*xi + 3*xi**2
+            ])
+            F[3 * elem.node1 + 1] += self.mz * dN[0]
+            F[3 * elem.node1 + 2] += self.mz * dN[1]
+            F[3 * elem.node2 + 1] += self.mz * dN[2]
+            F[3 * elem.node2 + 2] += self.mz * dN[3]
+            
         return F
     
     def __str__(self):
+        loc = f"node {self.node}" if self.node is not None else f"x={self.x:.1f}mm"
         components = []
         if abs(self.fx) > 1e-10:
             components.append(f"Fx={self.fx:.2f}N")
@@ -76,77 +126,127 @@ class PointLoad(Load):
             components.append(f"Fy={self.fy:.2f}N")
         if abs(self.mz) > 1e-10:
             components.append(f"Mz={self.mz:.2f}N·mm")
-        return f"Point load at node {self.node}: {', '.join(components)}"
+        return f"Point load at {loc}: {', '.join(components)}"
 
 
 @dataclass
 class UniformDistributedLoad(Load):
     """
-    Uniformly distributed load along element(s).
+    Uniformly distributed load along element(s) or a coordinate range.
     
     Attributes:
     -----------
-    element : int or list
+    element : int or list, optional
         Element ID(s) where load is applied
+    x_start, x_end : float, optional
+        Global x-coordinate range (mm). Used if element is None.
     wy : float
         Distributed force in y-direction (N/mm) - TRANSVERSE
     wx : float
         Distributed force in x-direction (N/mm) - AXIAL (optional)
     """
     
-    element: int or List[int]
+    element: Optional[Union[int, List[int]]] = None
+    x_start: Optional[float] = None
+    x_end: Optional[float] = None
     wy: float = 0.0
     wx: float = 0.0
     
     def apply_to_force_vector(self, F: np.ndarray, mesh) -> np.ndarray:
         """Convert distributed load to equivalent nodal loads."""
-        elements = [self.element] if isinstance(self.element, int) else self.element
-        
-        for elem_id in elements:
-            elem = mesh.elements[elem_id]
-            L = elem.length(mesh.nodes)
+        if self.element is not None:
+            # Traditional element-based logic
+            elements = [self.element] if isinstance(self.element, int) else self.element
+            for elem_id in elements:
+                elem = mesh.elements[elem_id]
+                L = elem.length(mesh.nodes)
+                self._apply_to_element(F, elem, L, 0.0, 1.0)
+        elif self.x_start is not None and self.x_end is not None:
+            # Coordinate-based logic
+            x_min_load = min(self.x_start, self.x_end)
+            x_max_load = max(self.x_start, self.x_end)
             
-            # Axial component (if wx exists)
-            if abs(self.wx) > 1e-12:
-                Fx_node = self.wx * L / 2
-                F[3 * elem.node1] += Fx_node
-                F[3 * elem.node2] += Fx_node
-            
-            # Transverse component (wy) -- Primary
-            Fy_node = self.wy * L / 2
-            Mz_node1 = self.wy * L**2 / 12
-            Mz_node2 = -self.wy * L**2 / 12
-            
-            F[3 * elem.node1 + 1] += Fy_node
-            F[3 * elem.node1 + 2] += Mz_node1
-            F[3 * elem.node2 + 1] += Fy_node
-            F[3 * elem.node2 + 2] += Mz_node2
-        
+            coords = mesh.get_node_coords()
+            for elem in mesh.elements:
+                x1 = coords[elem.node1, 0]
+                x2 = coords[elem.node2, 0]
+                e_min = min(x1, x2)
+                e_max = max(x1, x2)
+                
+                # Intersection of element [e_min, e_max] and load [x_min_load, x_max_load]
+                inter_min = max(e_min, x_min_load)
+                inter_max = min(e_max, x_max_load)
+                
+                if inter_max > inter_min:
+                    L = elem.length(mesh.nodes)
+                    # Normalize intersection to local [xi1, xi2]
+                    xi1 = (inter_min - e_min) / L
+                    xi2 = (inter_max - e_min) / L
+                    self._apply_to_element(F, elem, L, xi1, xi2)
+                    
         return F
+
+    def _apply_to_element(self, F, elem, L, xi1, xi2):
+        """Helper to apply uniform load over a local xi range [xi1, xi2]."""
+        dx = xi2 - xi1
+        
+        # Axial (linear)
+        # Integral of (1-xi) from xi1 to xi2: [xi - xi^2/2]
+        int_Na1 = (xi2 - 0.5*xi2**2) - (xi1 - 0.5*xi1**2)
+        # Integral of xi from xi1 to xi2: [xi^2/2]
+        int_Na2 = (0.5*xi2**2) - (0.5*xi1**2)
+        
+        F[3 * elem.node1] += self.wx * L * int_Na1
+        F[3 * elem.node2] += self.wx * L * int_Na2
+        
+        # Transverse (Hermite)
+        # N1 = 1 - 3xi^2 + 2xi^3  => Int = xi - xi^3 + 0.5xi^4
+        # N2 = L(xi - 2xi^2 + xi^3) => Int = L(0.5xi^2 - 2/3xi^3 + 0.25xi^4)
+        # N3 = 3xi^2 - 2xi^3      => Int = xi^3 - 0.5xi^4
+        # N4 = L(-xi^2 + xi^3)    => Int = L(-1/3xi^3 + 0.25xi^4)
+        
+        def int_N(xi):
+            return np.array([
+                xi - xi**3 + 0.5*xi**4,
+                L * (0.5*xi**2 - (2/3)*xi**3 + 0.25*xi**4),
+                xi**3 - 0.5*xi**4,
+                L * (-(1/3)*xi**3 + 0.25*xi**4)
+            ])
+        
+        integrals = int_N(xi2) - int_N(xi1)
+        
+        F[3 * elem.node1 + 1] += self.wy * L * integrals[0]
+        F[3 * elem.node1 + 2] += self.wy * L * integrals[1]
+        F[3 * elem.node2 + 1] += self.wy * L * integrals[2]
+        F[3 * elem.node2 + 2] += self.wy * L * integrals[3]
     
     def __str__(self):
-        elem_str = f"element {self.element}" if isinstance(self.element, int) else f"elements {self.element}"
+        loc = f"element {self.element}" if self.element is not None else f"x=[{self.x_start}, {self.x_end}]"
         if abs(self.wx) > 1e-10:
-             return f"UDL on {elem_str}: wy={self.wy:.4f}, wx={self.wx:.4f} N/mm"
-        return f"UDL on {elem_str}: wy={self.wy:.4f} N/mm"
+             return f"UDL on {loc}: wy={self.wy:.4f}, wx={self.wx:.4f} N/mm"
+        return f"UDL on {loc}: wy={self.wy:.4f} N/mm"
 
 
 @dataclass
 class TrapezoidalDistributedLoad(Load):
     """
-    Linearly varying (trapezoidal) distributed load.
+    Linearly varying (trapezoidal) distributed load along an element or coordinate range.
     
     Attributes:
     -----------
-    element : int
+    element : int, optional
         Element ID
+    x_start, x_end : float, optional
+        Global x-coordinate range (mm). Used if element is None.
     wy1, wy2 : float
         y-direction load at start and end (N/mm)
     wx1, wx2 : float
         x-direction load at start and end (N/mm) - Optional
     """
     
-    element: int
+    element: Optional[int] = None
+    x_start: Optional[float] = None
+    x_end: Optional[float] = None
     wy1: float = 0.0
     wy2: float = 0.0
     wx1: float = 0.0
@@ -154,32 +254,146 @@ class TrapezoidalDistributedLoad(Load):
     
     def apply_to_force_vector(self, F: np.ndarray, mesh) -> np.ndarray:
         """Convert linearly varying load to equivalent nodal loads."""
-        elem = mesh.elements[self.element]
-        L = elem.length(mesh.nodes)
-        
-        # Axial component
-        if abs(self.wx1) > 1e-12 or abs(self.wx2) > 1e-12:
-            Fx1 = (2*self.wx1 + self.wx2) * L / 6
-            Fx2 = (self.wx1 + 2*self.wx2) * L / 6
-            F[3 * elem.node1] += Fx1
-            F[3 * elem.node2] += Fx2
-        
-        # Transverse component
-        Fy1 = (7*self.wy1 + 3*self.wy2) * L / 20
-        Fy2 = (3*self.wy1 + 7*self.wy2) * L / 20
-        Mz1 = (3*self.wy1 + 2*self.wy2) * L**2 / 60
-        Mz2 = -(2*self.wy1 + 3*self.wy2) * L**2 / 60
-        
-        F[3 * elem.node1 + 1] += Fy1
-        F[3 * elem.node1 + 2] += Mz1
-        F[3 * elem.node2 + 1] += Fy2
-        F[3 * elem.node2 + 2] += Mz2
-        
-        return F
-    
-    def __str__(self):
-        return f"Trapezoidal load on element {self.element}: wy={self.wy1:.4f} to {self.wy2:.4f} N/mm"
+        if self.element is not None:
+            elem = mesh.elements[self.element]
+            L = elem.length(mesh.nodes)
+            self._apply_to_element(F, elem, L, 0.0, 1.0, self.wy1, self.wy2, self.wx1, self.wx2)
+        elif self.x_start is not None and self.x_end is not None:
+            x_min_load = min(self.x_start, self.x_end)
+            x_max_load = max(self.x_start, self.x_end)
+            total_L = x_max_load - x_min_load
+            if total_L <= 0: return F
 
+            coords = mesh.get_node_coords()
+            for elem in mesh.elements:
+                x1 = coords[elem.node1, 0]
+                x2 = coords[elem.node2, 0]
+                e_min, e_max = min(x1, x2), max(x1, x2)
+                
+                inter_min = max(e_min, x_min_load)
+                inter_max = min(e_max, x_max_load)
+                
+                if inter_max > inter_min:
+                    L = elem.length(mesh.nodes)
+                    xi1 = (inter_min - e_min) / L
+                    xi2 = (inter_max - e_min) / L
+                    
+                    # Interp intensities at inter_min and inter_max
+                    # w(x) = w1 + (w2-w1)*(x - x_start)/(x_end - x_start)
+                    # Note: x_start might be > x_end, so use original params
+                    def get_w(x, w1, w2):
+                        return w1 + (w2 - w1) * (x - self.x_start) / (self.x_end - self.x_start)
+                    
+                    wy_a = get_w(inter_min, self.wy1, self.wy2)
+                    wy_b = get_w(inter_max, self.wy1, self.wy2)
+                    wx_a = get_w(inter_min, self.wx1, self.wx2)
+                    wx_b = get_w(inter_max, self.wx1, self.wx2)
+                    
+                    self._apply_to_element(F, elem, L, xi1, xi2, wy_a, wy_b, wx_a, wx_b)
+                    
+        return F
+
+    def _apply_to_element(self, F, elem, L, xi1, xi2, wya, wyb, wxa, wxb):
+        """Helper to apply linear load over local range [xi1, xi2]."""
+        # Load is linear in xi within [xi1, xi2]: w(xi) = A + B*xi
+        # But it's easier to say w(xi) = wya + (wyb - wya) * (xi - xi1)/(xi2 - xi1)
+        # Let's use w(xi) = C + D*xi for the whole element integration
+        # w(xi1) = wya, w(xi2) = wyb
+        if abs(xi2 - xi1) < 1e-12: return
+        
+        # wy(xi) = wy_base + wy_slope * xi
+        wy_slope = (wyb - wya) / (xi2 - xi1)
+        wy_base = wya - wy_slope * xi1
+        
+        # wx(xi) = wx_base + wx_slope * xi
+        wx_slope = (wxb - wxa) / (xi2 - xi1)
+        wx_base = wxa - wx_slope * xi1
+
+        # Integrals of N_i: I1_i = integral(N_i) from xi1 to xi2
+        # Integrals of xi*N_i: I2_i = integral(xi*N_i) from xi1 to xi2
+        
+        def get_integrals(xi):
+            # [Integral(Ni), Integral(xi*Ni)]
+            I1 = np.array([
+                xi - xi**3 + 0.5*xi**4,
+                L * (0.5*xi**2 - (2/3)*xi**3 + 0.25*xi**4),
+                xi**3 - 0.5*xi**4,
+                L * (-(1/3)*xi**3 + 0.25*xi**4)
+            ])
+            I2 = np.array([
+                0.5*xi**2 - 0.75*xi**4 + 0.4*xi**5,
+                L * ((1/3)*xi**3 - 0.5*xi**4 + 0.2*xi**5),
+                0.75*xi**4 - 0.4*xi**5,
+                L * (-0.25*xi**4 + 0.2*xi**5)
+            ])
+            # For axial (linear shape functions): Na1 = 1-xi, Na2 = xi
+            # Integral(1-xi) = xi - 0.5xi^2
+            # Integral(xi(1-xi)) = 0.5xi^2 - 1/3xi^3
+            # Integral(xi) = 0.5xi^2
+            # Integral(xi^2) = 1/3xi^3
+            Ia = np.array([xi - 0.5*xi**2, 0.5*xi**2 - (1/3)*xi**3, 0.5*xi**2, (1/3)*xi**3])
+            
+            return I1, I2, Ia
+
+        I1_b, I2_b, Ia_b = get_integrals(xi2)
+        I1_a, I2_a, Ia_a = get_integrals(xi1)
+        
+        dI1, dI2, dIa = I1_b - I1_a, I2_b - I2_a, Ia_b - Ia_a
+        
+        # Transverse
+        F[3 * elem.node1 + 1] += L * (wy_base * dI1[0] + wy_slope * dI2[0])
+        F[3 * elem.node1 + 2] += L * (wy_base * dI1[1] + wy_slope * dI2[1])
+        F[3 * elem.node2 + 1] += L * (wy_base * dI1[2] + wy_slope * dI2[2])
+        F[3 * elem.node2 + 2] += L * (wy_base * dI1[3] + wy_slope * dI2[3])
+        
+        # Axial
+        F[3 * elem.node1] += L * (wx_base * dIa[0] + wx_slope * dIa[1])
+        F[3 * elem.node2] += L * (wx_base * dIa[2] + wx_slope * dIa[3])
+
+    def __str__(self):
+        loc = f"element {self.element}" if self.element is not None else f"x=[{self.x_start}, {self.x_end}]"
+        return f"Trapezoidal load on {loc}: wy={self.wy1:.4f} to {self.wy2:.4f} N/mm"
+
+
+@dataclass
+class TriangularDistributedLoad(Load):
+    """
+    Triangularly distributed load along an element or coordinate range.
+    
+    Attributes:
+    -----------
+    element : int, optional
+        Element ID
+    x_start, x_end : float, optional
+        Global x-coordinate range (mm). Used if element is None.
+    w_peak : float
+        Peak load intensity (N/mm)
+    peak_loc : str
+        'start' (peak at start of range) or 'end' (peak at end of range)
+    """
+    element: Optional[int] = None
+    x_start: Optional[float] = None
+    x_end: Optional[float] = None
+    w_peak: float = 0.0
+    peak_loc: str = 'start'
+
+    def apply_to_force_vector(self, F: np.ndarray, mesh) -> np.ndarray:
+        """Resolution of triangular load into nodal forces."""
+        if self.peak_loc.lower() == 'start':
+            wy1, wy2 = self.w_peak, 0.0
+        else:
+            wy1, wy2 = 0.0, self.w_peak
+            
+        temp_trap = TrapezoidalDistributedLoad(
+            element=self.element, 
+            x_start=self.x_start, x_end=self.x_end,
+            wy1=wy1, wy2=wy2
+        )
+        return temp_trap.apply_to_force_vector(F, mesh)
+
+    def __str__(self):
+        loc = f"element {self.element}" if self.element is not None else f"x=[{self.x_start}, {self.x_end}]"
+        return f"Triangular load on {loc}: peak {self.w_peak:.4f} at {self.peak_loc}"
 
 
 class LoadCase:
@@ -197,59 +411,60 @@ class LoadCase:
         self.name = name
         self.loads: List[Load] = []
     
-    def point_load(self, node: int, fx: float = 0, fy: float = 0, mz: float = 0):
+    def point_load(self, node: Optional[int] = None, x: Optional[float] = None, 
+                   fx: float = 0, fy: float = 0, mz: float = 0):
         """Add a point load to this load case."""
-        self.loads.append(PointLoad(node=node, fx=fx, fy=fy, mz=mz))
+        self.loads.append(PointLoad(node=node, x=x, fx=fx, fy=fy, mz=mz))
     
-    def uniform_load(self, element, wy: float, wx: float = 0):
+    def concentrated_moment(self, node: Optional[int] = None, x: Optional[float] = None, mz: float = 0):
+        """Add a concentrated moment to this load case."""
+        self.loads.append(PointLoad(node=node, x=x, mz=mz))
+    
+    def moment(self, node: Optional[int] = None, x: Optional[float] = None, mz: float = 0):
+        """Alias for concentrated_moment."""
+        self.concentrated_moment(node=node, x=x, mz=mz)
+    
+    def uniform_load(self, element: Optional[Union[int, List[int]]] = None, 
+                     x_start: Optional[float] = None, x_end: Optional[float] = None,
+                     wy: float = 0.0, wx: float = 0.0):
         """
         Add a Uniformly Distributed Load (UDL).
         
         Parameters:
         -----------
-        element : int or list
+        element : int or list, optional
             Element ID(s)
+        x_start, x_end : float, optional
+            Coordinate range (mm)
         wy : float
             Transverse load intensity (N/mm)
         wx : float, optional
             Axial load intensity (N/mm), default 0
         """
-        self.loads.append(UniformDistributedLoad(element=element, wy=wy, wx=wx))
+        self.loads.append(UniformDistributedLoad(element=element, x_start=x_start, x_end=x_end, wy=wy, wx=wx))
     
-    def trapezoidal_load(self, element: int, wy1: float, wy2: float, wx1: float = 0, wx2: float = 0):
+    def trapezoidal_load(self, element: Optional[int] = None, 
+                         x_start: Optional[float] = None, x_end: Optional[float] = None,
+                         wy1: float = 0.0, wy2: float = 0.0, 
+                         wx1: float = 0.0, wx2: float = 0.0):
         """
         Add a Trapezoidal (linearly varying) load.
-        
-        Parameters:
-        -----------
-        element : int
-            Element ID
-        wy1, wy2 : float
-            Transverse load at start/end (N/mm)
-        wx1, wx2 : float, optional
-            Axial load at start/end (N/mm)
         """
-        self.loads.append(TrapezoidalDistributedLoad(element=element, wy1=wy1, wy2=wy2, wx1=wx1, wx2=wx2))
+        self.loads.append(TrapezoidalDistributedLoad(
+            element=element, x_start=x_start, x_end=x_end,
+            wy1=wy1, wy2=wy2, wx1=wx1, wx2=wx2
+        ))
     
-    def triangular_load(self, element: int, w_peak: float, peak_loc: str = 'start'):
+    def triangular_load(self, element: Optional[int] = None, 
+                        x_start: Optional[float] = None, x_end: Optional[float] = None,
+                        w_peak: float = 0.0, peak_loc: str = 'start'):
         """
-        Add a Triangular load (special case of Trapezoidal).
-        
-        Parameters:
-        -----------
-        element : int
-            Element ID
-        w_peak : float
-            Peak load intensity (N/mm)
-        peak_loc : str
-            'start' (peak at node 1) or 'end' (peak at node 2)
+        Add a Triangular load.
         """
-        if peak_loc.lower() == 'start':
-            self.loads.append(TrapezoidalDistributedLoad(element=element, wy1=w_peak, wy2=0.0))
-        elif peak_loc.lower() == 'end':
-            self.loads.append(TrapezoidalDistributedLoad(element=element, wy1=0.0, wy2=w_peak))
-        else:
-            raise ValueError("peak_loc must be 'start' or 'end'")
+        self.loads.append(TriangularDistributedLoad(
+            element=element, x_start=x_start, x_end=x_end,
+            w_peak=w_peak, peak_loc=peak_loc
+        ))
 
     def create_force_vector(self, num_dofs: int, mesh) -> np.ndarray:
         """

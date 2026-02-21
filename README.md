@@ -20,6 +20,14 @@
 
 ## 📅 Version History
 
+### v1.2.0 *(2026-02-21)*
+
+- Added coordinate-based load definitions (define loads via global $x$ positions or node/element IDs)
+- Implemented `LoadCase.concentrated_moment()` and `LoadCase.triangular_load()` as dedicated API methods
+- Added a dedicated `TriangularDistributedLoad` class for improved API clarity
+- Standardized coordinate system documentation with ASCII diagrams
+- Verified consistency across all physics and geometry modules
+
 ### v1.1.1 *(2026-02-21)*
 
 - Optimized `BeamSolver.calculate_internal_forces` (object caching, robust element lookup)
@@ -130,6 +138,40 @@ solver.visualize('static')
 solver.visualize('shear')
 solver.generate_report("cantilever_report.md")
 ```
+
+---
+
+## 📐 Coordinate System & Conventions
+
+The package follows a consistent global and local **Right-Handed Coordinate System (RHS)**.
+
+### Global Coordinate System
+
+- **X-axis**: Longitudinal axis of the beam. $x=0$ is the start of the beam (typically the left end).
+- **Y-axis**: Transverse axis. Positive $y$ is upwards.
+- **Z-axis**: Out-of-page axis.
+- **Rotations**: Positive rotation ($\theta_z$) is Counter-Clockwise (CCW) following the right-hand rule.
+
+```text
+       ^ +Y (Transverse)
+       |
+       |       (Positive Rotation: CCW ↺)
+       |
+       O------------------> +X (Axial)
+      /
+     /
+    L  +Z (Out-of-page)
+```
+
+### Sign Conventions
+
+| Item | Positive Direction | Description |
+| :--- | :--- | :--- |
+| **Applied Loads** | $+X, +Y, +Mz$ | CCW moments are positive |
+| **Deflections** | $+u, +v$ | Translation in global $x, y$ |
+| **Rotations** | $+\theta$ | CCW rotation |
+| **Shear Force ($V$)** | Standard Structural | Upward on the left face is positive |
+| **Bending Moment ($M$)** | Standard Structural | Bottom-tension is positive ($M = -EI v''$) |
 
 ---
 
@@ -277,14 +319,32 @@ lc.uniform_load(element=1, wy=-10)
 lc.triangular_load(element=3, w_peak=-5, peak_loc='start')
 ```
 
-**Available Load Types:**
+Supports defining loads by **Node/Element IDs** or by **Global Coordinates**.
 
-| Method | Description | Parameters |
-| :-------- | :----------- | :---------- |
-| **`point_load(...)`** | Concentrated force/moment at a node | `node`, `fx`, `fy`, `mz` |
-| **`uniform_load(...)`** | Constant distributed load (UDL) | `element`, `wy`, `wx=0` |
-| **`trapezoidal_load(...)`** | Linearly varying load | `element`, `wy1`, `wy2`, `wx1=0`, `wx2=0` |
-| **`triangular_load(...)`** | Triangular distribution | `element`, `w_peak`, `peak_loc='start'` |
+#### `LoadCase` Methods
+
+| Method | Positional Arguments | Coordinate Arguments |
+| :--- | :--- | :--- |
+| **`point_load(...)`** | `node`, `fx`, `fy`, `mz` | `x`, `fx`, `fy`, `mz` |
+| **`moment(...)`** | `node`, `mz` | `x`, `mz` |
+| **`uniform_load(...)`** | `element`, `wy`, `wx` | `x_start`, `x_end`, `wy`, `wx` |
+| **`trapezoidal(...)`** | `element`, `wy1`, `wy2` | `x_start`, `x_end`, `wy1`, `wy2` |
+| **`triangular_load(...)`** | `element`, `w_peak`, `peak_loc` | `x_start`, `x_end`, `w_peak`, `peak_loc` |
+
+##### Example: Parametric-Safe Loading
+
+```python
+lc = LoadCase("Structural Loads")
+
+# Dedicated Moment at x=500mm
+lc.concentrated_moment(x=500, mz=100000)
+
+# Point load at tip (even if mesh density changes)
+lc.point_load(x=2000, fy=-5000)
+
+# Distributed load over a specific range
+lc.uniform_load(x_start=0, x_end=1000, wy=-2.0)
+```
 
 **Notes:**
 
