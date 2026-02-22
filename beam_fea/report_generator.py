@@ -59,10 +59,11 @@ class BeamReportGenerator:
         self.displacements = displacements
         self.reactions = reactions
         
-        # Will store calculated internal forces
+        # Will store results
         self.positions = None
         self.shear_forces = None
         self.bending_moments = None
+        self.stresses = None
         
     def calculate_internal_forces(self, num_points: int = 100):
         """
@@ -275,6 +276,45 @@ class BeamReportGenerator:
         plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
         plt.close()
     
+    def plot_stress_distributions(self, output_path: str, dpi: int = 150):
+        """
+        Plot peak stress distributions (Bending, Shear, von Mises) along the beam.
+        """
+        if self.stresses is None:
+            # Default resolution for report plots
+            self.stresses = self.solver.calculate_stresses(num_x_points=100, num_y_points=20, num_z_points=10)
+        
+        x_coords = self.stresses['x']
+        
+        # Extract peak values at each x-station
+        # axes: (x, y, z)
+        vm_peak = np.max(self.stresses['von_mises'], axis=(1, 2))
+        bending_peak = np.max(np.abs(self.stresses['bending']), axis=(1, 2))
+        shear_peak = np.max(np.abs(self.stresses['shear']), axis=(1, 2))
+        
+        fig, ax = plt.subplots(figsize=(14, 6), dpi=dpi)
+        
+        ax.plot(x_coords, vm_peak, 'k-', linewidth=2.5, label='Peak von Mises')
+        ax.plot(x_coords, bending_peak, 'r--', linewidth=1.5, label='Peak Bending (abs)')
+        ax.plot(x_coords, shear_peak, 'b:', linewidth=1.5, label='Peak Shear (abs)')
+        
+        ax.fill_between(x_coords, 0, vm_peak, color='gray', alpha=0.1)
+        
+        # Highlight absolute maximum
+        max_vm_val = np.max(vm_peak)
+        max_vm_idx = np.argmax(vm_peak)
+        ax.plot(x_coords[max_vm_idx], max_vm_val, 'ro', markersize=8)
+        
+        ax.set_xlabel('Position (mm)', fontsize=12)
+        ax.set_ylabel('Stress (MPa)', fontsize=12)
+        ax.set_title('Peak Stress Distribution along Beam Length', fontsize=14, weight='bold')
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
+        plt.close()
+    
     def plot_cross_section(self, output_path: str, dpi: int = 150):
         """
         Plot cross-section using BeamVisualizer.
@@ -314,6 +354,10 @@ class BeamReportGenerator:
         self.calculate_internal_forces()
         self.plot_shear_diagram(str(images_dir / "shear_diagram.png"))
         self.plot_moment_diagram(str(images_dir / "moment_diagram.png"))
+        
+        # New stress plots
+        self.stresses = self.solver.calculate_stresses(num_x_points=100, num_y_points=20, num_z_points=10)
+        self.plot_stress_distributions(str(images_dir / "stress_distribution.png"))
         
         # Calculate key results
         v_displacements = self.displacements[1::3]
@@ -460,13 +504,49 @@ The following plot shows the deformed shape of the beam (exaggerated by {_s:.0f}
 
 ---
 
-## 6. Summary
+- The maximum deflection of **{max_deflection:.4f} mm** occurs at x = {max_deflection_pos:.1f} mm
+- The maximum shear force is **{max_shear/1000:.2f} kN**
+- The maximum bending moment is **{max_moment/1e6:.2f} kN·m**
+- **Peak von Mises Stress: {np.max(self.stresses['von_mises']):.2f} MPa**
+- Equilibrium is satisfied with a residual of {abs(total_fy - abs(total_load)):.2e} N
+
+---
+
+## 6. Stress Analysis
+
+### Peak Stress Distributions
+
+The following plot illustrates the peak internal stresses (von Mises, Bending, and Shear) as they vary along the length of the beam. 
+
+![Stress Distribution]({images_rel_path}/stress_distribution.png)
+
+### Summary of Peak Stresses
+
+| Stress Component | Maximum Value | Units |
+|------------------|---------------|-------|
+| von Mises (Peak) | {np.max(self.stresses['von_mises']):.2f} | MPa |
+| Bending (Max)    | {np.max(np.abs(self.stresses['bending'])):.2f} | MPa |
+| Shear (Max)      | {np.max(np.abs(self.stresses['shear'])):.2f} | MPa |
+| Axial (Max)      | {np.max(np.abs(self.stresses['axial'])):.2f} | MPa |
+
+### Structural Integrity
+
+| Criterion | Value |
+|-----------|-------|
+| Material Yield Strength | {self.material.yield_strength:,.1f} MPa |
+| Peak von Mises Stress | {np.max(self.stresses['von_mises']):.2f} MPa |
+| **Factor of Safety** | **{(self.material.yield_strength / np.max(self.stresses['von_mises'])) if np.max(self.stresses['von_mises']) > 0 else 0:.2f}** |
+
+---
+
+## 7. Summary
 
 The finite element analysis has been successfully completed. Key findings:
 
 - The maximum deflection of **{max_deflection:.4f} mm** occurs at x = {max_deflection_pos:.1f} mm
 - The maximum shear force is **{max_shear/1000:.2f} kN**
 - The maximum bending moment is **{max_moment/1e6:.2f} kN·m**
+- The peak internal stress (von Mises) is **{np.max(self.stresses['von_mises']):.2f} MPa**
 - Equilibrium is satisfied with a residual of {abs(total_fy - abs(total_load)):.2e} N
 
 ---

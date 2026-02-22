@@ -83,7 +83,18 @@ def run_example():
     print(f"Max Deflection (Analytical): {disp_analytical:.4f} mm")
     print(f"Error: {error:.4f}%")
     
-    # 6. Generate Report
+    # 6. Extract 3D Stress Field
+    print("\nCalculating 3D Stress Field...")
+    stresses = solver.calculate_stresses(num_x_points=21, num_y_points=20, num_z_points=10)
+    import numpy as np
+    max_bend = np.max(np.abs(stresses['bending']))
+    max_shear = np.max(np.abs(stresses['shear']))
+    max_vm = np.max(stresses['von_mises'])
+    print(f"  Maximum Bending Stress: {max_bend:.2f} MPa")
+    print(f"  Maximum Shear Stress:   {max_shear:.2f} MPa")
+    print(f"  Peak von Mises Stress:  {max_vm:.2f} MPa")
+    
+    # 7. Generate Report
     base_dir = os.path.dirname(os.path.abspath(__file__))
     report_path = os.path.join(base_dir, "ex01_report.md")
     solver.generate_report(report_path)

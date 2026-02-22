@@ -105,8 +105,29 @@ def run_analysis(config: Dict[str, Any]):
     solver.solve_static(lc, bc_set)
     disp_max, node_max = solver.get_max_deflection()
     print(f"[SUCCESS] Max Deflection: {disp_max:.4f} mm at node {node_max}")
+    
+    # 7. Stress Analysis
+    if config.get('calculate_stresses', True):
+        print("\nCalculating 3D Stress Field...")
+        res = config.get('stress_resolution', {'x': 50, 'y': 20, 'z': 20})
+        stresses = solver.calculate_stresses(
+            num_x_points=res['x'], 
+            num_y_points=res['y'], 
+            num_z_points=res['z']
+        )
+        import numpy as np
+        max_vm = np.max(stresses['von_mises'])
+        max_shear = np.max(np.abs(stresses['shear']))
+        print(f"[*] Peak von Mises Stress: {max_vm:.2f} MPa")
+        print(f"[*] Peak Shear Stress:    {max_shear:.2f} MPa")
+        
+        # Check against yield
+        margin = (material.yield_strength / max_vm) - 1.0 if max_vm > 0 else float('inf')
+        print(f"[*] Factor of Safety (von Mises): {margin + 1.0:.2f}")
+        if margin < 0:
+            print("[WARNING] Stress exceeds material yield strength!")
 
-    # 7. Report & Visualization
+    # 8. Report & Visualization
     if config.get('generate_report', True):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         path = os.path.join(base_dir, config.get('report_name', 'analysis_report.md'))
@@ -163,6 +184,8 @@ if __name__ == "__main__":
         
         # Analysis Options
         'num_modes': 5,            # Set > 0 for modal analysis
+        'calculate_stresses': True, # Detailed 3D stress field extraction
+        'stress_resolution': {'x': 100, 'y': 20, 'z': 20},
         'generate_report': True,
         'report_name': "spar_analysis_report.md",
         'show_plots': False        # Requires Matplotlib

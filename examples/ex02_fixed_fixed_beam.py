@@ -89,7 +89,21 @@ def run_example():
     moment_analytical = abs(w * L**2 / 12)
     print(f"\nExpected Max Moment: {moment_analytical/1000:.2f} kN·m (at supports)")
     
-    # 7. Generate Report
+    # 7. Extract 3D Stress Field
+    print("\nCalculating 3D Stress Field...")
+    # Analyzing stresses at 31 points along length (including nodes and center)
+    stresses = solver.calculate_stresses(num_x_points=31, num_y_points=20, num_z_points=20)
+    
+    import numpy as np
+    max_bend = np.max(np.abs(stresses['bending']))
+    max_shear = np.max(np.abs(stresses['shear']))
+    max_vm = np.max(stresses['von_mises'])
+    
+    print(f"  Maximum Bending Stress: {max_bend:.2f} MPa")
+    print(f"  Maximum Shear Stress:   {max_shear:.2f} MPa")
+    print(f"  Peak von Mises Stress:  {max_vm:.2f} MPa")
+    
+    # 8. Generate Report
     base_dir = os.path.dirname(os.path.abspath(__file__))
     report_path = os.path.join(base_dir, "ex02_report.md")
     solver.generate_report(report_path)

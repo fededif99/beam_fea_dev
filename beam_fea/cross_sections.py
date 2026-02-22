@@ -116,6 +116,29 @@ class CrossSection(ABC):
         """String representation of the section."""
         pass
 
+    @abstractmethod
+    def get_stress_profile(self, y: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Evaluate physical profile of the cross-section over a 2D grid.
+        
+        Parameters:
+        -----------
+        y : np.ndarray
+            Vertical coordinates (from neutral axis)
+        z : np.ndarray
+            Horizontal coordinates (from centroid)
+            
+        Returns:
+        --------
+        mask : np.ndarray
+            Boolean array indicating if (y,z) is inside solid material
+        thickness : np.ndarray
+            Effective vertical shear thickness t(y, z) at each point
+        Q : np.ndarray
+            First moment of area Q_y(y, z) at each point
+        """
+        pass
+
 
 class RectangularSection(CrossSection):
     """Rectangular cross-section."""
@@ -159,6 +182,15 @@ class RectangularSection(CrossSection):
     def __str__(self):
         return f"Rectangular: {self.width} × {self.height} mm"
 
+    def get_stress_profile(self, y: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        b, h = self.width, self.height
+        mask = (np.abs(y) <= h/2) & (np.abs(z) <= b/2)
+        t = np.full_like(y, float(b))
+        Q = (b / 2.0) * ((h / 2.0)**2 - y**2)
+        Q[~mask] = 0.0
+        t[~mask] = 0.0
+        return mask, t, Q
+
 
 class CircularSection(CrossSection):
     """Solid circular cross-section."""
@@ -195,6 +227,16 @@ class CircularSection(CrossSection):
     
     def __str__(self):
         return f"Circular: ∅{self.diameter} mm"
+
+    def get_stress_profile(self, y: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        r = self.diameter / 2.0
+        mask = (y**2 + z**2) <= r**2
+        valid_y = np.clip(r**2 - y**2, 0, None)
+        t = 2.0 * np.sqrt(valid_y)
+        Q = (2.0 / 3.0) * valid_y**(1.5)
+        Q[~mask] = 0.0
+        t[~mask] = 0.0
+        return mask, t, Q
 
 
 class HollowCircularSection(CrossSection):
@@ -242,6 +284,32 @@ class HollowCircularSection(CrossSection):
     
     def __str__(self):
         return f"Hollow Circular: ∅{self.outer_diameter} × {self.thickness}t mm"
+
+    def get_stress_profile(self, y: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        ro = self.outer_diameter / 2.0
+        ri = self.inner_diameter / 2.0
+        r_sq = y**2 + z**2
+        mask = (r_sq >= ri**2) & (r_sq <= ro**2)
+        
+        valid_y_o = np.clip(ro**2 - y**2, 0, None)
+        valid_y_i = np.clip(ri**2 - y**2, 0, None)
+        
+        t_o = 2.0 * np.sqrt(valid_y_o)
+        t_i = 2.0 * np.sqrt(valid_y_i)
+        
+        t = t_o.copy()
+        is_inner = np.abs(y) < ri
+        t[is_inner] = t_o[is_inner] - t_i[is_inner]
+        
+        Q_o = (2.0 / 3.0) * valid_y_o**(1.5)
+        Q_i = (2.0 / 3.0) * valid_y_i**(1.5)
+        
+        Q = Q_o.copy()
+        Q[is_inner] = Q_o[is_inner] - Q_i[is_inner]
+        
+        Q[~mask] = 0.0
+        t[~mask] = 0.0
+        return mask, t, Q
 
 
 class IBeamSection(CrossSection):
@@ -318,6 +386,34 @@ class IBeamSection(CrossSection):
         return (f"I-Beam: W{self.total_height}×{self.flange_width} "
                 f"(tw={self.web_thickness}, tf={self.flange_thickness})")
 
+    def get_stress_profile(self, y: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        d = self.total_height
+        bf = self.flange_width
+        tw = self.web_thickness
+        tf = self.flange_thickness
+        
+        is_top_flange = (y > d/2.0 - tf) & (y <= d/2.0) & (np.abs(z) <= bf/2.0)
+        is_bot_flange = (y < -d/2.0 + tf) & (y >= -d/2.0) & (np.abs(z) <= bf/2.0)
+        is_web = (np.abs(y) <= d/2.0 - tf) & (np.abs(z) <= tw/2.0)
+        
+        mask = is_top_flange | is_bot_flange | is_web
+        
+        t = np.zeros_like(y, dtype=float)
+        t[is_top_flange | is_bot_flange] = bf
+        t[is_web] = tw
+        
+        Q = np.zeros_like(y, dtype=float)
+        abs_y = np.abs(y)
+        
+        Q[is_top_flange | is_bot_flange] = (bf / 2.0) * ((d / 2.0)**2 - abs_y[is_top_flange | is_bot_flange]**2)
+        
+        Q_flange_total = bf * tf * (d/2.0 - tf/2.0)
+        Q[is_web] = Q_flange_total + (tw / 2.0) * ((d/2.0 - tf)**2 - abs_y[is_web]**2)
+        
+        Q[~mask] = 0.0
+        t[~mask] = 0.0
+        return mask, t, Q
+
 
 class TBeamSection(CrossSection):
     """T-beam cross-section."""
@@ -369,15 +465,56 @@ class TBeamSection(CrossSection):
         # Minor axis
         Iz = (tf*bf**3)/12 + (hw*tw**3)/12
         
+        y_top_val = self.total_height - y_bar
+        y_bottom_val = y_bar
+        Sy = Iy / max(y_top_val, y_bottom_val)
+        
         return SectionProperties(
             A=A_total, Iy=Iy, Iz=Iz, Sy=Sy,
             y_centroid=y_bar, z_centroid=0.0,
-            y_top=c_top, y_bottom=-c_bottom,
+            y_top=y_top_val, y_bottom=-y_bottom_val,
             z_left=-bf/2, z_right=bf/2
         )
     
     def __str__(self):
         return f"T-Beam: {self.flange_width}×{self.flange_thickness} flange, {self.web_height}×{self.web_thickness} web"
+
+    def get_stress_profile(self, y: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        bf = self.flange_width
+        tf = self.flange_thickness
+        hw = self.web_height
+        tw = self.web_thickness
+        
+        A_flange = bf * tf
+        A_web = tw * hw
+        A_total = A_flange + A_web
+        y_bar = (A_flange*(hw + tf/2.0) + A_web*(hw/2.0)) / A_total
+        
+        y_top = hw + tf - y_bar
+        y_bot = -y_bar
+        
+        is_flange = (y > y_top - tf) & (y <= y_top) & (np.abs(z) <= bf/2.0)
+        is_web = (y >= y_bot) & (y <= y_top - tf) & (np.abs(z) <= tw/2.0)
+        
+        mask = is_flange | is_web
+        
+        t = np.zeros_like(y, dtype=float)
+        t[is_flange] = bf
+        t[is_web] = tw
+        
+        Q = np.zeros_like(y, dtype=float)
+        Q[is_flange] = (bf / 2.0) * (y_top**2 - y[is_flange]**2)
+        
+        Q_flange_total = bf * tf * (y_top - tf/2.0)
+        Q[is_web] = Q_flange_total + (tw / 2.0) * ((y_top - tf)**2 - y[is_web]**2)
+        
+        # for y below centroid (negative y): wait! TBeam is not symmetric vertically!
+        # The Q calculated from top down implies Q > 0 for y < y_bot?
+        # Actually Q = integral_y^ytop w(u) u du.
+        # Below centroid, Q decreases. The formula above expects |y| but we use y^2. So it works universally!
+        Q[~mask] = 0.0
+        t[~mask] = 0.0
+        return mask, t, Q
 
 
 class BoxSection(CrossSection):
@@ -435,15 +572,49 @@ class BoxSection(CrossSection):
         perimeter = 2*(B + H)
         J = (4 * Am**2 * t) / perimeter
         
+        Sy = Iy / (H/2.0)
+        Sz = Iz / (B/2.0)
+        
         return SectionProperties(
             A=A, Iy=Iy, Iz=Iz, J=J, Sy=Sy, Sz=Sz,
             y_centroid=0.0, z_centroid=0.0,
-            y_top=H/2, y_bottom=-H/2,
-            z_left=-B/2, z_right=B/2
+            y_top=H/2.0, y_bottom=-H/2.0,
+            z_left=-B/2.0, z_right=B/2.0
         )
     
     def __str__(self):
         return f"Box: {self.width}×{self.height}×{self.thickness}t mm"
+
+    def get_stress_profile(self, y: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        H = self.height
+        B = self.width
+        t_wall = self.thickness
+        h = H - 2.0*t_wall
+        b = B - 2.0*t_wall
+        
+        is_outer = (np.abs(y) <= H/2.0) & (np.abs(z) <= B/2.0)
+        is_inner = (np.abs(y) < h/2.0) & (np.abs(z) < b/2.0)
+        
+        mask = is_outer & ~is_inner
+        
+        t = np.zeros_like(y, dtype=float)
+        is_flange = mask & (np.abs(y) >= h/2.0)
+        is_web = mask & (np.abs(y) < h/2.0)
+        
+        t[is_flange] = B
+        t[is_web] = 2.0 * t_wall
+        
+        abs_y = np.abs(y)
+        Q = np.zeros_like(y, dtype=float)
+        
+        Q[is_flange] = (B / 2.0) * ((H / 2.0)**2 - abs_y[is_flange]**2)
+        
+        Q_flange_total = B * t_wall * (H/2.0 - t_wall/2.0)
+        Q[is_web] = Q_flange_total + t_wall * ((h / 2.0)**2 - abs_y[is_web]**2)
+        
+        Q[~mask] = 0.0
+        t[~mask] = 0.0
+        return mask, t, Q
 
 
 class CChannelSection(CrossSection):
@@ -506,6 +677,37 @@ class CChannelSection(CrossSection):
     
     def __str__(self):
         return f"C-Channel: C{self.height}×{self.flange_width}"
+
+    def get_stress_profile(self, y: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        h = self.height
+        bf = self.flange_width
+        tw = self.web_thickness
+        tf = self.flange_thickness
+        
+        A_flange = bf * tf
+        A_web = tw * (h - 2.0*tf)
+        x_bar = (2.0*A_flange*(bf/2.0) + A_web*0) / (2.0*A_flange + A_web)
+        
+        is_top_flange = (y > h/2.0 - tf) & (y <= h/2.0) & (z >= -x_bar) & (z <= bf - x_bar)
+        is_bot_flange = (y < -h/2.0 + tf) & (y >= -h/2.0) & (z >= -x_bar) & (z <= bf - x_bar)
+        is_web = (np.abs(y) <= h/2.0 - tf) & (z >= -x_bar) & (z <= tw - x_bar)
+        
+        mask = is_top_flange | is_bot_flange | is_web
+        
+        t = np.zeros_like(y, dtype=float)
+        t[is_top_flange | is_bot_flange] = bf
+        t[is_web] = tw
+        
+        Q = np.zeros_like(y, dtype=float)
+        abs_y = np.abs(y)
+        
+        Q[is_top_flange | is_bot_flange] = (bf / 2.0) * ((h / 2.0)**2 - abs_y[is_top_flange | is_bot_flange]**2)
+        Q_flange_total = bf * tf * (h/2.0 - tf/2.0)
+        Q[is_web] = Q_flange_total + (tw / 2.0) * ((h/2.0 - tf)**2 - abs_y[is_web]**2)
+        
+        Q[~mask] = 0.0
+        t[~mask] = 0.0
+        return mask, t, Q
 
 
 class LSection(CrossSection):
@@ -595,6 +797,45 @@ class LSection(CrossSection):
             return f"L-Section (Equal): L{self.leg_length_vertical}×{self.thickness}mm"
         else:
             return f"L-Section (Unequal): L{self.leg_length_vertical}×{self.leg_length_horizontal}×{self.thickness}mm"
+
+    def get_stress_profile(self, y: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        h = self.leg_length_vertical
+        b = self.leg_length_horizontal
+        t_leg = self.thickness
+        
+        A_vert = h * t_leg
+        A_horiz = (b - t_leg) * t_leg
+        A_total = A_vert + A_horiz
+        x_bar = (A_vert * (t_leg/2.0) + A_horiz * (t_leg + (b-t_leg)/2.0)) / A_total
+        y_bar = (A_vert * (h/2.0) + A_horiz * (t_leg/2.0)) / A_total
+        
+        y_top = h - y_bar
+        y_bot = -y_bar
+        z_left = -x_bar
+        z_right = b - x_bar
+        
+        is_vert = (y >= y_bot) & (y <= y_top) & (z >= z_left) & (z <= z_left + t_leg)
+        is_horiz = (y >= y_bot) & (y <= y_bot + t_leg) & (z > z_left + t_leg) & (z <= z_right)
+        
+        mask = is_vert | is_horiz
+        
+        t = np.zeros_like(y, dtype=float)
+        t[is_horiz] = b
+        t[is_vert & ~is_horiz] = t_leg
+        
+        Q = np.zeros_like(y, dtype=float)
+        
+        is_upper_vert = is_vert & (y > y_bot + t_leg)
+        Q[is_upper_vert] = (t_leg / 2.0) * (y_top**2 - y[is_upper_vert]**2)
+        
+        Q_upper_total = t_leg * (y_top - (y_bot + t_leg)) * (y_top + (y_bot + t_leg)) / 2.0
+        is_lower = (is_vert | is_horiz) & (y <= y_bot + t_leg)
+        
+        Q[is_lower] = Q_upper_total + (b / 2.0) * ((y_bot + t_leg)**2 - y[is_lower]**2)
+        
+        Q[~mask] = 0.0
+        t[~mask] = 0.0
+        return mask, t, Q
 
 
 def offset_section(section_props: SectionProperties, 

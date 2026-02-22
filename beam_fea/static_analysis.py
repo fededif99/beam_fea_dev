@@ -189,9 +189,30 @@ class StressAnalysis:
         return V * Q / (I * t)
     
     @staticmethod
+    def calculate_principal_stresses(sigma_x: float, sigma_y: float, tau_xy: float):
+        """
+        Calculate principal stresses (sigma_1, sigma_2) for 2D plane stress.
+        
+        Parameters:
+        -----------
+        sigma_x, sigma_y : float
+            Normal stresses (MPa)
+        tau_xy : float
+            Shear stress (MPa)
+            
+        Returns:
+        --------
+        (sigma_1, sigma_2) : Tuple[float, float]
+            Principal stresses (MPa), where sigma_1 >= sigma_2
+        """
+        avg_sigma = (sigma_x + sigma_y) / 2
+        R = np.sqrt(((sigma_x - sigma_y) / 2)**2 + tau_xy**2)
+        return (avg_sigma + R, avg_sigma - R)
+    
+    @staticmethod
     def calculate_von_mises(sigma_x: float, sigma_y: float, tau_xy: float) -> float:
         """
-        Calculate von Mises equivalent stress.
+        Calculate von Mises equivalent stress using principal stresses.
         
         Parameters:
         -----------
@@ -205,7 +226,9 @@ class StressAnalysis:
         sigma_vm : float
             von Mises stress (MPa)
         """
-        return np.sqrt(sigma_x**2 + sigma_y**2 - sigma_x*sigma_y + 3*tau_xy**2)
+        sigma_1, sigma_2 = StressAnalysis.calculate_principal_stresses(sigma_x, sigma_y, tau_xy)
+        # For 2D plane stress, sigma_3 = 0
+        return np.sqrt(sigma_1**2 - sigma_1*sigma_2 + sigma_2**2)
 
 
 if __name__ == "__main__":

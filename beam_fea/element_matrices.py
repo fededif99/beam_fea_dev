@@ -55,9 +55,9 @@ class BeamElementMatrices(ABC):
         pass
 
     @abstractmethod
-    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float) -> Tuple[float, float]:
+    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float) -> Tuple[float, float, float]:
         """
-        Interpolate shear force and bending moment at a normalized position.
+        Interpolate axial force, shear force, and bending moment at a normalized position.
         
         Parameters:
         -----------
@@ -68,8 +68,9 @@ class BeamElementMatrices(ABC):
             
         Returns:
         --------
-        shear : float
-        moment : float
+        axial_force : float
+        shear_force : float
+        bending_moment : float
         """
         pass
 
@@ -160,18 +161,24 @@ class EulerBernoulliElement(BeamElementMatrices):
         
         return M
 
-    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float) -> Tuple[float, float]:
+    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float) -> Tuple[float, float, float]:
         """
-        Interpolate shear and moment for Euler-Bernoulli beam using Hermite shape functions.
+        Interpolate axial, shear, and moment for Euler-Bernoulli beam using Hermite shape functions.
         """
         L = self.L
         E = self.E
         I = self.I
+        A = self.A
         
+        u1 = u_local[0]
         v1 = u_local[1]
         theta1 = u_local[2]
+        u2 = u_local[3]
         v2 = u_local[4]
         theta2 = u_local[5]
+        
+        # Axial force is constant in standard beam element: N = EA * (u2 - u1) / L
+        axial_force = E * A * (u2 - u1) / L
         
         # Hermite shape functions second derivatives (for moment: M = -EI * d2v/dx2)
         d2N1 = (6 - 12*xi) / L**2
@@ -189,7 +196,7 @@ class EulerBernoulliElement(BeamElementMatrices):
         bending_moment = -E * I * (d2N1 * v1 + d2N2 * theta1 + d2N3 * v2 + d2N4 * theta2)
         shear_force = -E * I * (d3N1 * v1 + d3N2 * theta1 + d3N3 * v2 + d3N4 * theta2)
         
-        return shear_force, bending_moment
+        return axial_force, shear_force, bending_moment
 
 
 class TimoshenkoElement(BeamElementMatrices):
@@ -290,9 +297,9 @@ class TimoshenkoElement(BeamElementMatrices):
         m, L = self.m, self.L
         return np.diag([m*L/2, m*L/2, 0, m*L/2, m*L/2, 0])
 
-    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float) -> Tuple[float, float]:
+    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float) -> Tuple[float, float, float]:
         """
-        Interpolate shear and moment for Timoshenko beam.
+        Interpolate axial, shear, and moment for Timoshenko beam.
         For simplicity, we use the average shear and linear moment interpolation 
         consistent with Timoshenko beam theory.
         """
@@ -300,117 +307,21 @@ class TimoshenkoElement(BeamElementMatrices):
         K_local = self.stiffness_matrix()
         forces = K_local @ u_local
         
-        # forces = [F1, V1, M1, F2, V2, M2]
-        # In Timoshenko beams, shear is constant within the element (averaging V1 and V2)
-        # and moment is linear.
+        # forces = [N1, V1, M1, N2, V2, M2]
+        # Axial force and shear are constant within the element (averaging or taking end values)
+        # Moment is linear.
         
-        V1, M1 = forces[1], forces[2]
-        V2, M2 = forces[4], forces[5]
+        N1, V1, M1 = forces[0], forces[1], forces[2]
+        N2, V2, M2 = forces[3], forces[4], forces[5]
         
-        # Consistent with EulerBernoulliElement signs: Shear=V1, Moment=-M1 at start, M2 at end
+        # Consistent with conventions: Axial=-N1 at start, Shear=V1, Moment=-M1 at start
+        axial_force = -N1
         shear_force = V1 
         bending_moment = -M1 * (1-xi) + M2 * xi
         
-        return shear_force, bending_moment
+        return axial_force, shear_force, bending_moment
 
 
-class GeometricStiffness:
-    """Geometric stiffness matrix for stability analysis."""
-    
-    @staticmethod
-    def geometric_stiffness_matrix(L: float, P: float) -> np.ndarray:
-        """
-        Calculate geometric stiffness matrix for beam element.
-        
-        Used in buckling and large deflection analysis.
-        
-        Parameters:
-        -----------
-        L : float
-            Element length (mm)
-        P : float
-            Axial force (N), positive for tension
-            
-        Returns:
-        --------
-        Kg : np.ndarray (6×6)
-            Geometric stiffness matrix
-        """
-        Kg = np.zeros((6, 6))
-        
-        # Only affects transverse DOFs
-        Kg[1, 1] = Kg[4, 4] = 6 / (5 * L)
-        Kg[1, 2] = Kg[2, 1] = 1 / 10
-        Kg[1, 4] = Kg[4, 1] = -6 / (5 * L)
-        Kg[1, 5] = Kg[5, 1] = 1 / 10
-        
-        Kg[2, 2] = 2 * L / 15
-        Kg[2, 4] = Kg[4, 2] = -1 / 10
-        Kg[2, 5] = Kg[5, 2] = -L / 30
-        
-        Kg[4, 5] = Kg[5, 4] = -1 / 10
-        Kg[5, 5] = 2 * L / 15
-        
-        # Scale by axial force
-        Kg *= P
-        
-        return Kg
-
-
-class DampingMatrix:
-    """Damping matrix calculations."""
-    
-    @staticmethod
-    def rayleigh_damping(M: np.ndarray, K: np.ndarray,
-                        alpha: float, beta: float) -> np.ndarray:
-        """
-        Calculate Rayleigh damping matrix: C = α*M + β*K
-        
-        Parameters:
-        -----------
-        M : np.ndarray
-            Mass matrix
-        K : np.ndarray
-            Stiffness matrix
-        alpha : float
-            Mass proportional damping coefficient
-        beta : float
-            Stiffness proportional damping coefficient
-            
-        Returns:
-        --------
-        C : np.ndarray
-            Damping matrix
-        """
-        return alpha * M + beta * K
-    
-    @staticmethod
-    def modal_damping(damping_ratios: np.ndarray, omega: np.ndarray,
-                     phi: np.ndarray) -> np.ndarray:
-        """
-        Calculate damping matrix from modal damping ratios.
-        
-        Parameters:
-        -----------
-        damping_ratios : np.ndarray
-            Damping ratio for each mode
-        omega : np.ndarray
-            Natural frequencies (rad/s)
-        phi : np.ndarray
-            Mode shapes (columns)
-            
-        Returns:
-        --------
-        C : np.ndarray
-            Damping matrix
-        """
-        n_modes = len(damping_ratios)
-        C_modal = np.diag(2 * damping_ratios * omega)
-        
-        # Transform to physical coordinates
-        C = phi @ C_modal @ phi.T
-        
-        return C
 
 
 def calculate_shear_correction_factor(section_type: str) -> float:
@@ -468,10 +379,3 @@ if __name__ == "__main__":
     print(f"   Stiffness matrix (6×6):")
     print(f"   K[1,1] = {K_tim[1,1]:.2e} (includes shear deformation)")
     print(f"   Difference: {(K_eb[1,1] - K_tim[1,1])/K_eb[1,1]*100:.1f}% softer")
-    
-    # Geometric stiffness
-    print("\n3. Geometric Stiffness (buckling):")
-    P = -1000  # N (compression)
-    Kg = GeometricStiffness.geometric_stiffness_matrix(L, P)
-    print(f"   For P = {P} N compression:")
-    print(f"   Kg[1,1] = {Kg[1,1]:.2e}")

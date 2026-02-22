@@ -41,6 +41,8 @@ def validate_static_cases():
     
     # Calculate I
     I = b * h**3 / 12  # 4,166,666.67 mm^4
+    A_rect = b * h
+    c = h / 2.0
     
     material = Material("Steel", E, 0.3, 7850e-9)
     section = rectangular(b, h)
@@ -68,9 +70,19 @@ def validate_static_cases():
     max_def, _ = solver.get_max_deflection()
     
     # Exact: P L^3 / (3 E I)
-    # Using abs for comparison since direction is typically negative
     deflection_exact = abs(P * L**3 / (3 * E * I))
     check_error("Tip Deflection", abs(max_def), deflection_exact)
+    
+    # Stress Validation
+    stresses = solver.calculate_stresses(num_x_points=101, num_y_points=21, num_z_points=5)
+    
+    # Max Bending Stress: M*c/I = |P*L|*c/I
+    sigma_exact = abs(P * L) * c / I
+    check_error("Max Bending Stress", np.max(np.abs(stresses['bending'])), sigma_exact)
+    
+    # Max Shear Stress (Rectangular): 1.5 * V / A
+    tau_exact = 1.5 * abs(P) / A_rect
+    check_error("Max Shear Stress", np.max(np.abs(stresses['shear'])), tau_exact)
     
     # ---------------------------------------------------------
     # Case 2: Simply Supported + UDL
@@ -83,7 +95,6 @@ def validate_static_cases():
     bc_pinned.pinned_support(100)
     
     lc_udl = LoadCase("UDL")
-    # Apply to all elements (0 to 99)
     lc_udl.uniform_load(list(range(100)), wy=w)
     
     solver.solve_static(lc_udl, bc_pinned)
@@ -93,6 +104,17 @@ def validate_static_cases():
     deflection_exact = abs(5 * w * L**4 / (384 * E * I))
     check_error("Mid-span Deflection", abs(max_def), deflection_exact)
     
+    # Stress Validation
+    stresses = solver.calculate_stresses(num_x_points=101, num_y_points=21, num_z_points=5)
+    
+    # Max Bending Stress: M_max * c / I = (w*L^2 / 8) * c / I
+    sigma_exact = abs(w * L**2 / 8.0) * c / I
+    check_error("Max Bending Stress", np.max(np.abs(stresses['bending'])), sigma_exact)
+    
+    # Max Shear Stress: 1.5 * V_max / A = 1.5 * (w*L/2) / A
+    tau_exact = 1.5 * abs(w * L / 2.0) / A_rect
+    check_error("Max Shear Stress", np.max(np.abs(stresses['shear'])), tau_exact)
+    
     # ---------------------------------------------------------
     # Case 3: Fixed-Fixed + UDL
     # ---------------------------------------------------------
@@ -101,7 +123,6 @@ def validate_static_cases():
     bc_fixed = BoundaryConditionSet("Fixed-Fixed")
     bc_fixed.fixed_support(0)
     bc_fixed.fixed_support(100)
-    # Reuse UDL load case
     
     solver.solve_static(lc_udl, bc_fixed)
     max_def, _ = solver.get_max_deflection()
@@ -109,6 +130,17 @@ def validate_static_cases():
     # Exact: w L^4 / (384 E I)
     deflection_exact = abs(w * L**4 / (384 * E * I))
     check_error("Mid-span Deflection", abs(max_def), deflection_exact)
+    
+    # Stress Validation
+    stresses = solver.calculate_stresses(num_x_points=101, num_y_points=21, num_z_points=5)
+    
+    # Max Bending Stress: M_max * c / I = (w*L^2 / 12) * c / I
+    sigma_exact = abs(w * L**2 / 12.0) * c / I
+    check_error("Max Bending Stress", np.max(np.abs(stresses['bending'])), sigma_exact)
+    
+    # Max Shear Stress: 1.5 * V_max / A = 1.5 * (w*L/2) / A
+    tau_exact = 1.5 * abs(w * L / 2.0) / A_rect
+    check_error("Max Shear Stress", np.max(np.abs(stresses['shear'])), tau_exact)
 
 def validate_modal_cases():
     # ---------------------------------------------------------

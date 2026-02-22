@@ -195,6 +195,7 @@ class BeamSolver:
         
         # Create evaluation points
         positions = np.linspace(x_min, x_max, num_points)
+        axial_forces = np.zeros(num_points)
         shear_forces = np.zeros(num_points)
         bending_moments = np.zeros(num_points)
         
@@ -267,15 +268,122 @@ class BeamSolver:
             L = elem.length(self.mesh.nodes)
             xi = np.clip((x - x1) / L, 0, 1) if L > 0 else 0
             
-            V, M = element_expert.interpolate_internal_forces(u_local, xi)
+            N, V, M = element_expert.interpolate_internal_forces(u_local, xi)
+            axial_forces[i] = N
             shear_forces[i] = V
             bending_moments[i] = M
             
         return {
             'positions': positions,
+            'axial_forces': axial_forces,
             'shear_forces': shear_forces,
             'bending_moments': bending_moments
         }
+        
+    def calculate_stresses(self, num_x_points: int = 100, num_y_points: int = 20, num_z_points: int = 20) -> dict:
+        """
+        Calculate detailed 3D stress field over the beam's length and cross-section.
+        
+        Parameters:
+        -----------
+        num_x_points : int
+            Number of points along the beam length.
+        num_y_points : int
+            Number of grid points in the cross-section y-direction (depth).
+        num_z_points : int
+            Number of grid points in the cross-section z-direction (width).
+            
+        Returns:
+        --------
+        dict
+            Dictionary containing evaluation grids and 3D stress arrays:
+            'x': 1D array of positions
+            'y': 2D grid of y coordinates
+            'z': 2D grid of z coordinates
+            'mask': 2D boolean mask of the cross section shape
+            'axial': 3D array of axial stresses
+            'bending': 3D array of bending stresses
+            'shear': 3D array of transverse shear stresses
+            'von_mises': 3D array of von Mises equivalent stresses
+        """
+        from .static_analysis import StressAnalysis
+        
+        # 1. Get internal forces along the beam
+        forces = self.calculate_internal_forces(num_x_points)
+        x_positions = forces['positions']
+        N_x = forces['axial_forces']
+        V_x = forces['shear_forces']
+        M_x = forces['bending_moments']
+        
+        # 2. Build 2D grid for the cross-section
+        y_min, y_max = self.section.y_bottom, self.section.y_top
+        z_min, z_max = self.section.z_left, self.section.z_right
+        
+        if y_min is None or y_max is None:
+            r = np.sqrt(self.section.Iy / self.section.A)
+            y_min, y_max = -2*r, 2*r
+            
+        if z_min is None or z_max is None:
+            r = np.sqrt(self.section.Iz / self.section.A) if self.section.Iz else np.sqrt(self.section.Iy / self.section.A)
+            z_min, z_max = -2*r, 2*r
+            
+        y_coords = np.linspace(y_min, y_max, num_y_points)
+        z_coords = np.linspace(z_min, z_max, num_z_points)
+        Y, Z = np.meshgrid(y_coords, z_coords, indexing='ij')
+        
+        # 3. Query section profile
+        try:
+            mask, t_yz, Q_yz = self.section.get_stress_profile(Y, Z)
+        except AttributeError:
+            mask = np.ones_like(Y, dtype=bool)
+            t_yz = np.full_like(Y, z_max - z_min)
+            Q_yz = (z_max - z_min) / 2.0 * ((y_max)**2 - Y**2)
+            
+        # 4. Pre-allocate 3D stress arrays: shape (nx, ny, nz)
+        shape_3d = (num_x_points, num_y_points, num_z_points)
+        sigma_a = np.zeros(shape_3d)
+        sigma_b = np.zeros(shape_3d)
+        tau_s = np.zeros(shape_3d)
+        sigma_vm = np.zeros(shape_3d)
+        
+        A = self.section.A
+        Iy = self.section.Iy  
+        
+        # 5. Calculate stresses
+        for i in range(num_x_points):
+            sig_a = StressAnalysis.calculate_axial_stress(N_x[i], A)
+            sigma_a[i, :, :] = sig_a
+            
+            sig_b = StressAnalysis.calculate_bending_stress(M_x[i], Y, Iy)
+            sigma_b[i, :, :] = sig_b
+            
+            valid_t = t_yz > 1e-9
+            tau = np.zeros_like(Y)
+            tau[valid_t] = V_x[i] * Q_yz[valid_t] / (Iy * t_yz[valid_t])
+            tau_s[i, :, :] = tau
+            
+            sigma_x = sig_a + sig_b
+            sigma_y = 0.0 
+            
+            vm = StressAnalysis.calculate_von_mises(sigma_x, sigma_y, tau)
+            vm[~mask] = 0.0
+            sigma_vm[i, :, :] = vm
+            
+            sigma_a[i, ~mask] = 0.0
+            sigma_b[i, ~mask] = 0.0
+            tau_s[i, ~mask] = 0.0
+
+        return {
+            'x': x_positions,
+            'y': Y,
+            'z': Z,
+            'mask': mask,
+            'axial': sigma_a,
+            'bending': sigma_b,
+            'shear': tau_s,
+            'von_mises': sigma_vm
+        }
+
     
     def generate_report(self, output_path: str, deformation_scale: float = 1.0):
         """

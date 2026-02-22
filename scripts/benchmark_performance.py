@@ -57,9 +57,16 @@ def run_benchmark(num_elements):
     solver.solve_modal(bc_set, num_modes=5)
     modal_time = time.perf_counter() - start_time
     print(f"Modal Solve:  {modal_time:.4f} s")
+    
+    # 5. Stress Calculation (New feature)
+    start_time = time.perf_counter()
+    # Using 50x20x20 grid (20,000 points)
+    solver.calculate_stresses(num_x_points=50, num_y_points=20, num_z_points=20)
+    stress_time = time.perf_counter() - start_time
+    print(f"Stress Calc:  {stress_time:.4f} s")
         
-    total_time = setup_time + assembly_time + static_time + modal_time
-    return assembly_time, static_time, modal_time
+    total_time = setup_time + assembly_time + static_time + modal_time + stress_time
+    return assembly_time, static_time, modal_time, stress_time
 
 if __name__ == "__main__":
     print("Running Performance Benchmark...")
@@ -77,8 +84,8 @@ if __name__ == "__main__":
             break
             
     print("\nSummary Results")
-    print("="*75)
-    print(f"{'Elements':<10} | {'Assembly (s)':<15} | {'Static (s)':<15} | {'Modal (s)':<15}")
-    print("-" * 75)
-    for size, t_asm, t_static, t_modal in results:
-        print(f"{size:<10} | {t_asm:<15.4f} | {t_static:<15.4f} | {t_modal:<15.4f}")
+    print("="*95)
+    print(f"{'Elements':<10} | {'Assembly (s)':<15} | {'Static (s)':<15} | {'Modal (s)':<15} | {'Stress (s)':<15}")
+    print("-" * 95)
+    for size, t_asm, t_static, t_modal, t_stress in results:
+        print(f"{size:<10} | {t_asm:<15.4f} | {t_static:<15.4f} | {t_modal:<15.4f} | {t_stress:<15.4f}")

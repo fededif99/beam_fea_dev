@@ -37,7 +37,7 @@ Usage Example:
 >>> bc_set.pinned_support(0)
 >>> bc_set.pinned_support(20)
 >>> load_case = LoadCase("Point Load")
->>> load_case.add_point_load(node=10, fy=-100)
+>>> load_case.point_load(node=10, fy=-100)
 >>> 
 >>> displacements = solver.solve_static(load_case, bc_set)
 >>> solver.visualize()
