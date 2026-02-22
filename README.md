@@ -20,6 +20,12 @@
 
 ## 📅 Version History
 
+### v1.4.1 *(2026-02-22)*
+
+- **Critical Fix**: Resolved a malformed ternary bug in `BeamSolver.calculate_internal_forces` spatial coherence check
+- **Performance**: Eliminated redundant `sqrt` recomputations by using direct vector math for element length extraction
+- **Optimization**: Streamlined memory and broadcasting overhead by precomputing the 3D stress field inverse mask
+
 ### v1.4.0 *(2026-02-22)*
 
 - **Performance**: Vectorized global matrix assembly using `np.meshgrid` (eliminates 36-iteration inner loop per element)

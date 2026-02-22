@@ -209,15 +209,8 @@ class BeamSolver:
             
             # 1. Try current element (spatial coherence) - Most efficient for evaluation loops
             if current_elem_idx != -1:
-                # Use local boundary cache if available
-                if x1 <= x <= x1 + L if L > 0 else x1: # Simple check assuming x1 is left
+                if L > 0 and x1 <= x <= x1 + L:
                     found_idx = current_elem_idx
-                else: 
-                    # More robust check if caching isn't simple
-                    elem = self.mesh.elements[current_elem_idx]
-                    tx1, tx2 = coords[elem.node1, 0], coords[elem.node2, 0]
-                    if min(tx1, tx2) <= x <= max(tx1, tx2):
-                        found_idx = current_elem_idx
             
             # 2. Delegate to Mesh for optimized/indexed search
             if found_idx == -1:
@@ -239,8 +232,9 @@ class BeamSolver:
                 elem = self.mesh.elements[current_elem_idx]
                 
                 # Cache boundary and length
-                x1 = coords[elem.node1, 0]
-                L = elem.length(self.mesh.nodes)
+                p1, p2 = coords[elem.node1], coords[elem.node2]
+                x1 = p1[0]
+                L = np.sqrt(np.sum((p2 - p1)**2))
                 
                 # Local element displacements
                 dof_indices = [
@@ -358,11 +352,11 @@ class BeamSolver:
         sigma_vm = np.sqrt(sigma_x**2 + 3 * tau_s**2)
         
         # 5. Apply cross-section mask to all 3D arrays at once
-        full_mask = mask[np.newaxis, :, :] # Broadcast mask to (nx, ny, nz)
-        sigma_a[~np.broadcast_to(full_mask, shape_3d)] = 0.0
-        sigma_b[~np.broadcast_to(full_mask, shape_3d)] = 0.0
-        tau_s[~np.broadcast_to(full_mask, shape_3d)] = 0.0
-        sigma_vm[~np.broadcast_to(full_mask, shape_3d)] = 0.0
+        inv_mask = ~np.broadcast_to(mask[np.newaxis, :, :], shape_3d)
+        sigma_a[inv_mask] = 0.0
+        sigma_b[inv_mask] = 0.0
+        tau_s[inv_mask] = 0.0
+        sigma_vm[inv_mask] = 0.0
 
         return {
             'x': x_positions,
