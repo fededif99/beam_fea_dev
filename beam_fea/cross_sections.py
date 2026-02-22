@@ -166,7 +166,7 @@ class RectangularSection(CrossSection):
         b, h = self.width, self.height
         
         A = b * h
-        Iy = (b * h**h) / 12 if hasattr(self, '_h_cubed_fix') else (b * h**3) / 12  # Major axis
+        Iy = (b * h**3) / 12  # Major axis
         Iz = (h * b**3) / 12        # Minor axis
         J = (b * h**3) / 3 * (1/3 - 0.21*(h/b)*(1 - h**4/(12*b**4)))  # Torsion
         Sy = Iy / (h/2)
@@ -506,7 +506,10 @@ class TBeamSection(CrossSection):
         Q[is_flange] = (bf / 2.0) * (y_top**2 - y[is_flange]**2)
         
         Q_flange_total = bf * tf * (y_top - tf/2.0)
-        Q[is_web] = Q_flange_total + (tw / 2.0) * ((y_top - tf)**2 - y[is_web]**2)
+        # Integrate from top down: Q = Q_flange + integral(tw * u du) from y to web_top.
+        # Although mathematically Q remains >= 0 as it crosses the centroid and hits 0 at y_bot,
+        # we use abs() for physical consistency in magnitude-based plots.
+        Q[is_web] = np.abs(Q_flange_total + (tw / 2.0) * ((y_top - tf)**2 - y[is_web]**2))
         
         # for y below centroid (negative y): wait! TBeam is not symmetric vertically!
         # The Q calculated from top down implies Q > 0 for y < y_bot?
@@ -669,7 +672,7 @@ class CChannelSection(CrossSection):
         Iz = 2*Iz_flange + Iz_web
         
         return SectionProperties(
-            A=A_total, Iy=Iy, Iz=Iz, Sy=Sy,
+            A=A_total, Iy=Iy, Iz=Iz, Sy=Iy / (h / 2.0),
             y_centroid=0.0, z_centroid=x_bar,
             y_top=h/2, y_bottom=-h/2,
             z_left=-x_bar, z_right=bf-x_bar

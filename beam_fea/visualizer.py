@@ -211,7 +211,7 @@ class BeamVisualizer:
         # Draw bounding box
         box_y = [y_bot, y_top, y_top, y_bot, y_bot]
         box_z = [z_left, z_left, z_right, z_right, z_left]
-        ax.fill(box_z, box_y, color='lightblue', alpha=0.3, label='Bulk Geometry')
+        ax.fill(box_z, box_y, color='lightblue', alpha=0.3, label='Bounding Box')
         ax.plot(box_z, box_y, 'k--', alpha=0.5, label='Bounding Box')
         
         # Neutral Axes (passing through centroid)

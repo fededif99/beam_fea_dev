@@ -20,6 +20,14 @@
 
 ## 📅 Version History
 
+### v1.3.1 *(2026-02-22)*
+
+- **Critical Fixes**: Resolved `NameError` in `CChannelSection` and `h**h` power math bug in `RectangularSection`
+- **Performance**: Optimized element lookup from $O(n)$ to $O(\log n)$ using binary search in `solver.py` and `mesh.py`
+- **Standardization**: Replaced magic numbers with constants (`SHEAR_CORRECTION_FACTOR`, `DEFAULT_PENALTY`)
+- **API**: Expanded package-level exports to include `LSection` and all convenience helpers
+- **Verification**: Passed 88/88 tests including new targeted regression suite
+
 ### v1.3.0 *(2026-02-22)*
 
 - Integrated 3D exact stress analysis field extraction ($VQ/It$ model)
@@ -282,6 +290,12 @@ The `.properties()` method returns a `SectionProperties` object containing:
 
 - `rectangular(w, h)` -> `SectionProperties`
 - `circular(d)` -> `SectionProperties`
+- `hollow_circular(d, t)` -> `SectionProperties`
+- `i_beam(w, h, tw, tf)` -> `SectionProperties`
+- `box(w, h, t)` -> `SectionProperties`
+- `t_beam(w, tf, hw, tw)` -> `SectionProperties`
+- `c_channel(h, w, tw, tf)` -> `SectionProperties`
+- `l_section(lv, lh, t)` -> `SectionProperties`
 
 ---
 

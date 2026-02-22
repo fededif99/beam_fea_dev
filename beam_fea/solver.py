@@ -206,28 +206,33 @@ class BeamSolver:
         element_expert = None
         u_local = None
         
+        # Optimization: Precompute element start positions for binary search
+        elem_starts = np.array([coords[e.node1, 0] for e in self.mesh.elements])
+        is_ordered = np.all(np.diff(elem_starts) >= 0)
+        
         for i, x in enumerate(positions):
             # Find element containing point x
-            # For robustness, we search for the element where x falls within node boundaries
-            # In most meshes, elements are ordered by x
             found_idx = -1
             
-            # Optimization: check current element first
+            # 1. Try current element (spatial coherence)
             if current_elem_idx != -1:
                 elem = self.mesh.elements[current_elem_idx]
-                x1 = coords[elem.node1, 0]
-                x2 = coords[elem.node2, 0]
-                if x1 <= x <= x2:
+                if coords[elem.node1, 0] <= x <= coords[elem.node2, 0]:
                     found_idx = current_elem_idx
             
+            # 2. Try Binary search if ordered
+            if found_idx == -1 and is_ordered:
+                idx = np.searchsorted(elem_starts, x, side='right') - 1
+                idx = np.clip(idx, 0, self.mesh.num_elements - 1)
+                elem = self.mesh.elements[idx]
+                if coords[elem.node1, 0] <= x <= coords[elem.node2, 0]:
+                    found_idx = idx
+            
+            # 3. Fallback to linear search only if binary search fails
             if found_idx == -1:
-                # Linear search for the element
-                # If meshes are very large, we could use binary search
-                for idx, elem in enumerate(self.mesh.elements):
-                    x1 = coords[elem.node1, 0]
-                    x2 = coords[elem.node2, 0]
-                    if x1 <= x <= x2:
-                        found_idx = idx
+                for idx_lin, e_lin in enumerate(self.mesh.elements):
+                    if coords[e_lin.node1, 0] <= x <= coords[e_lin.node2, 0]:
+                        found_idx = idx_lin
                         break
             
             # Fallback for numerical precision at ends
@@ -236,6 +241,9 @@ class BeamSolver:
                     found_idx = 0
                 elif x >= x_max:
                     found_idx = self.mesh.num_elements - 1
+            
+            if found_idx == -1:
+                continue
             
             # Re-instantiate expert only if element changes
             if found_idx != current_elem_idx:

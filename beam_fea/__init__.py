@@ -49,8 +49,8 @@ from .materials import Material, get_material, MATERIAL_LIBRARY
 from .cross_sections import (
     SectionProperties,
     RectangularSection, CircularSection, IBeamSection, 
-    BoxSection, TBeamSection, CChannelSection, HollowCircularSection,
-    rectangular, circular, i_beam, box, t_beam, c_channel, hollow_circular
+    BoxSection, TBeamSection, CChannelSection, HollowCircularSection, LSection,
+    rectangular, circular, i_beam, box, t_beam, c_channel, hollow_circular, l_section
 )
 from .mesh import Mesh, Node, Element, MeshGenerator, MeshRefinement
 from .element_matrices import EulerBernoulliElement, TimoshenkoElement
@@ -78,8 +78,8 @@ __all__ = [
     # Cross-sections
     'SectionProperties',
     'RectangularSection', 'CircularSection', 'IBeamSection',
-    'BoxSection', 'TBeamSection', 'CChannelSection', 'HollowCircularSection',
-    'rectangular', 'circular', 'i_beam', 'box', 't_beam', 'c_channel', 'hollow_circular',
+    'BoxSection', 'TBeamSection', 'CChannelSection', 'HollowCircularSection', 'LSection',
+    'rectangular', 'circular', 'i_beam', 'box', 't_beam', 'c_channel', 'hollow_circular', 'l_section',
     
     # Mesh
     'Mesh', 'Node', 'Element', 'MeshGenerator', 'MeshRefinement',

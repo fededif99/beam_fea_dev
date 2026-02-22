@@ -347,16 +347,19 @@ class BeamReportGenerator:
         images_dir.mkdir(parents=True, exist_ok=True)
         images_rel_path = f"{report_name}_images"
         
+        # Stress and image generation pipeline
+        self.calculate_internal_forces()
+        
+        # [Fix]: Compute stresses once and cache it
+        if self.stresses is None:
+            self.stresses = self.solver.calculate_stresses(num_x_points=100, num_y_points=20, num_z_points=10)
+
         # Generate all plots
         self.plot_structure_diagram(str(images_dir / "structure_diagram.png"))
         self.plot_cross_section(str(images_dir / "cross_section.png"))
         self.plot_deformed_shape(str(images_dir / "deformed_shape.png"), scale_factor=deformation_scale)
-        self.calculate_internal_forces()
         self.plot_shear_diagram(str(images_dir / "shear_diagram.png"))
         self.plot_moment_diagram(str(images_dir / "moment_diagram.png"))
-        
-        # New stress plots
-        self.stresses = self.solver.calculate_stresses(num_x_points=100, num_y_points=20, num_z_points=10)
         self.plot_stress_distributions(str(images_dir / "stress_distribution.png"))
         
         # Calculate key results

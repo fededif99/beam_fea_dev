@@ -46,6 +46,9 @@ class ModalAnalysis:
         mode_shapes : np.ndarray
             Mode shape matrix (each column is a mode)
         """
+        from scipy.sparse import issparse
+        is_sparse_initially = issparse(K)
+        
         # Apply boundary conditions to K
         if bc_set is not None:
             # This handles penalty method for sparse K, or row/col zeroing for dense K
@@ -80,6 +83,9 @@ class ModalAnalysis:
             
         else:
             # Dense matrix logic
+            # [Fix]: Prevent in-place mutation of the global mass matrix
+            M = M.copy()
+            
             if bc_set is not None:
                 # For modal analysis, also need to modify M explicitly for dense method
                 # (Identity replacement method)
@@ -121,7 +127,7 @@ class ModalAnalysis:
         self.eigenvectors = eigenvectors
         
         # Return requested number of modes
-        if num_modes is not None and not issparse(K):
+        if num_modes is not None and not is_sparse_initially:
             # For sparse, we already extracted k modes
             # For dense, we computed all, so slice them
             return self.frequencies[:num_modes], self.mode_shapes[:, :num_modes]

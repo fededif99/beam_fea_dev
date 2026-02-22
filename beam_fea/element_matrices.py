@@ -13,6 +13,9 @@ import numpy as np
 from typing import Tuple
 from abc import ABC, abstractmethod
 
+# Standard shear correction factor for rectangular sections
+SHEAR_CORRECTION_FACTOR = 5/6
+
 
 class BeamElementMatrices(ABC):
     """Abstract base class for beam element matrices."""
@@ -208,7 +211,7 @@ class TimoshenkoElement(BeamElementMatrices):
     """
     
     def __init__(self, E: float, G: float, I: float, A: float, L: float,
-                 rho: float, kappa: float = 5/6):
+                 rho: float, kappa: float = SHEAR_CORRECTION_FACTOR):
         """
         Initialize Timoshenko beam element.
         

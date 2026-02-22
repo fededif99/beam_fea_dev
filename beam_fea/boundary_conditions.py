@@ -15,6 +15,9 @@ import numpy as np
 from typing import List, Set, Optional, Tuple
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
+ 
+# Default penalty value for sparse constraints
+DEFAULT_PENALTY = 1e15
 
 
 @dataclass
@@ -329,7 +332,10 @@ class BoundaryConditionSet:
             # For sparse matrices, use Penalty Method to preserve sparsity structure
             # and avoid expensive slicing.
             # Adding a large value to the diagonal effectively constrains the DOF.
-            penalty = 1e15  # Large enough to dominate, small enough to avoid precision loss
+            # NOTE: For non-zero prescribed values, off-diagonal coupling terms remain
+            # in the stiffness matrix, meaning the prescribed value is satisfied
+            # accurately but not strictly (solution ~ prescribed_value).
+            penalty = DEFAULT_PENALTY
             
             # Convert to LIL or CSR if needed, but assuming input is compatible
             # Accessing diagonal efficiently depends on format
