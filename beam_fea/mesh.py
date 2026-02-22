@@ -90,6 +90,7 @@ class Mesh:
         self._node_counter = 0
         self._element_counter = 0
         self._elem_starts = None  # Cache for element search
+        self._node_coords = None  # Cache for node coordinates
     
     def add_node(self, x: float, y: float, z: float = 0.0) -> int:
         """
@@ -109,6 +110,10 @@ class Mesh:
         self.nodes.append(node)
         node_id = self._node_counter
         self._node_counter += 1
+        
+        # Invalidate coordinate cache
+        self._node_coords = None
+        
         return node_id
     
     def add_element(self, node1: int, node2: int) -> int:
@@ -150,7 +155,9 @@ class Mesh:
         coords : np.ndarray
             Array of shape (num_nodes, 3)
         """
-        return np.array([[n.x, n.y, n.z] for n in self.nodes])
+        if self._node_coords is None:
+            self._node_coords = np.array([[n.x, n.y, n.z] for n in self.nodes])
+        return self._node_coords
     
     def get_connectivity(self) -> np.ndarray:
         """

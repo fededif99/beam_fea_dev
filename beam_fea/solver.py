@@ -206,37 +206,20 @@ class BeamSolver:
         element_expert = None
         u_local = None
         
-        # Optimization: Precompute element start positions for binary search
-        elem_starts = np.array([coords[e.node1, 0] for e in self.mesh.elements])
-        is_ordered = np.all(np.diff(elem_starts) >= 0)
-        
         for i, x in enumerate(positions):
             # Find element containing point x
             found_idx = -1
             
-            # 1. Try current element (spatial coherence)
+            # 1. Try current element (spatial coherence) - Most efficient for evaluation loops
             if current_elem_idx != -1:
                 elem = self.mesh.elements[current_elem_idx]
                 x1, x2 = coords[elem.node1, 0], coords[elem.node2, 0]
                 if min(x1, x2) <= x <= max(x1, x2):
                     found_idx = current_elem_idx
             
-            # 2. Try Binary search if ordered
-            if found_idx == -1 and is_ordered:
-                idx = np.searchsorted(elem_starts, x, side='right') - 1
-                idx = np.clip(idx, 0, self.mesh.num_elements - 1)
-                elem = self.mesh.elements[idx]
-                x1, x2 = coords[elem.node1, 0], coords[elem.node2, 0]
-                if min(x1, x2) <= x <= max(x1, x2):
-                    found_idx = idx
-            
-            # 3. Fallback to linear search only if binary search fails
+            # 2. Delegate to Mesh for optimized/indexed search
             if found_idx == -1:
-                for idx_lin, e_lin in enumerate(self.mesh.elements):
-                    x1, x2 = coords[e_lin.node1, 0], coords[e_lin.node2, 0]
-                    if min(x1, x2) <= x <= max(x1, x2):
-                        found_idx = idx_lin
-                        break
+                found_idx = self.mesh.find_element_at_x(x)
             
             # Fallback for numerical precision at ends
             if found_idx == -1:
