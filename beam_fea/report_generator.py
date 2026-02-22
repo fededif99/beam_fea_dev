@@ -384,7 +384,7 @@ class BeamReportGenerator:
         # Generate markdown content
         md_content = f"""# Beam FEA Analysis Report
 
-**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+**Generated:** {datetime.now().strftime('%d-%m-%Y %H:%M:%S')}
 
 ---
 

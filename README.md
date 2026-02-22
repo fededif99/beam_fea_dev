@@ -20,6 +20,10 @@
 
 ## 📅 Version History
 
+### v1.4.2 *(2026-02-22)*
+
+- **Minor Polish**: Updated the default date format in `BeamReportGenerator` to `DD-MM-YYYY`
+
 ### v1.4.1 *(2026-02-22)*
 
 - **Critical Fix**: Resolved a malformed ternary bug in `BeamSolver.calculate_internal_forces` spatial coherence check
