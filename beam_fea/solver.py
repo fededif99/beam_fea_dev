@@ -78,30 +78,26 @@ class BeamSolver:
         M_cols = []
         M_data = []
         
+        # Prepare element data
+        ElementClass = EulerBernoulliElement if self.element_type == 'euler' else TimoshenkoElement
+        
+        # Precompute coordinates and lengths for all elements
+        coords = self.mesh.get_node_coords()
+        
         for elem in self.mesh.elements:
-            L = elem.length(self.mesh.nodes)
+            # Calculate length directly from cached coords
+            p1, p2 = coords[elem.node1], coords[elem.node2]
+            L = np.sqrt(np.sum((p2 - p1)**2))
             
             # Create element matrices
-            if self.element_type == 'euler':
-                element = EulerBernoulliElement(
-                    E=self.material.E,
-                    G=self.material.G,
-                    I=self.section.Iy,
-                    A=self.section.A,
-                    L=L,
-                    rho=self.material.rho
-                )
-            elif self.element_type == 'timoshenko':
-                element = TimoshenkoElement(
-                    E=self.material.E,
-                    G=self.material.G,
-                    I=self.section.Iy,
-                    A=self.section.A,
-                    L=L,
-                    rho=self.material.rho
-                )
-            else:
-                raise ValueError("element_type must be 'euler' or 'timoshenko'")
+            element = ElementClass(
+                E=self.material.E,
+                G=self.material.G,
+                I=self.section.Iy,
+                A=self.section.A,
+                L=L,
+                rho=self.material.rho
+            )
             
             k_local = element.stiffness_matrix()
             m_local = element.mass_matrix()
@@ -112,26 +108,27 @@ class BeamSolver:
                 3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2
             ])
             
-            # Efficiently append to lists
-            for i, gi in enumerate(dof_indices):
-                for j, gj in enumerate(dof_indices):
-                    # Stiffness
-                    val_k = k_local[i, j]
-                    if val_k != 0:
-                        K_rows.append(gi)
-                        K_cols.append(gj)
-                        K_data.append(val_k)
-                    
-                    # Mass
-                    val_m = m_local[i, j]
-                    if val_m != 0:
-                        M_rows.append(gi)
-                        M_cols.append(gj)
-                        M_data.append(val_m)
+            # Vectorized scatter using meshgrid
+            ii, jj = np.meshgrid(dof_indices, dof_indices, indexing='ij')
+            
+            K_rows.append(ii.ravel())
+            K_cols.append(jj.ravel())
+            K_data.append(k_local.ravel())
+            
+            M_rows.append(ii.ravel())
+            M_cols.append(jj.ravel())
+            M_data.append(m_local.ravel())
         
-        # Create sparse matrices
-        self.K_global = coo_matrix((K_data, (K_rows, K_cols)), shape=(num_dofs, num_dofs)).tocsr()
-        self.M_global = coo_matrix((M_data, (M_rows, M_cols)), shape=(num_dofs, num_dofs)).tocsr()
+        # Create sparse matrices (concatenate all arrays once)
+        self.K_global = coo_matrix(
+            (np.concatenate(K_data), (np.concatenate(K_rows), np.concatenate(K_cols))),
+            shape=(num_dofs, num_dofs)
+        ).tocsr()
+        
+        self.M_global = coo_matrix(
+            (np.concatenate(M_data), (np.concatenate(M_rows), np.concatenate(M_cols))),
+            shape=(num_dofs, num_dofs)
+        ).tocsr()
     
     def solve_static(self, load_case: LoadCase, bc_set: BoundaryConditionSet):
         """Solve static analysis."""
@@ -202,20 +199,25 @@ class BeamSolver:
         # Determine evaluation points per element to avoid redundant element instantiation
         from .element_matrices import EulerBernoulliElement, TimoshenkoElement
         
+        # Re-instantiate expert and cache element properties only if element changes
         current_elem_idx = -1
-        element_expert = None
-        u_local = None
-        
+        x1, L, u_local = 0.0, 1.0, None
+
         for i, x in enumerate(positions):
             # Find element containing point x
             found_idx = -1
             
             # 1. Try current element (spatial coherence) - Most efficient for evaluation loops
             if current_elem_idx != -1:
-                elem = self.mesh.elements[current_elem_idx]
-                x1, x2 = coords[elem.node1, 0], coords[elem.node2, 0]
-                if min(x1, x2) <= x <= max(x1, x2):
+                # Use local boundary cache if available
+                if x1 <= x <= x1 + L if L > 0 else x1: # Simple check assuming x1 is left
                     found_idx = current_elem_idx
+                else: 
+                    # More robust check if caching isn't simple
+                    elem = self.mesh.elements[current_elem_idx]
+                    tx1, tx2 = coords[elem.node1, 0], coords[elem.node2, 0]
+                    if min(tx1, tx2) <= x <= max(tx1, tx2):
+                        found_idx = current_elem_idx
             
             # 2. Delegate to Mesh for optimized/indexed search
             if found_idx == -1:
@@ -231,35 +233,32 @@ class BeamSolver:
             if found_idx == -1:
                 continue
             
-            # Re-instantiate expert only if element changes
+            # Update cache and expert only if element truly changes
             if found_idx != current_elem_idx:
                 current_elem_idx = found_idx
                 elem = self.mesh.elements[current_elem_idx]
+                
+                # Cache boundary and length
+                x1 = coords[elem.node1, 0]
                 L = elem.length(self.mesh.nodes)
                 
                 # Local element displacements
-                dof_indices = np.array([
+                dof_indices = [
                     3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
                     3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2
-                ])
+                ]
                 u_local = self.displacements[dof_indices]
                 
                 # Instantiate the correct element type expert
+                # [Optimization]: Pre-extract all properties once per element change
+                E, G, I, A, rho = self.material.E, self.material.G, self.section.Iy, self.section.A, self.material.rho
+                
                 if self.element_type == 'euler':
-                    element_expert = EulerBernoulliElement(
-                        E=self.material.E, G=self.material.G, I=self.section.Iy,
-                        A=self.section.A, L=L, rho=self.material.rho
-                    )
+                    element_expert = EulerBernoulliElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
                 else:
-                    element_expert = TimoshenkoElement(
-                        E=self.material.E, G=self.material.G, I=self.section.Iy,
-                        A=self.section.A, L=L, rho=self.material.rho
-                    )
+                    element_expert = TimoshenkoElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
             
-            # Local position xi [0, 1]
-            elem = self.mesh.elements[current_elem_idx]
-            x1 = coords[elem.node1, 0]
-            L = elem.length(self.mesh.nodes)
+            # Local position xi [0, 1] - Uses cached L and x1
             xi = np.clip((x - x1) / L, 0, 1) if L > 0 else 0
             
             N, V, M = element_expert.interpolate_internal_forces(u_local, xi)
@@ -333,39 +332,37 @@ class BeamSolver:
             t_yz = np.full_like(Y, z_max - z_min)
             Q_yz = (z_max - z_min) / 2.0 * ((y_max)**2 - Y**2)
             
-        # 4. Pre-allocate 3D stress arrays: shape (nx, ny, nz)
+        # 5. Calculate stresses (Full Vectorization)
+        A, Iy = self.section.A, self.section.Iy
         shape_3d = (num_x_points, num_y_points, num_z_points)
-        sigma_a = np.zeros(shape_3d)
-        sigma_b = np.zeros(shape_3d)
-        tau_s = np.zeros(shape_3d)
-        sigma_vm = np.zeros(shape_3d)
         
-        A = self.section.A
-        Iy = self.section.Iy  
+        # Expand forces to 3D: (nx, 1, 1) to allow broadcasting with (ny, nz) grids
+        N_3d = N_x[:, np.newaxis, np.newaxis]
+        V_3d = V_x[:, np.newaxis, np.newaxis]
+        M_3d = M_x[:, np.newaxis, np.newaxis]
         
-        # 5. Calculate stresses
-        for i in range(num_x_points):
-            sig_a = StressAnalysis.calculate_axial_stress(N_x[i], A)
-            sigma_a[i, :, :] = sig_a
-            
-            sig_b = StressAnalysis.calculate_bending_stress(M_x[i], Y, Iy)
-            sigma_b[i, :, :] = sig_b
-            
-            valid_t = t_yz > 1e-9
-            tau = np.zeros_like(Y)
-            tau[valid_t] = V_x[i] * Q_yz[valid_t] / (Iy * t_yz[valid_t])
-            tau_s[i, :, :] = tau
-            
-            sigma_x = sig_a + sig_b
-            sigma_y = 0.0 
-            
-            vm = StressAnalysis.calculate_von_mises(sigma_x, sigma_y, tau)
-            vm[~mask] = 0.0
-            sigma_vm[i, :, :] = vm
-            
-            sigma_a[i, ~mask] = 0.0
-            sigma_b[i, ~mask] = 0.0
-            tau_s[i, ~mask] = 0.0
+        # 1. Axial stress (Broadcasting nx -> nx, ny, nz)
+        sigma_a = np.broadcast_to(N_3d / A, shape_3d).copy()
+        
+        # 2. Bending stress (Broadcasting (nx, 1, 1) * (1, ny, nz) -> (nx, ny, nz))
+        sigma_b = -M_3d * Y[np.newaxis, :, :] / Iy
+        
+        # 3. Shear stress
+        valid_t = t_yz > 1e-9
+        shear_base = np.zeros_like(Y)
+        shear_base[valid_t] = Q_yz[valid_t] / (Iy * t_yz[valid_t])
+        tau_s = V_3d * shear_base[np.newaxis, :, :]
+        
+        # 4. von Mises: simplified for 2D plane stress with sigma_y = 0
+        sigma_x = sigma_a + sigma_b
+        sigma_vm = np.sqrt(sigma_x**2 + 3 * tau_s**2)
+        
+        # 5. Apply cross-section mask to all 3D arrays at once
+        full_mask = mask[np.newaxis, :, :] # Broadcast mask to (nx, ny, nz)
+        sigma_a[~np.broadcast_to(full_mask, shape_3d)] = 0.0
+        sigma_b[~np.broadcast_to(full_mask, shape_3d)] = 0.0
+        tau_s[~np.broadcast_to(full_mask, shape_3d)] = 0.0
+        sigma_vm[~np.broadcast_to(full_mask, shape_3d)] = 0.0
 
         return {
             'x': x_positions,

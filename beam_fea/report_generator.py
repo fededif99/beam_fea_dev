@@ -114,6 +114,10 @@ class BeamReportGenerator:
                            textcoords='offset points', ha='center',
                            fontsize=9, color='green', weight='bold')
         
+        # Precompute max point load for scaling arrows
+        point_loads = [l for l in self.load_case.loads if isinstance(l, PointLoad)]
+        max_fy = max([abs(l.fy) for l in point_loads] + [1.0])
+        
         # Plot loads
         for load in self.load_case.loads:
             if isinstance(load, PointLoad):
@@ -122,7 +126,6 @@ class BeamReportGenerator:
                 
                 if load.fy != 0:
                     fy = load.fy
-                    max_fy = max([abs(l.fy) for l in self.load_case.loads if isinstance(l, PointLoad)] + [1])
                     arrow_length = (abs(fy) / max_fy) * 500
                     
                     if fy < 0:

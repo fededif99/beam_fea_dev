@@ -20,6 +20,14 @@
 
 ## 📅 Version History
 
+### v1.4.0 *(2026-02-22)*
+
+- **Performance**: Vectorized global matrix assembly using `np.meshgrid` (eliminates 36-iteration inner loop per element)
+- **Broadcasting**: Fully vectorized `BeamSolver.calculate_stresses` lengthwise loop (nx points) using 3D NumPy broadcasting
+- **Optimization**: Implemented property caching for internal force evaluations, reducing redundant element expert instantiation
+- **Efficiency**: Optimized `BeamReportGenerator` by moving constant load-scaling logic out of plotting loops
+- **Cleanup**: Standardized internal buffer caching in `mesh.py` for node coordinates and element start indices
+
 ### v1.3.1 *(2026-02-22)*
 
 - **Critical Fixes**: Resolved `NameError` in `CChannelSection` and `h**h` power math bug in `RectangularSection`
