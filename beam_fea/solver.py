@@ -217,7 +217,8 @@ class BeamSolver:
             # 1. Try current element (spatial coherence)
             if current_elem_idx != -1:
                 elem = self.mesh.elements[current_elem_idx]
-                if coords[elem.node1, 0] <= x <= coords[elem.node2, 0]:
+                x1, x2 = coords[elem.node1, 0], coords[elem.node2, 0]
+                if min(x1, x2) <= x <= max(x1, x2):
                     found_idx = current_elem_idx
             
             # 2. Try Binary search if ordered
@@ -225,13 +226,15 @@ class BeamSolver:
                 idx = np.searchsorted(elem_starts, x, side='right') - 1
                 idx = np.clip(idx, 0, self.mesh.num_elements - 1)
                 elem = self.mesh.elements[idx]
-                if coords[elem.node1, 0] <= x <= coords[elem.node2, 0]:
+                x1, x2 = coords[elem.node1, 0], coords[elem.node2, 0]
+                if min(x1, x2) <= x <= max(x1, x2):
                     found_idx = idx
             
             # 3. Fallback to linear search only if binary search fails
             if found_idx == -1:
                 for idx_lin, e_lin in enumerate(self.mesh.elements):
-                    if coords[e_lin.node1, 0] <= x <= coords[e_lin.node2, 0]:
+                    x1, x2 = coords[e_lin.node1, 0], coords[e_lin.node2, 0]
+                    if min(x1, x2) <= x <= max(x1, x2):
                         found_idx = idx_lin
                         break
             

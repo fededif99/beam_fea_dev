@@ -340,8 +340,6 @@ class BoundaryConditionSet:
             # Convert to LIL or CSR if needed, but assuming input is compatible
             # Accessing diagonal efficiently depends on format
             
-            diag_indices = constrained_dofs
-            
             # Add penalty to stiffness diagonal
             # For CSR/CSC, this is reasonably efficient if structure allows, 
             # or it will update data array
