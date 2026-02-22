@@ -20,6 +20,16 @@
 
 ## 📅 Version History
 
+### v1.3.0 *(2026-02-22)*
+
+- Integrated 3D exact stress analysis field extraction ($VQ/It$ model)
+- Added `BeamSolver.calculate_stresses()` for comprehensive 3D stress matrix Generation
+- Upgraded `BeamReportGenerator` with stress distribution plots and Factor of Safety reporting
+- Added `get_stress_profile()` to all `CrossSection` subclasses for geometric stress profiling
+- Updated `BeamSolver.calculate_internal_forces()` to return axial force ($N$)
+- Validated stresses against Roark's analytical formulas (< 1% error)
+- Removed unused `GeometricStiffness` and `DampingMatrix` classes for 1.0.0 standardization
+
 ### v1.2.0 *(2026-02-21)*
 
 - Added coordinate-based load definitions (define loads via global $x$ positions or node/element IDs)
@@ -258,6 +268,7 @@ The `.properties()` method returns a `SectionProperties` object containing:
 
 - **Centroid Tracking**: `y_centroid`, `z_centroid` (location relative to section reference)
 - **Extreme Fibers**: `y_top`, `y_bottom`, `z_left`, `z_right` (distances from centroid)
+- **Stress Profiles**: `get_stress_profile(y, z)` returns 2D masks, thickness $t$, and first moment $Q$
 - **Standard Properties**: `A`, `Iy`, `Iz`, `J`, `Sy`, `Sz`
 
 #### Utilities
@@ -428,7 +439,8 @@ solver = BeamSolver(mesh, material, section, element_type='euler')
 
 - **`solve_static(load_case, bc_set)`**: Runs linear static analysis.
 - **`solve_modal(bc_set, num_modes)`**: Runs eigenvalue analysis (Frequencies & Mode Shapes).
-- **`calculate_internal_forces(num_points=100)`**: Calculates Shear Force (V) and Bending Moment (M) on-demand along the beam length.
+- **`calculate_internal_forces(num_points=100)`**: Returns dictionary of `axial_forces`, `shear_forces`, and `bending_moments`.
+- **`calculate_stresses(num_x, num_y, num_z)`**: Generates 3D stress matrices (Axial, Bending, Shear, von Mises, Principal).
 - **`visualize(analysis_type, **kwargs)`**: Orchestrates plots (see 3.7).
 - **`generate_report(filepath, ...)`**: Generates professional engineering report (see 3.8).
 
@@ -459,10 +471,10 @@ solver.visualize('shear', num_points=200)
 
 Generates comprehensive engineering reports in Markdown format, which can be easily converted to PDF or HTML.
 
-- **Saved Graphics**: Automatically generates PNG plots (deformation, SFD, BMD, cross-section) saved to a `<report_name>_images/` folder and referenced via relative links.
+- **Saved Graphics**: Automatically generates PNG plots (deformation, SFD, BMD, Stress Distribution, cross-section).
 - **Mathematical Precision**: Uses LaTeX math formatting for material and section properties.
 - **Structural Summary**: Tabulates all nodes, elements, boundary conditions, and applied loads.
-- **Result Recovery**: Lists maximum displacements, rotations, and critical internal forces.
+- **Result Recovery**: Lists maximum displacements, rotations, critical internal forces, and **Factor of Safety**.
 
 ```python
 # Generate full report
