@@ -1,6 +1,6 @@
 # Beam FEA Analysis Report
 
-**Generated:** 23-02-2026 18:53:33
+**Generated:** 23-02-2026 19:12:07
 
 ---
 
@@ -11,7 +11,7 @@ This report presents the results of a finite element analysis of a beam structur
 ### Load Case
 - **Name:** Tip Load Case
 - **Number of Point Loads:** 1
-- **Number of Distributed Loads:** 1
+- **Number of Distributed Loads:** 0
 
 ---
 
@@ -21,9 +21,9 @@ This report presents the results of a finite element analysis of a beam structur
 
 | Property | Value |
 |----------|-------|
-| Number of Nodes | 21 |
-| Number of Elements | 20 |
-| Total DOFs | 63 |
+| Number of Nodes | 201 |
+| Number of Elements | 200 |
+| Total DOFs | 603 |
 | Element Type | Euler-Bernoulli Beam |
 
 ### Material Properties
@@ -70,20 +70,21 @@ The following plot shows the deformed shape of the beam (exaggerated by 1× for 
 
 | Property | Value |
 |----------|-------|
-| Maximum Deflection | 3.6262 mm |
-| Location | Node 20 (x = 2000.0 mm) |
+| Maximum Deflection | 0.1186 mm |
+| Location | Node 91 (x = 341.2 mm) |
 
 ### Reaction Forces
 
-- **Node 0:** Vertical reaction = 9000.00 N (9.00 kN)
+- **Node 0:** Vertical reaction = 50000.00 N (50.00 kN)
+- **Node 200:** Vertical reaction = 25000.00 N (25.00 kN)
 
 ### Equilibrium Check
 
 | Property | Value |
 |----------|-------|
-| Total Vertical Reaction | 9000.00 N (9.00 kN) |
-| Total Applied Load | 9000.00 N (9.00 kN) |
-| Difference | 1.94e-08 N |
+| Total Vertical Reaction | 75000.00 N (75.00 kN) |
+| Total Applied Load | 75000.00 N (75.00 kN) |
+| Difference | 1.18e-03 N |
 
 ---
 
@@ -93,21 +94,21 @@ The following plot shows the deformed shape of the beam (exaggerated by 1× for 
 
 ![Shear Force Diagram](static_template_results_images/shear_diagram.png)
 
-**Maximum Shear Force:** 8.90 kN
+**Maximum Shear Force:** 50.00 kN
 
 ### Bending Moment Diagram
 
 ![Bending Moment Diagram](static_template_results_images/moment_diagram.png)
 
-**Maximum Bending Moment:** 14.00 kN·m
+**Maximum Bending Moment:** 12.47 kN·m
 
 ---
 
-- The maximum deflection of **3.6262 mm** occurs at x = 2000.0 mm
-- The maximum shear force is **8.90 kN**
-- The maximum bending moment is **14.00 kN·m**
-- **Peak von Mises Stress: 21.00 MPa**
-- Equilibrium is satisfied with a residual of 1.94e-08 N
+- The maximum deflection of **0.1186 mm** occurs at x = 341.2 mm
+- The maximum shear force is **50.00 kN**
+- The maximum bending moment is **12.47 kN·m**
+- **Peak von Mises Stress: 18.71 MPa**
+- Equilibrium is satisfied with a residual of 1.18e-03 N
 
 ---
 
@@ -123,9 +124,9 @@ The following plot illustrates the peak internal stresses (von Mises, Bending, a
 
 | Stress Component | Maximum Value | Units |
 |------------------|---------------|-------|
-| von Mises (Peak) | 21.00 | MPa |
-| Bending (Max)    | 21.00 | MPa |
-| Shear (Max)      | 0.67 | MPa |
+| von Mises (Peak) | 18.71 | MPa |
+| Bending (Max)    | 18.71 | MPa |
+| Shear (Max)      | 3.74 | MPa |
 | Axial (Max)      | 0.00 | MPa |
 
 ### Structural Integrity
@@ -133,8 +134,8 @@ The following plot illustrates the peak internal stresses (von Mises, Bending, a
 | Criterion | Value |
 |-----------|-------|
 | Material Yield Strength | 503.0 MPa |
-| Peak von Mises Stress | 21.00 MPa |
-| **Factor of Safety** | **23.96** |
+| Peak von Mises Stress | 18.71 MPa |
+| **Factor of Safety** | **26.89** |
 
 ---
 
@@ -142,11 +143,11 @@ The following plot illustrates the peak internal stresses (von Mises, Bending, a
 
 The finite element analysis has been successfully completed. Key findings:
 
-- The maximum deflection of **3.6262 mm** occurs at x = 2000.0 mm
-- The maximum shear force is **8.90 kN**
-- The maximum bending moment is **14.00 kN·m**
-- The peak internal stress (von Mises) is **21.00 MPa**
-- Equilibrium is satisfied with a residual of 1.94e-08 N
+- The maximum deflection of **0.1186 mm** occurs at x = 341.2 mm
+- The maximum shear force is **50.00 kN**
+- The maximum bending moment is **12.47 kN·m**
+- The peak internal stress (von Mises) is **18.71 MPa**
+- Equilibrium is satisfied with a residual of 1.18e-03 N
 
 ---
 

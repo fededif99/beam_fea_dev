@@ -121,9 +121,17 @@ class BeamReportGenerator:
         # Plot loads
         for load in self.load_case.loads:
             if isinstance(load, PointLoad):
-                node_id = load.node
-                x, y = coords[node_id, 0], coords[node_id, 1]
+                if load.node is not None:
+                    x, y = coords[load.node, 0], coords[load.node, 1]
+                elif load.x is not None:
+                    x, y = load.x, 0.0 # Standard y=0 for structure diagram
+                else:
+                    continue
                 
+                # Check bounds
+                if not (coords[:, 0].min() <= x <= coords[:, 0].max()):
+                    continue
+
                 if load.fy != 0:
                     fy = load.fy
                     arrow_length = (abs(fy) / max_fy) * 500
@@ -145,32 +153,15 @@ class BeamReportGenerator:
                                fontsize=10, color='red', weight='bold')
             
             elif isinstance(load, UniformDistributedLoad):
-                elements = [load.element] if isinstance(load.element, int) else load.element
-                for elem_id in elements:
-                    elem = self.mesh.elements[elem_id]
-                    x1 = coords[elem.node1, 0]
-                    x2 = coords[elem.node2, 0]
-                    wy = load.wy
-                    
-                    if wy != 0:
-                        height = 150
-                        box_y_start = height if wy < 0 else -height
-                        
-                        rect = plt.Rectangle((x1, 0), x2-x1, box_y_start,
-                                           facecolor='red', alpha=0.1, edgecolor='red', linestyle='--')
-                        ax.add_patch(rect)
-                        
-                        num_arrows = 3
-                        for x_pos in np.linspace(x1 + (x2-x1)*0.1, x2 - (x2-x1)*0.1, num_arrows):
-                            ax.arrow(x_pos, box_y_start, 0, -box_y_start * 0.9,
-                                    head_width=40, head_length=abs(box_y_start)*0.2, fc='red', ec='red',
-                                    alpha=0.6)
-                        
-                        if elem_id == elements[0]:
-                            ax.annotate(f'{abs(wy):.2f} N/mm', ((x1+x2)/2, box_y_start),
-                                       xytext=(0, 10 if wy < 0 else -20), 
-                                       textcoords='offset points', ha='center',
-                                       fontsize=9, color='red', weight='bold')
+                if load.element is not None:
+                    elements = [load.element] if isinstance(load.element, int) else load.element
+                    for elem_id in elements:
+                        elem = self.mesh.elements[elem_id]
+                        x1 = coords[elem.node1, 0]
+                        x2 = coords[elem.node2, 0]
+                        self._plot_udl_segment(ax, x1, x2, load.wy, label=(elem_id == elements[0]))
+                elif load.x_start is not None and load.x_end is not None:
+                    self._plot_udl_segment(ax, load.x_start, load.x_end, load.wy, label=True)
         
         ax.set_xlabel('Position (mm)', fontsize=12)
         ax.set_ylabel('Height (mm)', fontsize=12)
@@ -478,10 +469,16 @@ The following plot shows the deformed shape of the beam (exaggerated by {_s:.0f}
                         for load in self.load_case.loads if hasattr(load, 'fy'))
         for load in self.load_case.loads:
             if hasattr(load, 'wy'):
-                elements = [load.element] if isinstance(load.element, int) else load.element
-                for elem_id in elements:
-                    elem_length = self.mesh.elements[elem_id].length(self.mesh.nodes)
-                    total_load += abs(getattr(load, 'wy', 0)) * elem_length
+                wy = getattr(load, 'wy', 0)
+                if wy == 0: continue
+                
+                if hasattr(load, 'element') and load.element is not None:
+                    elements = [load.element] if isinstance(load.element, int) else load.element
+                    for elem_id in elements:
+                        elem_length = self.mesh.elements[elem_id].length(self.mesh.nodes)
+                        total_load += abs(wy) * elem_length
+                elif hasattr(load, 'x_start') and load.x_start is not None:
+                    total_load += abs(wy) * abs(load.x_end - load.x_start)
 
         md_content += f"""
 ### Equilibrium Check

@@ -34,23 +34,24 @@ def main():
 
     # 2. MESH GENERATION
     # Create a 2000mm beam with 20 elements
-    length = 2000.0
-    num_elements = 20
+    length = 750
+    num_elements = 200
     mesh = MeshGenerator.beam_mesh_1d(length, num_elements)
     print(f"[*] Mesh created: {mesh.num_nodes} nodes, {mesh.num_elements} elements")
 
     # 3. LOADS
     # Create a load case and add a point load at the tip (last node)
     lc = LoadCase("Tip Load Case")
-    lc.point_load(node=mesh.num_nodes - 1, fy=-5000.0)  # 5 kN downwards
+    lc.point_load(x=250, fy=-75000.0)  # 75 kN downwards 
     
-    # Add a uniform load of 2 N/mm across all elements
-    lc.uniform_load(element=list(range(mesh.num_elements)), wy=-2.0)
+    # # Add a uniform load of 2 N/mm across all elements
+    # lc.uniform_load(element=list(range(mesh.num_elements)), wy=-2.0)
 
     # 4. BOUNDARY CONDITIONS
     # Create a BC set and fix the left end (node 0)
-    bc = BoundaryConditionSet("Fixed Support")
-    bc.fixed_support(node=0)
+    bc = BoundaryConditionSet("Pinned - Roller")
+    bc.pinned_support(node=0)
+    bc.roller_support(node=mesh.num_nodes - 1) 
 
     # 5. SOLVE
     # Initialize solver and run static analysis
