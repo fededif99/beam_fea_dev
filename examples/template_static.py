@@ -68,6 +68,7 @@ def main():
     print(f"Moment of inertia: {section.Iy:.2e} mm^4")
     
     # 7. PEAK INTERNAL FORCES
+    # Uses default resolution (num_nodes)
     internal = solver.get_max_internal_forces()
     max_moment = internal['moment']['value']
     max_moment_pos = internal['moment']['x']
@@ -87,10 +88,10 @@ def main():
         ry = solver.reactions[3*node_id + 1]
         rm = solver.reactions[3*node_id + 2]
         print(f"{node_id:<6} | {rx:>12.2f} | {ry:>12.2f} | {rm:>12.2f}")
-
+    
     # 8. STRESS ANALYSIS
-    # Calculate detailed 3D stresses
-    stresses = solver.calculate_stresses(num_x_points=50)
+    # Calculate detailed 3D stresses using default resolution (num_nodes)
+    stresses = solver.calculate_stresses()
     
     print(f"\nPEAK STRESSES (MPa):")
     print(f"  - Peak Bending:   {np.max(np.abs(stresses['bending'])):.2f}")
@@ -103,7 +104,7 @@ def main():
     # Generate an automated Markdown report
     report_path = os.path.join(os.path.dirname(__file__), "static_template_results.md")
     solver.generate_report(report_path)
-    print(f"\n[*] Detailed report saved to: {report_path}")
+    print(f"\nDetailed report saved to: {report_path}")
 
 if __name__ == "__main__":
     main()

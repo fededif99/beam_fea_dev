@@ -20,6 +20,16 @@
 
 ## 📅 Version History
 
+### v1.5.0 *(2026-02-23)*
+
+- **Optimization**: Linked default discretization resolution in `calculate_internal_forces` and `calculate_stresses` to `mesh.num_nodes`
+- **UX**: Simplified example templates by removing hardcoded integration points, making nodal results the default experience
+
+### v1.4.10 *(2026-02-23)*
+
+- **Bugfix**: Fixed compatibility regression in `solve_static` return value
+- **Bugfix**: Resolved `NameError` in `calculate_stresses` caching logic
+
 ### v1.4.9 *(2026-02-23)*
 
 - **Refactor**: Standardized library logging by removing all `print()` side-effects from core solver methods

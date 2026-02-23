@@ -199,14 +199,15 @@ class BeamSolver:
             'moment': {'value': res['bending_moments'][m_idx], 'x': pos[m_idx]}
         }
 
-    def calculate_internal_forces(self, num_points: int = 100) -> dict:
+    def calculate_internal_forces(self, num_points: int = None) -> dict:
         """
         Calculate shear force and bending moment distributions along the beam.
         
         Parameters:
         -----------
-        num_points : int
-            Number of points for interpolation along beam length.
+        num_points : int, optional
+            Number of points for interpolation along beam length. 
+            Defaults to self.mesh.num_nodes if None.
             
         Returns:
         --------
@@ -222,13 +223,20 @@ class BeamSolver:
 
         coords = self.mesh.get_node_coords()
         x_min, x_max = np.min(coords[:, 0]), np.max(coords[:, 0])
-        beam_length = x_max - x_min
         
         # Create evaluation points
-        positions = np.linspace(x_min, x_max, num_points)
-        axial_forces = np.zeros(num_points)
-        shear_forces = np.zeros(num_points)
-        bending_moments = np.zeros(num_points)
+        if num_points is None:
+            # Physics-aligned: use the exact nodal coordinates by default
+            positions = np.sort(coords[:, 0])
+            eval_count = len(positions)
+        else:
+            # Interpolated: use a uniform grid for smooth plotting
+            positions = np.linspace(x_min, x_max, num_points)
+            eval_count = num_points
+            
+        axial_forces = np.zeros(eval_count)
+        shear_forces = np.zeros(eval_count)
+        bending_moments = np.zeros(eval_count)
         
         # Determine evaluation points per element to avoid redundant element instantiation
         from .element_matrices import EulerBernoulliElement, TimoshenkoElement
@@ -307,14 +315,14 @@ class BeamSolver:
         
         return res
         
-    def calculate_stresses(self, num_x_points: int = 100, num_y_points: int = 20, num_z_points: int = 20) -> dict:
+    def calculate_stresses(self, num_x_points: int = None, num_y_points: int = 20, num_z_points: int = 20) -> dict:
         """
         Calculate detailed 3D stress field over the beam's length and cross-section.
         
         Parameters:
         -----------
-        num_x_points : int
-            Number of points along the beam length.
+        num_x_points : int, optional
+            Number of points along the beam length. Defaults to self.mesh.num_nodes if None.
         num_y_points : int
             Number of grid points in the cross-section y-direction (depth).
         num_z_points : int
@@ -347,6 +355,9 @@ class BeamSolver:
         V_x = forces['shear_forces']
         M_x = forces['bending_moments']
         
+        # Resolve evaluation count for stress field allocation
+        eval_x_count = len(x_positions)
+        
         # 2. Build 2D grid for the cross-section
         y_min, y_max = self.section.y_bottom, self.section.y_top
         z_min, z_max = self.section.z_left, self.section.z_right
@@ -373,7 +384,7 @@ class BeamSolver:
             
         # 5. Calculate stresses (Full Vectorization)
         A, Iy = self.section.A, self.section.Iy
-        shape_3d = (num_x_points, num_y_points, num_z_points)
+        shape_3d = (eval_x_count, num_y_points, num_z_points)
         
         # Expand forces to 3D: (nx, 1, 1) to allow broadcasting with (ny, nz) grids
         N_3d = N_x[:, np.newaxis, np.newaxis]
