@@ -340,7 +340,7 @@ class BeamSolver:
         from .static_analysis import StressAnalysis
         
         # 1. Get internal forces along the beam
-        forces = self.calculate_internal_forces(num_x_points)
+        forces = self.calculate_internal_forces(num_x_points, silent=silent)
         x_positions = forces['positions']
         N_x = forces['axial_forces']
         V_x = forces['shear_forces']

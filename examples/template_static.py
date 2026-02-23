@@ -14,6 +14,7 @@ Workflow:
 
 import os
 import sys
+import numpy as np
 
 # Ensure beam_fea is in the path (if running from repository root)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -35,23 +36,24 @@ def main():
     # 2. MESH GENERATION
     # Create a 2000mm beam with 20 elements
     length = 750
-    num_elements = 200
+    num_elements = 4
     mesh = MeshGenerator.beam_mesh_1d(length, num_elements)
     print(f"[*] Mesh created: {mesh.num_nodes} nodes, {mesh.num_elements} elements")
 
     # 3. LOADS
     # Create a load case and add a point load at the tip (last node)
     lc = LoadCase("Tip Load Case")
-    lc.point_load(x=250, fy=-75000.0)  # 75 kN downwards 
+    lc.point_load(x=length/2, fy=-75000.0)  # 75 kN downwards 
     
     # # Add a uniform load of 2 N/mm across all elements
     # lc.uniform_load(element=list(range(mesh.num_elements)), wy=-2.0)
 
     # 4. BOUNDARY CONDITIONS
     # Create a BC set and fix the left end (node 0)
-    bc = BoundaryConditionSet("Pinned - Roller")
+    bc = BoundaryConditionSet("Pin - Pin")
     bc.pinned_support(node=0)
-    bc.roller_support(node=mesh.num_nodes - 1) 
+    bc.pinned_support(node=mesh.num_nodes -1 ) 
+
 
     # 5. SOLVE
     # Initialize solver and run static analysis
@@ -60,18 +62,52 @@ def main():
     
     # 6. RESULTS
     disp_max, node_idx = solver.get_max_deflection()
-    print(f"[SUCCESS] Analysis Complete.")
-    print(f"  - Max Deflection: {disp_max:.4f} mm at x = {mesh.nodes[node_idx].x:.1f} mm")
+    print(f"\n" + "="*50)
+    print(f"ANALYSIS RESULTS: {lc.name}")
+    print(f"="*50)
+    print(f"Moment of inertia: {section.Iy:.2e} mm^4")
+    print(f"Max Deflection: {abs(disp_max):.4f} mm at x = {mesh.nodes[node_idx].x:.1f} mm")
 
-    # 7. (Optional) STRESS & REPORT
-    # Calculate detailed 3D stresses
-    stresses = solver.calculate_stresses(num_x_points=50)
-    print(f"  - Peak von Mises Stress: {stresses['von_mises'].max():.2f} MPa")
+    # 7. REACTION FORCES
+    print(f"\nREACTION FORCES:")
+    print(f"{'Node':<6} | {'Fx (N)':<12} | {'Fy (N)':<12} | {'Mz (N·mm)':<12}")
+    print("-" * 50)
     
+    # Track which nodes have reactions to avoid duplicates
+    support_nodes = sorted(list(set(bc.node for bc in bc.conditions if hasattr(bc, 'node'))))
+    for node_id in support_nodes:
+        # Reactions are stored as K*u - F for all DOFs
+        rx = solver.reactions[3*node_id]
+        ry = solver.reactions[3*node_id + 1]
+        rm = solver.reactions[3*node_id + 2]
+        print(f"{node_id:<6} | {rx:>12.2f} | {ry:>12.2f} | {rm:>12.2f}")
+
+    # 8. STRESS ANALYSIS
+    # Calculate detailed 3D stresses
+    stresses = solver.calculate_stresses(num_x_points=50, silent=True)
+    
+    # Calculate components
+    sigma_x = stresses['axial'] + stresses['bending']
+    tau_xy = stresses['shear']
+    
+    # Principal stresses: sigma_1,2 = (sigma_x/2) +/- sqrt((sigma_x/2)^2 + tau_xy^2)
+    avg_sigma = sigma_x / 2.0
+    R = np.sqrt(avg_sigma**2 + tau_xy**2)
+    sigma_1 = avg_sigma + R
+    sigma_2 = avg_sigma - R
+    
+    print(f"\nPEAK STRESSES (MPa):")
+    print(f"  - Peak Bending:   {np.max(np.abs(stresses['bending'])):.2f}")
+    print(f"  - Peak Shear:     {np.max(np.abs(stresses['shear'])):.2f}")
+    print(f"  - Max Principal:  {np.max(sigma_1):.2f}")
+    print(f"  - Min Principal:  {np.min(sigma_2):.2f}")
+    print(f"  - Peak von Mises: {stresses['von_mises'].max():.2f}")
+    
+    # 9. (Optional) REPORT
     # Generate an automated Markdown report
     report_path = os.path.join(os.path.dirname(__file__), "static_template_results.md")
     solver.generate_report(report_path)
-    print(f"[*] Report saved to: {report_path}")
+    print(f"\n[*] Detailed report saved to: {report_path}")
 
 if __name__ == "__main__":
     main()
