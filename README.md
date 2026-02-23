@@ -20,6 +20,11 @@
 
 ## 📅 Version History
 
+### v1.4.7 *(2026-02-23)*
+
+- **Optimization**: Centralized principal stress calculation ($σ_1$, $σ_2$) into `BeamSolver.calculate_stresses` using vectorized logic
+- **UX**: Simplified example templates by providing pre-calculated principal stresses in results dictionary
+
 ### v1.4.5 *(2026-02-23)*
 
 - **Optimization**: Implemented result caching for internal forces and stresses to prevent redundant re-computations

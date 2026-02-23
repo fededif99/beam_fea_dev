@@ -157,7 +157,7 @@ class BeamSolver:
         self._cached_forces = None
         self._cached_stresses = None
         
-        return self.displacements, self.reactions
+        return self.displacements
     
     def solve_modal(self, bc_set: BoundaryConditionSet, num_modes: int = 10):
         """Solve modal analysis."""
@@ -391,8 +391,16 @@ class BeamSolver:
         shear_base[valid_t] = Q_yz[valid_t] / (Iy * t_yz[valid_t])
         tau_s = V_3d * shear_base[np.newaxis, :, :]
         
-        # 4. von Mises: simplified for 2D plane stress with sigma_y = 0
+        # 4. von Mises and Principal Stresses
         sigma_x = sigma_a + sigma_b
+        # sigma_y = 0 for 1D beam elements in local coordinates
+        
+        # Principal stresses (plane stress): (sigma_x/2) +/- sqrt((sigma_x/2)^2 + tau_xy^2)
+        avg_sigma = sigma_x / 2.0
+        R = np.sqrt(avg_sigma**2 + tau_s**2)
+        sigma_1 = avg_sigma + R
+        sigma_2 = avg_sigma - R
+        
         sigma_vm = np.sqrt(sigma_x**2 + 3 * tau_s**2)
         
         # 5. Apply cross-section mask to all 3D arrays at once
@@ -400,6 +408,8 @@ class BeamSolver:
         sigma_a[inv_mask] = 0.0
         sigma_b[inv_mask] = 0.0
         tau_s[inv_mask] = 0.0
+        sigma_1[inv_mask] = 0.0
+        sigma_2[inv_mask] = 0.0
         sigma_vm[inv_mask] = 0.0
 
         res = {
@@ -410,6 +420,8 @@ class BeamSolver:
             'axial': sigma_a,
             'bending': sigma_b,
             'shear': tau_s,
+            'sigma_1': sigma_1,
+            'sigma_2': sigma_2,
             'von_mises': sigma_vm
         }
         

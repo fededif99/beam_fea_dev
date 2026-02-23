@@ -1,6 +1,6 @@
 # Beam FEA Analysis Report
 
-**Generated:** 23-02-2026 19:35:26
+**Generated:** 23-02-2026 19:41:07
 
 ---
 
@@ -9,7 +9,7 @@
 This report presents the results of a finite element analysis of a beam structure subjected to static loading.
 
 ### Load Case
-- **Name:** Tip Load Case
+- **Name:** Center Load
 - **Number of Point Loads:** 1
 - **Number of Distributed Loads:** 0
 

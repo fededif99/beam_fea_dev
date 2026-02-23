@@ -42,7 +42,7 @@ def main():
 
     # 3. LOADS
     # Create a load case and add a point load at the tip (last node)
-    lc = LoadCase("Tip Load Case")
+    lc = LoadCase("Center Load")
     lc.point_load(x=length/2, fy=-75000.0)  # 75 kN downwards 
     
     # # Add a uniform load of 2 N/mm across all elements
@@ -86,21 +86,11 @@ def main():
     # Calculate detailed 3D stresses
     stresses = solver.calculate_stresses(num_x_points=50, silent=True)
     
-    # Calculate components
-    sigma_x = stresses['axial'] + stresses['bending']
-    tau_xy = stresses['shear']
-    
-    # Principal stresses: sigma_1,2 = (sigma_x/2) +/- sqrt((sigma_x/2)^2 + tau_xy^2)
-    avg_sigma = sigma_x / 2.0
-    R = np.sqrt(avg_sigma**2 + tau_xy**2)
-    sigma_1 = avg_sigma + R
-    sigma_2 = avg_sigma - R
-    
     print(f"\nPEAK STRESSES (MPa):")
     print(f"  - Peak Bending:   {np.max(np.abs(stresses['bending'])):.2f}")
     print(f"  - Peak Shear:     {np.max(np.abs(stresses['shear'])):.2f}")
-    print(f"  - Max Principal:  {np.max(sigma_1):.2f}")
-    print(f"  - Min Principal:  {np.min(sigma_2):.2f}")
+    print(f"  - Max Principal:  {np.max(stresses['sigma_1']):.2f}")
+    print(f"  - Min Principal:  {np.min(stresses['sigma_2']):.2f}")
     print(f"  - Peak von Mises: {stresses['von_mises'].max():.2f}")
     
     # 9. (Optional) REPORT
