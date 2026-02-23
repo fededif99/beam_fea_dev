@@ -36,7 +36,7 @@ def main():
     # 2. MESH GENERATION
     # Create a 2000mm beam with 20 elements
     length = 750
-    num_elements = 4
+    num_elements = 25
     mesh = MeshGenerator.beam_mesh_1d(length, num_elements)
     print(f"[*] Mesh created: {mesh.num_nodes} nodes, {mesh.num_elements} elements")
 
@@ -71,7 +71,7 @@ def main():
     internal = solver.get_max_internal_forces()
     max_moment = internal['moment']['value']
     max_moment_pos = internal['moment']['x']
-    print(f"Max Bending Moment: {max_moment/1e6:.2f} kN·m at x = {max_moment_pos:.1f} mm")
+    print(f"Max Bending Moment: {max_moment/1000:.2f} kN·mm at x = {max_moment_pos:.1f} mm")
     print(f"Max Deflection: {abs(disp_max):.4f} mm at x = {mesh.nodes[node_idx].x:.1f} mm")
 
     # 7. REACTION FORCES
@@ -90,7 +90,7 @@ def main():
 
     # 8. STRESS ANALYSIS
     # Calculate detailed 3D stresses
-    stresses = solver.calculate_stresses(num_x_points=50, silent=True)
+    stresses = solver.calculate_stresses(num_x_points=50)
     
     print(f"\nPEAK STRESSES (MPa):")
     print(f"  - Peak Bending:   {np.max(np.abs(stresses['bending'])):.2f}")

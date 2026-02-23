@@ -20,6 +20,12 @@
 
 ## 📅 Version History
 
+### v1.4.9 *(2026-02-23)*
+
+- **Refactor**: Standardized library logging by removing all `print()` side-effects from core solver methods
+- **UX**: Removed the "bandage" `silent` parameter, as library methods are now silent by default
+- **Cleanup**: Fixed duplicate docstrings and optimized `calculate_stresses` internal logic
+
 ### v1.4.8 *(2026-02-23)*
 
 - **Feature**: Added `get_max_internal_forces` helper to `BeamSolver` for easy extraction of peak shear and moments

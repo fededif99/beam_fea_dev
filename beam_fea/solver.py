@@ -188,7 +188,7 @@ class BeamSolver:
         max_values : dict
             Peak values for 'shear' and 'moment' with 'value' and 'x' keys.
         """
-        res = self.calculate_internal_forces(num_points, silent=True)
+        res = self.calculate_internal_forces(num_points)
         pos = res['positions']
         
         v_idx = np.argmax(np.abs(res['shear_forces']))
@@ -199,7 +199,7 @@ class BeamSolver:
             'moment': {'value': res['bending_moments'][m_idx], 'x': pos[m_idx]}
         }
 
-    def calculate_internal_forces(self, num_points: int = 100, silent: bool = False) -> dict:
+    def calculate_internal_forces(self, num_points: int = 100) -> dict:
         """
         Calculate shear force and bending moment distributions along the beam.
         
@@ -207,8 +207,6 @@ class BeamSolver:
         -----------
         num_points : int
             Number of points for interpolation along beam length.
-        silent : bool
-            If True, suppresses progress/status printing.
             
         Returns:
         --------
@@ -222,8 +220,6 @@ class BeamSolver:
         if self._cached_forces is not None and self._cached_forces_params == num_points:
             return self._cached_forces
 
-        if not silent:
-            print(f"[*] Calculating internal forces at {num_points} points...")
         coords = self.mesh.get_node_coords()
         x_min, x_max = np.min(coords[:, 0]), np.max(coords[:, 0])
         beam_length = x_max - x_min
@@ -311,27 +307,7 @@ class BeamSolver:
         
         return res
         
-    def calculate_stresses(self, num_x_points: int = 100, num_y_points: int = 20, num_z_points: int = 20, 
-                          silent: bool = False) -> dict:
-        """
-        Calculate detailed 3D stress field throughout the beam volume.
-        
-        Parameters:
-        -----------
-        num_x_points : int
-            Discretization along beam length
-        num_y_points, num_z_points : int
-            Discretization of the cross-section
-        silent : bool
-            If True, suppresses progress/status printing.
-        """
-        # Check cache
-        params = (num_x_points, num_y_points, num_z_points)
-        if self._cached_stresses is not None and self._cached_stresses_params == params:
-            return self._cached_stresses
-
-        if not silent:
-            print(f"[*] Calculating 3D stress field ({num_x_points}x{num_y_points}x{num_z_points})...")
+    def calculate_stresses(self, num_x_points: int = 100, num_y_points: int = 20, num_z_points: int = 20) -> dict:
         """
         Calculate detailed 3D stress field over the beam's length and cross-section.
         
@@ -357,10 +333,15 @@ class BeamSolver:
             'shear': 3D array of transverse shear stresses
             'von_mises': 3D array of von Mises equivalent stresses
         """
+        # 1. Check cache
+        params = (num_x_points, num_y_points, num_z_points)
+        if self._cached_stresses is not None and self._cached_stresses_params == params:
+            return self._cached_stresses
+
         from .static_analysis import StressAnalysis
         
-        # 1. Get internal forces along the beam
-        forces = self.calculate_internal_forces(num_x_points, silent=silent)
+        # 2. Get internal forces along the beam
+        forces = self.calculate_internal_forces(num_x_points)
         x_positions = forces['positions']
         N_x = forces['axial_forces']
         V_x = forces['shear_forces']

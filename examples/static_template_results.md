@@ -1,6 +1,6 @@
 # Beam FEA Analysis Report
 
-**Generated:** 23-02-2026 19:42:41
+**Generated:** 23-02-2026 20:02:42
 
 ---
 
@@ -21,9 +21,9 @@ This report presents the results of a finite element analysis of a beam structur
 
 | Property | Value |
 |----------|-------|
-| Number of Nodes | 5 |
-| Number of Elements | 4 |
-| Total DOFs | 15 |
+| Number of Nodes | 26 |
+| Number of Elements | 25 |
+| Total DOFs | 78 |
 | Element Type | Euler-Bernoulli Beam |
 
 ### Material Properties
@@ -70,13 +70,13 @@ The following plot shows the deformed shape of the beam (exaggerated by 1× for 
 
 | Property | Value |
 |----------|-------|
-| Maximum Deflection | 0.1379 mm |
-| Location | Node 2 (x = 375.0 mm) |
+| Maximum Deflection | 0.1376 mm |
+| Location | Node 13 (x = 390.0 mm) |
 
 ### Reaction Forces
 
 - **Node 0:** Vertical reaction = 37500.00 N (37.50 kN)
-- **Node 4:** Vertical reaction = 37500.00 N (37.50 kN)
+- **Node 25:** Vertical reaction = 37500.00 N (37.50 kN)
 
 ### Equilibrium Check
 
@@ -84,7 +84,7 @@ The following plot shows the deformed shape of the beam (exaggerated by 1× for 
 |----------|-------|
 | Total Vertical Reaction | 75000.00 N (75.00 kN) |
 | Total Applied Load | 75000.00 N (75.00 kN) |
-| Difference | 1.75e-10 N |
+| Difference | 5.85e-07 N |
 
 ---
 
@@ -100,15 +100,15 @@ The following plot shows the deformed shape of the beam (exaggerated by 1× for 
 
 ![Bending Moment Diagram](static_template_results_images/moment_diagram.png)
 
-**Maximum Bending Moment:** 13.92 kN·m
+**Maximum Bending Moment:** 13.78 kN·m
 
 ---
 
-- The maximum deflection of **0.1379 mm** occurs at x = 375.0 mm
+- The maximum deflection of **0.1376 mm** occurs at x = 390.0 mm
 - The maximum shear force is **37.50 kN**
-- The maximum bending moment is **13.92 kN·m**
-- **Peak von Mises Stress: 20.88 MPa**
-- Equilibrium is satisfied with a residual of 1.75e-10 N
+- The maximum bending moment is **13.78 kN·m**
+- **Peak von Mises Stress: 20.67 MPa**
+- Equilibrium is satisfied with a residual of 5.85e-07 N
 
 ---
 
@@ -124,8 +124,8 @@ The following plot illustrates the peak internal stresses (von Mises, Bending, a
 
 | Stress Component | Maximum Value | Units |
 |------------------|---------------|-------|
-| von Mises (Peak) | 20.88 | MPa |
-| Bending (Max)    | 20.88 | MPa |
+| von Mises (Peak) | 20.67 | MPa |
+| Bending (Max)    | 20.67 | MPa |
 | Shear (Max)      | 2.80 | MPa |
 | Axial (Max)      | 0.00 | MPa |
 
@@ -134,8 +134,8 @@ The following plot illustrates the peak internal stresses (von Mises, Bending, a
 | Criterion | Value |
 |-----------|-------|
 | Material Yield Strength | 503.0 MPa |
-| Peak von Mises Stress | 20.88 MPa |
-| **Factor of Safety** | **24.09** |
+| Peak von Mises Stress | 20.67 MPa |
+| **Factor of Safety** | **24.33** |
 
 ---
 
@@ -143,11 +143,11 @@ The following plot illustrates the peak internal stresses (von Mises, Bending, a
 
 The finite element analysis has been successfully completed. Key findings:
 
-- The maximum deflection of **0.1379 mm** occurs at x = 375.0 mm
+- The maximum deflection of **0.1376 mm** occurs at x = 390.0 mm
 - The maximum shear force is **37.50 kN**
-- The maximum bending moment is **13.92 kN·m**
-- The peak internal stress (von Mises) is **20.88 MPa**
-- Equilibrium is satisfied with a residual of 1.75e-10 N
+- The maximum bending moment is **13.78 kN·m**
+- The peak internal stress (von Mises) is **20.67 MPa**
+- Equilibrium is satisfied with a residual of 5.85e-07 N
 
 ---
 

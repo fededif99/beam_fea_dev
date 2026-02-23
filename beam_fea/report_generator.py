@@ -69,7 +69,7 @@ class BeamReportGenerator:
         """
         Calculate shear force and bending moment along the beam using centralized solver logic.
         """
-        results = self.solver.calculate_internal_forces(num_points, silent=True)
+        results = self.solver.calculate_internal_forces(num_points)
         self.positions = results['positions']
         self.shear_forces = results['shear_forces']
         self.bending_moments = results['bending_moments']
@@ -346,7 +346,7 @@ class BeamReportGenerator:
         
         # [Fix]: Compute stresses once and cache it
         if self.stresses is None:
-            self.stresses = self.solver.calculate_stresses(num_x_points=100, num_y_points=20, num_z_points=10, silent=True)
+            self.stresses = self.solver.calculate_stresses(num_x_points=100, num_y_points=20, num_z_points=10)
 
         # Generate all plots
         self.plot_structure_diagram(str(images_dir / "structure_diagram.png"))
