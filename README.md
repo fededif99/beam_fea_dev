@@ -20,6 +20,11 @@
 
 ## 📅 Version History
 
+### v1.4.3 *(2026-02-23)*
+
+- **Examples**: Added simplified, modular templates for static and modal analysis (`template_static.py`, `template_modal.py`)
+- **Documentation**: Added a dedicated `README.md` to the `examples/` directory for better onboarding
+
 ### v1.4.2 *(2026-02-22)*
 
 - **Minor Polish**: Updated the default date format in `BeamReportGenerator` to `DD-MM-YYYY`
