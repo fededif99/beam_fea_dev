@@ -20,6 +20,11 @@
 
 ## 📅 Version History
 
+### v1.4.5 *(2026-02-23)*
+
+- **Optimization**: Implemented result caching for internal forces and stresses to prevent redundant re-computations
+- **UX**: Added `silent` mode to calculation methods to suppress console output during automated report generation
+
 ### v1.4.3 *(2026-02-23)*
 
 - **Examples**: Added simplified, modular templates for static and modal analysis (`template_static.py`, `template_modal.py`)

@@ -52,6 +52,12 @@ class BeamSolver:
         self.displacements = None
         self.reactions = None
         
+        # Performance & Caching
+        self._cached_forces = None
+        self._cached_forces_params = None
+        self._cached_stresses = None
+        self._cached_stresses_params = None
+        
         # Analysis objects
         self.static_solver = StaticAnalysis(use_sparse=True)
         self.modal_solver = ModalAnalysis()
@@ -147,7 +153,11 @@ class BeamSolver:
         
         self.reactions = self.static_solver.calculate_reactions(self.K_global, F)
         
-        return self.displacements
+        # Reset cache
+        self._cached_forces = None
+        self._cached_stresses = None
+        
+        return self.displacements, self.reactions
     
     def solve_modal(self, bc_set: BoundaryConditionSet, num_modes: int = 10):
         """Solve modal analysis."""
@@ -169,14 +179,16 @@ class BeamSolver:
         max_idx = np.argmax(np.abs(v))
         return v[max_idx], max_idx
     
-    def calculate_internal_forces(self, num_points: int = 100):
+    def calculate_internal_forces(self, num_points: int = 100, silent: bool = False) -> dict:
         """
-        Calculate shear force and bending moment along the beam on-demand.
+        Calculate shear force and bending moment distributions along the beam.
         
         Parameters:
         -----------
         num_points : int
-            Number of evaluation points along beam length.
+            Number of points for interpolation along beam length.
+        silent : bool
+            If True, suppresses progress/status printing.
             
         Returns:
         --------
@@ -186,6 +198,12 @@ class BeamSolver:
         if self.displacements is None:
             raise ValueError("Must run solve_static() first")
             
+        # Check cache
+        if self._cached_forces is not None and self._cached_forces_params == num_points:
+            return self._cached_forces
+
+        if not silent:
+            print(f"[*] Calculating internal forces at {num_points} points...")
         coords = self.mesh.get_node_coords()
         x_min, x_max = np.min(coords[:, 0]), np.max(coords[:, 0])
         beam_length = x_max - x_min
@@ -260,14 +278,40 @@ class BeamSolver:
             shear_forces[i] = V
             bending_moments[i] = M
             
-        return {
+        res = {
             'positions': positions,
             'axial_forces': axial_forces,
             'shear_forces': shear_forces,
             'bending_moments': bending_moments
         }
         
-    def calculate_stresses(self, num_x_points: int = 100, num_y_points: int = 20, num_z_points: int = 20) -> dict:
+        # Update cache
+        self._cached_forces = res
+        self._cached_forces_params = num_points
+        
+        return res
+        
+    def calculate_stresses(self, num_x_points: int = 100, num_y_points: int = 20, num_z_points: int = 20, 
+                          silent: bool = False) -> dict:
+        """
+        Calculate detailed 3D stress field throughout the beam volume.
+        
+        Parameters:
+        -----------
+        num_x_points : int
+            Discretization along beam length
+        num_y_points, num_z_points : int
+            Discretization of the cross-section
+        silent : bool
+            If True, suppresses progress/status printing.
+        """
+        # Check cache
+        params = (num_x_points, num_y_points, num_z_points)
+        if self._cached_stresses is not None and self._cached_stresses_params == params:
+            return self._cached_stresses
+
+        if not silent:
+            print(f"[*] Calculating 3D stress field ({num_x_points}x{num_y_points}x{num_z_points})...")
         """
         Calculate detailed 3D stress field over the beam's length and cross-section.
         
@@ -358,7 +402,7 @@ class BeamSolver:
         tau_s[inv_mask] = 0.0
         sigma_vm[inv_mask] = 0.0
 
-        return {
+        res = {
             'x': x_positions,
             'y': Y,
             'z': Z,
@@ -368,6 +412,12 @@ class BeamSolver:
             'shear': tau_s,
             'von_mises': sigma_vm
         }
+        
+        # Update cache
+        self._cached_stresses = res
+        self._cached_stresses_params = params
+        
+        return res
 
     
     def generate_report(self, output_path: str, deformation_scale: float = 1.0):
