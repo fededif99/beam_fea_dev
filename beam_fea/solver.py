@@ -179,6 +179,26 @@ class BeamSolver:
         max_idx = np.argmax(np.abs(v))
         return v[max_idx], max_idx
     
+    def get_max_internal_forces(self, num_points: int = 100) -> dict:
+        """
+        Find absolute maximum values of internal forces and their locations.
+        
+        Returns:
+        --------
+        max_values : dict
+            Peak values for 'shear' and 'moment' with 'value' and 'x' keys.
+        """
+        res = self.calculate_internal_forces(num_points, silent=True)
+        pos = res['positions']
+        
+        v_idx = np.argmax(np.abs(res['shear_forces']))
+        m_idx = np.argmax(np.abs(res['bending_moments']))
+        
+        return {
+            'shear': {'value': res['shear_forces'][v_idx], 'x': pos[v_idx]},
+            'moment': {'value': res['bending_moments'][m_idx], 'x': pos[m_idx]}
+        }
+
     def calculate_internal_forces(self, num_points: int = 100, silent: bool = False) -> dict:
         """
         Calculate shear force and bending moment distributions along the beam.

@@ -66,6 +66,12 @@ def main():
     print(f"ANALYSIS RESULTS: {lc.name}")
     print(f"="*50)
     print(f"Moment of inertia: {section.Iy:.2e} mm^4")
+    
+    # 7. PEAK INTERNAL FORCES
+    internal = solver.get_max_internal_forces()
+    max_moment = internal['moment']['value']
+    max_moment_pos = internal['moment']['x']
+    print(f"Max Bending Moment: {max_moment/1e6:.2f} kN·m at x = {max_moment_pos:.1f} mm")
     print(f"Max Deflection: {abs(disp_max):.4f} mm at x = {mesh.nodes[node_idx].x:.1f} mm")
 
     # 7. REACTION FORCES

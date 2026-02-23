@@ -20,6 +20,11 @@
 
 ## 📅 Version History
 
+### v1.4.8 *(2026-02-23)*
+
+- **Feature**: Added `get_max_internal_forces` helper to `BeamSolver` for easy extraction of peak shear and moments
+- **UX**: Updated terminal output in example templates to include maximum bending moments and their locations
+
 ### v1.4.7 *(2026-02-23)*
 
 - **Optimization**: Centralized principal stress calculation ($σ_1$, $σ_2$) into `BeamSolver.calculate_stresses` using vectorized logic
