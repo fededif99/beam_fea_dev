@@ -68,7 +68,7 @@ from .visualizer import BeamVisualizer
 from .solver import BeamSolver
 from .report_generator import BeamReportGenerator
 
-__version__ = '1.0.0'
+__version__ = '1.6.0'
 __author__ = 'Beam FEA Development Team'
 
 __all__ = [

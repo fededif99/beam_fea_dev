@@ -16,8 +16,6 @@ import os
 import sys
 import numpy as np
 
-# Ensure beam_fea is in the path (if running from repository root)
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from beam_fea import (
     BeamSolver, MeshGenerator, get_material, 
@@ -45,11 +43,8 @@ def main():
     lc = LoadCase("Center Load")
     lc.point_load(x=length/2, fy=-75000.0)  # 75 kN downwards 
     
-    # # Add a uniform load of 2 N/mm across all elements
-    # lc.uniform_load(element=list(range(mesh.num_elements)), wy=-2.0)
 
     # 4. BOUNDARY CONDITIONS
-    # Create a BC set and fix the left end (node 0)
     bc = BoundaryConditionSet("Pin - Pin")
     bc.pinned_support(node=0)
     bc.pinned_support(node=mesh.num_nodes -1 ) 

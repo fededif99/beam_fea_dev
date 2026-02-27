@@ -12,12 +12,7 @@ How to use:
 4. Run the script: `python examples/example_walkthrough.py`
 """
 
-import os
-import sys
-from typing import List, Dict, Any, Union
-
-# Ensure beam_fea is in the path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from typing import List, Dict, Any
 
 from beam_fea import (
     BeamSolver, MeshGenerator, get_material, 

@@ -13,11 +13,6 @@ Compares performance across different mesh sizes.
 
 import time
 import numpy as np
-import sys
-import os
-
-# Ensure we import from the local package
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from beam_fea import BeamSolver, MeshGenerator, get_material, rectangular, LoadCase, BoundaryConditionSet
 

@@ -1,3 +1,14 @@
+Metadata-Version: 2.4
+Name: beam-fea
+Version: 1.5.0
+Summary: A comprehensive finite element analysis package for beam structures
+Author: Beam FEA Development Team
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: matplotlib
+
 # Beam FEA
 
 `beam_fea` is a Python library for linear static and modal analysis of 1D beam structures. It takes a discretised geometry (nodes, elements, cross-section, material), applies loads and boundary conditions, and returns displacements, reaction forces, internal force distributions, and natural frequencies. Element formulations and numerical implementation are documented in [THEORY.md](THEORY.md).
@@ -19,12 +30,6 @@
 ---
 
 ## 📅 Version History
-
-### v1.6.0 *(2026-02-28)*
-
-- **Build**: Added `pyproject.toml` to support standard `pip` installation and build backends
-- **UX**: Installed package in editable mode (`pip install -e .`) to enable clean imports without `sys.path` hacks
-- **Refactor**: Removed all manual `sys.path` manipulations from `examples/`, `scripts/`, and `tests/`
 
 ### v1.5.0 *(2026-02-23)*
 
@@ -175,8 +180,16 @@ beam_fea_optimized/
 ### Installation
 
 ```bash
-# Clone the repository and install in development mode
-pip install -e .
+pip install numpy scipy matplotlib
+```
+
+### Environment Setup
+
+To ensure the package is correctly recognized, it is recommended to run scripts from the project root.
+
+```powershell
+# On Windows (PowerShell)
+$env:PYTHONPATH="."; python examples/ex01_cantilever.py
 ```
 
 ### Quick Example: Cantilever Beam

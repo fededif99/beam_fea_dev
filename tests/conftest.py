@@ -2,12 +2,9 @@
 Test configuration and fixtures for beam_fea tests
 """
 
-import pytest
-import sys
-from pathlib import Path
 
-# Add parent directory to path so we can import beam_fea
-sys.path.insert(0, str(Path(__file__).parent.parent))
+import pytest
+from pathlib import Path
 
 
 @pytest.fixture

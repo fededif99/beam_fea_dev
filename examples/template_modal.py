@@ -12,15 +12,10 @@ Workflow:
 5. Retrieve Frequencies
 """
 
-import os
-import sys
-
-# Ensure beam_fea is in the path (if running from repository root)
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from beam_fea import (
     BeamSolver, MeshGenerator, get_material, 
-    BoundaryConditionSet
+    LoadCase, BoundaryConditionSet
 )
 from beam_fea.cross_sections import circular
 

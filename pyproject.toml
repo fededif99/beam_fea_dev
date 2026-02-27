@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beam-fea"
+version = "1.5.0"
+authors = [
+  { name="Beam FEA Development Team" },
+]
+description = "A comprehensive finite element analysis package for beam structures"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["beam_fea*"]
