@@ -2,6 +2,11 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v1.6.2] - 2026-02-28
+
+- **Docs**: Added explicit Requirements section to `README.md`
+- **Docs**: Enhanced Installation instructions with context on editable mode
+
 ## [v1.6.1] - 2026-02-28
 
 - **Docs**: Moved full version history to `CHANGELOG.md`

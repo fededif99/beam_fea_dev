@@ -20,7 +20,7 @@
 
 ## 📅 Version History
 
-### Latest Version: v1.6.1 *(2026-02-28)*
+### Latest Version: v1.6.2 *(2026-02-28)*
 
 - **Docs**: Moved full version history to `CHANGELOG.md`
 - **Docs**: Simplified `README.md` to show only the latest version
@@ -73,7 +73,17 @@ beam_fea_optimized/
 
 ## 🚀 Getting Started
 
+### Requirements
+
+`beam_fea` depends on the following core scientific libraries:
+
+- **NumPy**: For high-performance matrix operations
+- **SciPy**: For sparse solver backend and eigenvalue extraction
+- **Matplotlib**: For generating analysis plots and reports
+
 ### Installation
+
+To enable a professional development workflow, it is recommended to install the package in **editable mode** from the repository root:
 
 ```bash
 # Clone the repository and install in development mode
