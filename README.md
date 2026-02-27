@@ -20,113 +20,14 @@
 
 ## 📅 Version History
 
-### v1.6.0 *(2026-02-28)*
+### Latest Version: v1.6.1 *(2026-02-28)*
 
-- **Build**: Added `pyproject.toml` to support standard `pip` installation and build backends
-- **UX**: Installed package in editable mode (`pip install -e .`) to enable clean imports without `sys.path` hacks
-- **Refactor**: Removed all manual `sys.path` manipulations from `examples/`, `scripts/`, and `tests/`
+- **Docs**: Moved full version history to `CHANGELOG.md`
+- **Docs**: Simplified `README.md` to show only the latest version
+- **Workflow**: Updated `commit` workflow to support the new documentation structure
 
-### v1.5.0 *(2026-02-23)*
-
-- **Optimization**: Linked default discretization resolution in `calculate_internal_forces` and `calculate_stresses` to `mesh.num_nodes`
-- **UX**: Simplified example templates by removing hardcoded integration points, making nodal results the default experience
-
-### v1.4.10 *(2026-02-23)*
-
-- **Bugfix**: Fixed compatibility regression in `solve_static` return value
-- **Bugfix**: Resolved `NameError` in `calculate_stresses` caching logic
-
-### v1.4.9 *(2026-02-23)*
-
-- **Refactor**: Standardized library logging by removing all `print()` side-effects from core solver methods
-- **UX**: Removed the "bandage" `silent` parameter, as library methods are now silent by default
-- **Cleanup**: Fixed duplicate docstrings and optimized `calculate_stresses` internal logic
-
-### v1.4.8 *(2026-02-23)*
-
-- **Feature**: Added `get_max_internal_forces` helper to `BeamSolver` for easy extraction of peak shear and moments
-- **UX**: Updated terminal output in example templates to include maximum bending moments and their locations
-
-### v1.4.7 *(2026-02-23)*
-
-- **Optimization**: Centralized principal stress calculation ($σ_1$, $σ_2$) into `BeamSolver.calculate_stresses` using vectorized logic
-- **UX**: Simplified example templates by providing pre-calculated principal stresses in results dictionary
-
-### v1.4.5 *(2026-02-23)*
-
-- **Optimization**: Implemented result caching for internal forces and stresses to prevent redundant re-computations
-- **UX**: Added `silent` mode to calculation methods to suppress console output during automated report generation
-
-### v1.4.3 *(2026-02-23)*
-
-- **Examples**: Added simplified, modular templates for static and modal analysis (`template_static.py`, `template_modal.py`)
-- **Documentation**: Added a dedicated `README.md` to the `examples/` directory for better onboarding
-
-### v1.4.2 *(2026-02-22)*
-
-- **Minor Polish**: Updated the default date format in `BeamReportGenerator` to `DD-MM-YYYY`
-
-### v1.4.1 *(2026-02-22)*
-
-- **Critical Fix**: Resolved a malformed ternary bug in `BeamSolver.calculate_internal_forces` spatial coherence check
-- **Performance**: Eliminated redundant `sqrt` recomputations by using direct vector math for element length extraction
-- **Optimization**: Streamlined memory and broadcasting overhead by precomputing the 3D stress field inverse mask
-
-### v1.4.0 *(2026-02-22)*
-
-- **Performance**: Vectorized global matrix assembly using `np.meshgrid` (eliminates 36-iteration inner loop per element)
-- **Broadcasting**: Fully vectorized `BeamSolver.calculate_stresses` lengthwise loop (nx points) using 3D NumPy broadcasting
-- **Optimization**: Implemented property caching for internal force evaluations, reducing redundant element expert instantiation
-- **Efficiency**: Optimized `BeamReportGenerator` by moving constant load-scaling logic out of plotting loops
-- **Cleanup**: Standardized internal buffer caching in `mesh.py` for node coordinates and element start indices
-
-### v1.3.1 *(2026-02-22)*
-
-- **Critical Fixes**: Resolved `NameError` in `CChannelSection` and `h**h` power math bug in `RectangularSection`
-- **Performance**: Optimized element lookup from $O(n)$ to $O(\log n)$ using binary search in `solver.py` and `mesh.py`
-- **Standardization**: Replaced magic numbers with constants (`SHEAR_CORRECTION_FACTOR`, `DEFAULT_PENALTY`)
-- **API**: Expanded package-level exports to include `LSection` and all convenience helpers
-- **Verification**: Passed 88/88 tests including new targeted regression suite
-
-### v1.3.0 *(2026-02-22)*
-
-- Integrated 3D exact stress analysis field extraction ($VQ/It$ model)
-- Added `BeamSolver.calculate_stresses()` for comprehensive 3D stress matrix Generation
-- Upgraded `BeamReportGenerator` with stress distribution plots and Factor of Safety reporting
-- Added `get_stress_profile()` to all `CrossSection` subclasses for geometric stress profiling
-- Updated `BeamSolver.calculate_internal_forces()` to return axial force ($N$)
-- Validated stresses against Roark's analytical formulas (< 1% error)
-- Removed unused `GeometricStiffness` and `DampingMatrix` classes for 1.0.0 standardization
-
-### v1.2.0 *(2026-02-21)*
-
-- Added coordinate-based load definitions (define loads via global $x$ positions or node/element IDs)
-- Implemented `LoadCase.concentrated_moment()` and `LoadCase.triangular_load()` as dedicated API methods
-- Added a dedicated `TriangularDistributedLoad` class for improved API clarity
-- Standardized coordinate system documentation with ASCII diagrams
-- Verified consistency across all physics and geometry modules
-
-### v1.1.1 *(2026-02-21)*
-
-- Optimized `BeamSolver.calculate_internal_forces` (object caching, robust element lookup)
-- Fixed sign convention bug in `TimoshenkoElement` force recovery
-- Removed orphaned `StaticAnalysis.calculate_element_forces` method
-
-### v1.1.0 *(2026-02-21)*
-
-- Removed `NonlinearStaticAnalysis` (Newton-Raphson) and `InfluenceLineAnalysis` (unimplemented stub) from `static_analysis.py`
-- Removed `ThermalLoad` placeholder class from `loads.py`
-- Removed base64 image embedding from `report_generator.py` and `visualizer.py`; reports now save PNG files to `<report_name>_images/`
-- Removed `embed_images` parameter from `BeamSolver.generate_report()`
-- README: refactored introduction; removed thermal load documentation
-
-### v1.0.0 *(2026-02-08)*
-
-- Sparse CSR assembly and `spsolve` / ARPACK backend
-- Internal force recovery via element shape function derivatives
-- Engineering material library (20+ entries)
-- Graded, curved, and multi-span mesh generation
-- Markdown report generation with saved PNG plots
+> [!NOTE]
+> For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
