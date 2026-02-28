@@ -67,8 +67,9 @@ from .modal_analysis import ModalAnalysis
 from .visualizer import BeamVisualizer
 from .solver import BeamSolver
 from .report_generator import BeamReportGenerator
+from .plot_style import PlotStyle, smart_units, DEFAULT_STYLE
 
-__version__ = '1.6.2'
+__version__ = '1.7.0'
 __author__ = 'Beam FEA Development Team'
 
 __all__ = [
@@ -100,6 +101,9 @@ __all__ = [
     
     # Visualization
     'BeamVisualizer',
+    
+    # Plot Style
+    'PlotStyle', 'smart_units', 'DEFAULT_STYLE',
     
     # Report Generation
     'BeamReportGenerator',

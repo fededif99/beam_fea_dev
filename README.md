@@ -20,11 +20,12 @@
 
 ## 📅 Version History
 
-### Latest Version: v1.6.2 *(2026-02-28)*
+### Latest Version: v1.7.0 *(2026-02-28)*
 
-- **Docs**: Moved full version history to `CHANGELOG.md`
-- **Docs**: Simplified `README.md` to show only the latest version
-- **Workflow**: Updated `commit` workflow to support the new documentation structure
+- **Feature**: Replaced hardcoded plot aesthetics with centralized `PlotStyle` dataclass in new `plot_style.py` module
+- **Feature**: Intelligent axis tick formatting and `smart_units` scaling algorithm for plot dimensioning
+- **UX**: Overhauled structure diagram drawing logic to map fixed, pinned, and roller supports to authentic mechanical engineering glyphs
+- **Tests**: Added an 8-case visual rendering stress test module under `scripts/visual_test_configurations.py`
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).
@@ -423,23 +424,28 @@ solver = BeamSolver(mesh, material, section, element_type='euler')
 
 ---
 
-### 3.7 Visualization (`beam_fea.visualizer`)
+### 3.7 Visualization (`beam_fea.visualizer` & `beam_fea.plot_style`)
 
-Professional visualization suite for structural results.
+Professional visualization suite for structural results, powered by a centralized `PlotStyle` engine.
 
 | `analysis_type` | Method | Visualization |
 | :--- | :--- | :--- |
 | `'static'` | `plot_deformed_shape` | Deformed vs Undeformed beam shape |
-| `'shear'` | `plot_shear_force` | Shear Force Diagram (SFD) |
-| `'moment'` | `plot_bending_moment` | Bending Moment Diagram (BMD) |
+| `'shear'` | `plot_shear_force` | Shear Force Diagram (SFD) with max-value dotted lines |
+| `'moment'` | `plot_bending_moment` | Bending Moment Diagram (BMD) with max-value dotted lines |
 | `'modal'` | `plot_mode_shape` | Eigenmode shapes for vibration analysis |
 
 > [!TIP]
-> **Automatic Scaling**: The visualizer calculates a `scale_factor` to ensure deflections are visible relative to the beam length (targeting ~5% of length).
+> **Automatic Scaling**: The visualizer calculates a `scale_factor` to ensure deflections are visible relative to the beam length (targeting ~2% of length).
+> **Smart Units**: A custom `smart_units()` algorithm dynamically formats axes in optimal precision (e.g., automatically converting $15000 \text{ N}$ to $15 \text{ kN}$ or massive beam lengths to meters).
 
 ```python
 # Quick Plotting via Solver
 solver.visualize('shear', num_points=200)
+
+# Overriding Global Plot Styles:
+from beam_fea.plot_style import DEFAULT_STYLE
+DEFAULT_STYLE.colour_primary = '#FF0000' # Change beam lines to red
 ```
 
 ---

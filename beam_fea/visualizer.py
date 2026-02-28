@@ -7,6 +7,7 @@ Visualization tools for beam FEA results.
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Optional, Tuple
+from .plot_style import PlotStyle, smart_units, DEFAULT_STYLE
 
 
 class BeamVisualizer:
@@ -37,7 +38,7 @@ class BeamVisualizer:
         if max_def < 1e-10:
             return 1.0
         
-        target = 0.05 * beam_length
+        target = 0.02 * beam_length
         scale = target / max_def
         
         # Round to nice value
@@ -78,32 +79,44 @@ class BeamVisualizer:
         if scale_factor is None:
             scale_factor = self._auto_scale_factor(displacements)
         
+        st = DEFAULT_STYLE
         coords = self.mesh.get_node_coords()
+        beam_length = np.max(coords[:, 0]) - np.min(coords[:, 0])
+        x_scale, x_unit = smart_units(beam_length, 'length')
+
         u = displacements[::3]
         v = displacements[1::3]
-        
+
         deformed = coords.copy()
         deformed[:, 0] += scale_factor * u
         deformed[:, 1] += scale_factor * v
-        
+
+        # Use the same scale for Y as for X to maintain aspect ratio with equal axis
+        y_scale = x_scale
+        y_unit = x_unit
+
         fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-        
+
         if show_undeformed:
-            ax.plot(coords[:, 0], coords[:, 1], 'b--o',
-                   alpha=0.3, label='Undeformed', markersize=4)
-        
-        ax.plot(deformed[:, 0], deformed[:, 1], 'r-o',
-               linewidth=2, label=f'Deformed ({scale_factor:.0f}×)', markersize=6)
-        
-        ax.set_xlabel('Position (mm)')
-        ax.set_ylabel('Deflection (mm)')
-        ax.set_title('Beam Deformation')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
+            ax.plot(coords[:, 0] / x_scale, coords[:, 1] / y_scale, '--o',
+                   color=st.colour_undeformed, alpha=0.3, label='Undeformed', markersize=4)
+
+        ax.plot(deformed[:, 0] / x_scale, deformed[:, 1] / y_scale, '-o',
+               color=st.colour_deformed, linewidth=2,
+               label=f'Deformed ({scale_factor:.0f}×)', markersize=6)
+
+        ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
+        if abs(scale_factor - 1.0) < 1e-6:
+            ax.set_ylabel(f'Y Position ({y_unit})', fontsize=st.label_fontsize)
+        else:
+            ax.set_ylabel(f'Scaled Y Position ({y_unit})', fontsize=st.label_fontsize)
+        ax.set_title('Beam Deformation', fontsize=st.title_fontsize)
+        ax.legend(fontsize=st.tick_fontsize)
+        ax.grid(True, alpha=st.grid_alpha)
         ax.axis('equal')
-        
+
         plt.tight_layout()
-        
+
         if output_path:
             plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
             plt.close()

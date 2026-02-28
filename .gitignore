@@ -5,3 +5,4 @@ __pycache__/
 .agent/
 .gemini/
 .env
+visual_stress_tests/

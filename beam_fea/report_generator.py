@@ -13,12 +13,15 @@ Generates markdown reports with linked visualizations including:
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyArrowPatch
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Union
 import os
-from .loads import PointLoad, UniformDistributedLoad
+from .loads import PointLoad, UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad
 from .boundary_conditions import PinnedSupport, RollerSupport, FixedSupport
+from .plot_style import PlotStyle, smart_units, DEFAULT_STYLE
 
 
 class BeamReportGenerator:
@@ -74,105 +77,369 @@ class BeamReportGenerator:
         self.shear_forces = results['shear_forces']
         self.bending_moments = results['bending_moments']
     
+    # ------------------------------------------------------------------
+    # Private helpers – boundary condition glyphs
+    # ------------------------------------------------------------------
+
+    def _draw_fixed_support(self, ax, x, y, beam_h, side='left'):
+        """Draw a hatched wall fixed support at (x, y)."""
+        st = DEFAULT_STYLE
+        w = beam_h * 0.6   # wall half-width
+        # Thick vertical line at the connection point
+        ax.plot([x, x], [y - w, y + w], color=st.colour_bc, linewidth=3, zorder=4)
+        # Add 45 degree hatch lines
+        n_hatch = 5
+        hatch_len = beam_h * 0.3
+        y_hatches = np.linspace(y - w, y + w, n_hatch)
+        direction = -1 if side == 'left' else 1
+        for yh in y_hatches:
+            ax.plot([x, x + direction * hatch_len], [yh, yh - hatch_len],
+                    color=st.colour_bc, linewidth=1.5, zorder=3)
+
+    def _draw_pinned_support(self, ax, x, y, beam_h):
+        """Draw a triangle pinned support beneath (x, y)."""
+        st = DEFAULT_STYLE
+        tri_h = beam_h * 0.55
+        tri_w = beam_h * 0.55
+        triangle = mpatches.Polygon(
+            [[x, y], [x - tri_w / 2, y - tri_h], [x + tri_w / 2, y - tri_h]],
+            closed=True, linewidth=1.5,
+            edgecolor=st.colour_bc, facecolor='#d1fae5', zorder=3
+        )
+        ax.add_patch(triangle)
+        # Ground line with hatching below
+        ground_y = y - tri_h
+        ax.plot([x - tri_w * 0.7, x + tri_w * 0.7], [ground_y, ground_y],
+                color=st.colour_bc, linewidth=2, zorder=3)
+        # Small hatch ticks below ground line
+        n_ticks = 5
+        tick_len = tri_h * 0.25
+        xs_ticks = np.linspace(x - tri_w * 0.55, x + tri_w * 0.55, n_ticks)
+        for xt in xs_ticks:
+            ax.plot([xt, xt - tick_len * 0.5], [ground_y, ground_y - tick_len],
+                    color=st.colour_bc, linewidth=1, zorder=3)
+
+    def _draw_roller_support(self, ax, x, y, beam_h):
+        """Draw a roller (circle-on-triangle) support beneath (x, y)."""
+        st = DEFAULT_STYLE
+        tri_h = beam_h * 0.45
+        tri_w = beam_h * 0.50
+        r_circle = beam_h * 0.10
+        triangle = mpatches.Polygon(
+            [[x, y], [x - tri_w / 2, y - tri_h], [x + tri_w / 2, y - tri_h]],
+            closed=True, linewidth=1.5,
+            edgecolor=st.colour_bc, facecolor='#d1fae5', zorder=3
+        )
+        ax.add_patch(triangle)
+        # Small circles (wheels) at base corners
+        for cx in [x - tri_w * 0.25, x, x + tri_w * 0.25]:
+            circle = mpatches.Circle(
+                (cx, y - tri_h - r_circle), r_circle,
+                linewidth=1.2, edgecolor=st.colour_bc, facecolor='white', zorder=4
+            )
+            ax.add_patch(circle)
+        # Ground line below wheels
+        ground_y = y - tri_h - 2 * r_circle
+        ax.plot([x - tri_w * 0.7, x + tri_w * 0.7], [ground_y, ground_y],
+                color=st.colour_bc, linewidth=2, zorder=3)
+        # Small hatch ticks
+        n_ticks = 5
+        tick_len = tri_h * 0.22
+        xs_ticks = np.linspace(x - tri_w * 0.55, x + tri_w * 0.55, n_ticks)
+        for xt in xs_ticks:
+            ax.plot([xt, xt - tick_len * 0.5], [ground_y, ground_y - tick_len],
+                    color=st.colour_bc, linewidth=1, zorder=3)
+
+    # ------------------------------------------------------------------
+    # Private helpers – load glyphs
+    # ------------------------------------------------------------------
+
+    def _draw_point_force_arrow(self, ax, x, y, fy, max_fy, arrow_scale,
+                                colour, label_str):
+        """Draw a vertical force arrow at (x, y)."""
+        length = max(abs(fy) / max_fy * arrow_scale, arrow_scale * 0.25)
+        hw = arrow_scale * 0.08
+        hl = arrow_scale * 0.15
+        if fy < 0:   # downward
+            ax.annotate('', xy=(x, y), xytext=(x, y + length),
+                        arrowprops=dict(arrowstyle=f'->', color=colour, lw=2,
+                                        mutation_scale=12))
+            ax.text(x + hw * 1.2, y + length * 0.5, label_str, color=colour,
+                    fontsize=DEFAULT_STYLE.annotation_fontsize, weight='bold', va='center')
+        else:         # upward
+            ax.annotate('', xy=(x, y), xytext=(x, y - length),
+                        arrowprops=dict(arrowstyle=f'->', color=colour, lw=2,
+                                        mutation_scale=12))
+            ax.text(x + hw * 1.2, y - length * 0.5, label_str, color=colour,
+                    fontsize=DEFAULT_STYLE.annotation_fontsize, weight='bold', va='center')
+
+    def _draw_moment_arc(self, ax, x, y, mz, radius, colour, label_str):
+        """Draw a curved arc arrow to represent a concentrated moment."""
+        import numpy as np
+        # CCW for positive mz (sagging), CW for negative
+        theta = np.linspace(0.2 * np.pi, 1.7 * np.pi, 60)
+        if mz > 0:
+            arc_x = x + radius * np.cos(theta)
+            arc_y = y + radius * np.sin(theta)
+            dx = arc_x[-1] - arc_x[-2]
+            dy = arc_y[-1] - arc_y[-2]
+        else:
+            arc_x = x + radius * np.cos(-theta)
+            arc_y = y + radius * np.sin(-theta)
+            dx = arc_x[-1] - arc_x[-2]
+            dy = arc_y[-1] - arc_y[-2]
+        ax.plot(arc_x, arc_y, color=colour, linewidth=2.0, zorder=4)
+        # Arrowhead at end of arc
+        ax.annotate('', xy=(arc_x[-1] + dx * 0.01, arc_y[-1] + dy * 0.01),
+                    xytext=(arc_x[-1], arc_y[-1]),
+                    arrowprops=dict(arrowstyle='->', color=colour, lw=2, mutation_scale=10))
+        # Central dot
+        ax.plot(x, y, 'o', color=colour, markersize=5, zorder=5)
+        # Label
+        ax.text(x + radius * 1.3, y, label_str, color=colour,
+                fontsize=DEFAULT_STYLE.annotation_fontsize, weight='bold', va='center')
+
+    def _draw_udl_comb(self, ax, x_start, x_end, wy, beam_h, colour,
+                       label_str, wy2=None):
+        """
+        Draw a distributed-load arrow comb between x_start and x_end.
+        If wy2 is given, the comb is tapered (trapezoidal / triangular).
+        """
+        span = abs(x_end - x_start)
+        comb_h = beam_h * 1.1    # base comb height
+        n_arrows = max(int(span / (beam_h * 0.6)), 3)
+        xs = np.linspace(x_start, x_end, n_arrows)
+
+        if wy2 is None:
+            heights = np.full(n_arrows, comb_h)
+        else:
+            # Linear taper: height proportional to intensity
+            max_w = max(abs(wy), abs(wy2))
+            if max_w < 1e-12:
+                return
+            h1 = comb_h * abs(wy) / max_w
+            h2 = comb_h * abs(wy2) / max_w
+            heights = np.linspace(h1, h2, n_arrows)
+
+        # Sign determines direction
+        sign = -1 if wy < 0 else 1
+        arrow_tips = np.zeros(n_arrows)
+        arrow_bases = np.zeros(n_arrows)
+
+        hw = comb_h * 0.04
+        for i, (xi, hi) in enumerate(zip(xs, heights)):
+            eff_h = hi if hi > comb_h * 0.05 else comb_h * 0.05
+            tip_y = 0.0
+            base_y = tip_y - sign * eff_h
+            arrow_tips[i] = tip_y
+            arrow_bases[i] = base_y
+            ax.annotate('', xy=(xi, tip_y), xytext=(xi, base_y),
+                        arrowprops=dict(arrowstyle='->', color=colour, lw=1.5,
+                                       mutation_scale=8))
+
+        # Cap line connecting arrow bases
+        ax.plot(xs, arrow_bases, color=colour, linewidth=2, zorder=3)
+        # Intensity label
+        mid_x = (x_start + x_end) / 2
+        label_y = arrow_bases.mean() - sign * comb_h * 0.25
+        ax.text(mid_x, label_y, label_str, color=colour,
+                fontsize=DEFAULT_STYLE.annotation_fontsize - 1,
+                weight='bold', ha='center', va='center')
+
     def plot_structure_diagram(self, output_path: str, dpi: int = 150):
         """
         Plot beam structure with boundary conditions and loads.
-        
-        Parameters
-        ----------
-        output_path : str
-            Path to save the plot
-        dpi : int
-            Resolution in dots per inch
+
+        Boundary conditions are drawn as engineering-standard glyphs:
+        - Fixed  : hatched wall rectangle
+        - Pinned : triangle with ground hatching
+        - Roller : triangle with wheels and ground line
+
+        Loads use consistent arrow symbology:
+        - Point Fy  : vertical solid arrow (scaled by max Fy)
+        - Point Fx  : horizontal solid arrow (scaled by max Fx)
+        - Moment Mz : curved arc arrow with direction sense
+        - UDL       : uniform arrow comb with intensity label
+        - Trapezoidal/Triangular: tapered arrow comb
         """
+        st = DEFAULT_STYLE
         coords = self.mesh.get_node_coords()
+        beam_length = coords[:, 0].max() - coords[:, 0].min()
+
+        # Scale things relative to beam length in scaled units
+        x_scale, x_unit = smart_units(beam_length, 'length')
+        L_scaled = beam_length / x_scale
         
-        fig, ax = plt.subplots(figsize=(14, 6), dpi=dpi)
-        
-        # Plot beam
-        ax.plot(coords[:, 0], coords[:, 1], 'b-', linewidth=3, label='Beam')
-        ax.plot(coords[:, 0], coords[:, 1], 'bo', markersize=6)
-        
-        # Plot boundary conditions
+        arrow_scale = L_scaled * 0.08      # reference height for Fy arrows
+        moment_radius = L_scaled * 0.03    # arc radius for Mz
+
+        fig, ax = plt.subplots(figsize=st.figsize_structure, dpi=dpi)
+
+        # ---- Beam line -------------------------------------------------
+        ax.plot(coords[:, 0] / x_scale, coords[:, 1], '-',
+                color=st.colour_primary, linewidth=st.beam_line_width, label='Beam', zorder=2)
+        ax.plot(coords[:, 0] / x_scale, coords[:, 1], 'o',
+                color=st.colour_primary, markersize=5, zorder=2)
+
+        # ---- Characteristic height for glyph sizing --------------------
+        # Use a fraction of beam length as a reference dimension
+        glyph_h = L_scaled * 0.04
+
+        # ---- Boundary conditions ---------------------------------------
+        shown_bc_labels = set()
         for bc in self.bc_set.conditions:
             node_id = bc.node
-            x, y = coords[node_id, 0], coords[node_id, 1]
-            
-            if isinstance(bc, PinnedSupport):
-                ax.plot(x, y, 'g^', markersize=15, label='Pinned Support' if node_id == 0 else '')
-                ax.annotate('Pinned', (x, y), xytext=(0, -30), 
-                           textcoords='offset points', ha='center',
-                           fontsize=9, color='green')
+            x = coords[node_id, 0] / x_scale
+            y = coords[node_id, 1]
+
+            if isinstance(bc, FixedSupport):
+                # Decide which side the wall is on
+                side = 'left' if node_id <= self.mesh.num_nodes // 2 else 'right'
+                self._draw_fixed_support(ax, x, y, glyph_h, side=side)
+                label = 'Fixed Support'
+                if label not in shown_bc_labels:
+                    ax.plot([], [], 's', color=st.colour_bc, markersize=10,
+                            label=label, markerfacecolor='#d1fae5')
+                    shown_bc_labels.add(label)
+            elif isinstance(bc, PinnedSupport):
+                self._draw_pinned_support(ax, x, y, glyph_h)
+                label = 'Pinned Support'
+                if label not in shown_bc_labels:
+                    ax.plot([], [], '^', color=st.colour_bc, markersize=10,
+                            label=label, markerfacecolor='#d1fae5')
+                    shown_bc_labels.add(label)
             elif isinstance(bc, RollerSupport):
-                ax.plot(x, y, 'go', markersize=12, label='Roller Support' if node_id == 0 else '')
-                ax.annotate('Roller', (x, y), xytext=(0, -30),
-                           textcoords='offset points', ha='center',
-                           fontsize=9, color='green')
-            elif isinstance(bc, FixedSupport):
-                ax.plot(x, y, 'gs', markersize=15, label='Fixed Support' if node_id == 0 else '')
-                ax.annotate('Fixed', (x, y), xytext=(0, -30),
-                           textcoords='offset points', ha='center',
-                           fontsize=9, color='green', weight='bold')
-        
-        # Precompute max point load for scaling arrows
-        point_loads = [l for l in self.load_case.loads if isinstance(l, PointLoad)]
-        max_fy = max([abs(l.fy) for l in point_loads] + [1.0])
-        
-        # Plot loads
+                self._draw_roller_support(ax, x, y, glyph_h)
+                label = 'Roller Support'
+                if label not in shown_bc_labels:
+                    ax.plot([], [], 'o', color=st.colour_bc, markersize=10,
+                            label=label, markerfacecolor='#d1fae5')
+                    shown_bc_labels.add(label)
+
+        # ---- Load scaling (per-component) ------------------------------
+        all_fy = [abs(l.fy) for l in self.load_case.loads
+                  if isinstance(l, PointLoad) and abs(l.fy) > 1e-10]
+        all_fx = [abs(l.fx) for l in self.load_case.loads
+                  if isinstance(l, PointLoad) and abs(l.fx) > 1e-10]
+        all_mz = [abs(l.mz) for l in self.load_case.loads
+                  if isinstance(l, PointLoad) and abs(l.mz) > 1e-10]
+        max_fy = max(all_fy) if all_fy else 1.0
+        max_fx = max(all_fx) if all_fx else 1.0
+        max_mz = max(all_mz) if all_mz else 1.0
+
+        # ---- Draw loads ------------------------------------------------
         for load in self.load_case.loads:
             if isinstance(load, PointLoad):
                 if load.node is not None:
-                    x, y = coords[load.node, 0], coords[load.node, 1]
+                    x_raw, y_pt = coords[load.node, 0], coords[load.node, 1]
                 elif load.x is not None:
-                    x, y = load.x, 0.0 # Standard y=0 for structure diagram
+                    x_raw, y_pt = load.x, 0.0
                 else:
                     continue
-                
-                # Check bounds
-                if not (coords[:, 0].min() <= x <= coords[:, 0].max()):
+                if not (coords[:, 0].min() <= x_raw <= coords[:, 0].max()):
+                    continue
+                x_pt = x_raw / x_scale
+
+                if abs(load.fy) > 1e-10:
+                    f_scale, f_unit = smart_units(max_fy, 'force')
+                    label_str = f"{load.fy / f_scale:+.2g} {f_unit}"
+                    self._draw_point_force_arrow(
+                        ax, x_pt, y_pt, load.fy, max_fy,
+                        arrow_scale,  # already in scaled units
+                        st.colour_load, label_str
+                    )
+                if abs(load.fx) > 1e-10:
+                    f_scale, f_unit = smart_units(max_fx, 'force')
+                    label_str = f"{load.fx / f_scale:+.2g} {f_unit} (axial)"
+                    # Horizontal arrow
+                    h_len = max(abs(load.fx) / max_fx * arrow_scale,
+                                arrow_scale * 0.25)
+                    if load.fx > 0:
+                        ax.annotate('', xy=(x_pt, y_pt),
+                                    xytext=(x_pt - h_len / x_scale, y_pt),
+                                    arrowprops=dict(arrowstyle='->', lw=2,
+                                                   color=st.colour_load_fx,
+                                                   mutation_scale=12))
+                    else:
+                        ax.annotate('', xy=(x_pt, y_pt),
+                                    xytext=(x_pt + h_len / x_scale, y_pt),
+                                    arrowprops=dict(arrowstyle='->', lw=2,
+                                                   color=st.colour_load_fx,
+                                                   mutation_scale=12))
+                    ax.text(x_pt, y_pt + arrow_scale * 0.12, label_str,
+                            color=st.colour_load_fx,
+                            fontsize=st.annotation_fontsize - 1, ha='center')
+                if abs(load.mz) > 1e-10:
+                    m_scale, m_unit = smart_units(max_mz, 'moment')
+                    label_str = f"{load.mz / m_scale:+.2g} {m_unit}"
+                    self._draw_moment_arc(
+                        ax, x_pt, y_pt, load.mz,
+                        moment_radius,
+                        st.colour_moment_load, label_str
+                    )
+
+            elif isinstance(load, (UniformDistributedLoad,
+                                   TrapezoidalDistributedLoad,
+                                   TriangularDistributedLoad)):
+                # Resolve span
+                if hasattr(load, 'element') and load.element is not None:
+                    elements = ([load.element] if isinstance(load.element, int)
+                                else load.element)
+                    x_s = coords[self.mesh.elements[elements[0]].node1, 0]
+                    x_e = coords[self.mesh.elements[elements[-1]].node2, 0]
+                elif (hasattr(load, 'x_start') and load.x_start is not None):
+                    x_s, x_e = load.x_start, load.x_end
+                else:
                     continue
 
-                if load.fy != 0:
-                    fy = load.fy
-                    arrow_length = (abs(fy) / max_fy) * 500
-                    
-                    if fy < 0:
-                        start_y = y + arrow_length
-                        dy = -arrow_length
-                        text_y_offset = 10
+                # Get intensities
+                if isinstance(load, UniformDistributedLoad):
+                    wy1 = load.wy
+                    wy2 = None
+                elif isinstance(load, TrapezoidalDistributedLoad):
+                    wy1, wy2 = load.wy1, load.wy2
+                else:  # Triangular
+                    if load.peak_loc == 'start':
+                        wy1, wy2 = load.w_peak, 0.0
                     else:
-                        start_y = y - arrow_length
-                        dy = arrow_length
-                        text_y_offset = -20
-                    
-                    ax.arrow(x, start_y, 0, dy * 0.8,
-                            head_width=100, head_length=abs(dy)*0.2, fc='red', ec='red',
-                            linewidth=2)
-                    ax.annotate(f'{abs(fy)/1000:.1f} kN', (x, start_y),
-                               xytext=(10, text_y_offset), textcoords='offset points',
-                               fontsize=10, color='red', weight='bold')
-            
-            elif isinstance(load, UniformDistributedLoad):
-                if load.element is not None:
-                    elements = [load.element] if isinstance(load.element, int) else load.element
-                    for elem_id in elements:
-                        elem = self.mesh.elements[elem_id]
-                        x1 = coords[elem.node1, 0]
-                        x2 = coords[elem.node2, 0]
-                        self._plot_udl_segment(ax, x1, x2, load.wy, label=(elem_id == elements[0]))
-                elif load.x_start is not None and load.x_end is not None:
-                    self._plot_udl_segment(ax, load.x_start, load.x_end, load.wy, label=True)
-        
-        ax.set_xlabel('Position (mm)', fontsize=12)
-        ax.set_ylabel('Height (mm)', fontsize=12)
-        ax.set_title('Beam Structure with Boundary Conditions and Loads', fontsize=14, weight='bold')
-        ax.grid(True, alpha=0.3)
-        ax.axis('equal')
-        
-        handles, labels = ax.get_legend_handles_labels()
-        by_label = dict(zip(labels, handles))
-        ax.legend(by_label.values(), by_label.keys(), loc='upper right')
-        
+                        wy1, wy2 = 0.0, load.w_peak
+
+                if abs(wy1) < 1e-12 and (wy2 is None or abs(wy2) < 1e-12):
+                    continue
+
+                ref_wy = max(abs(wy1), abs(wy2 or wy1))
+                w_scale, w_unit = smart_units(ref_wy, 'udl')
+                if wy2 is None:
+                    label_str = f"{wy1 / w_scale:.3g} {w_unit}"
+                else:
+                    label_str = (f"{wy1 / w_scale:.3g}–"
+                                 f"{wy2 / w_scale:.3g} {w_unit}")
+
+                self._draw_udl_comb(
+                    ax, x_s / x_scale, x_e / x_scale,
+                    wy1, glyph_h,
+                    st.colour_udl, label_str, wy2=wy2
+                )
+
+        # ---- Axes, grid, legend ----------------------------------------
+        # Ensure aspect ratio is equal so 1m of beam looks physically identical to 1m of arrow/BC
+        ax.set_aspect('equal', adjustable='datalim')
+        # Add padding so large annotations don't get cut off
+        ax.margins(y=0.4, x=0.05)
+
+        ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
+        ax.set_title('Structure & Loading Diagram', fontsize=st.title_fontsize, weight='bold')
+        ax.legend(fontsize=st.tick_fontsize, loc='upper right')
+        ax.grid(True, alpha=st.grid_alpha)
+
+        # Hide y-axis since there's no meaning to the physical y-span
+        ax.get_yaxis().set_visible(False)
+
+        # Draw line representing the ground for visual grounding
+        y_min = ax.get_ylim()[0]
+        ax.hlines(0, coords[:, 0].min() / x_scale, coords[:, 0].max() / x_scale,
+                  colors='gray', linestyles='--', alpha=0.3, zorder=0)
+
         plt.tight_layout()
         plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
         plt.close()
@@ -199,36 +466,64 @@ class BeamReportGenerator:
     def plot_shear_diagram(self, output_path: str, dpi: int = 150):
         """
         Plot shear force diagram.
-        
-        Parameters
-        ----------
-        output_path : str
-            Path to save the plot
-        dpi : int
-            Resolution
+
+        The maximum absolute shear is annotated with a red dot, a horizontal
+        dotted line extending to the y-axis, and a custom y-tick showing the
+        value — no yellow annotation box.
         """
+        st = DEFAULT_STYLE
         if self.shear_forces is None:
             self.calculate_internal_forces()
+
+        beam_length = self.positions[-1] - self.positions[0]
+        x_scale, x_unit = smart_units(beam_length, 'length')
+        max_abs_V = np.max(np.abs(self.shear_forces))
+        v_scale, v_unit = smart_units(max_abs_V, 'force')
+
+        pos_scaled = self.positions / x_scale
+        V_scaled   = self.shear_forces / v_scale
+
+        fig, ax = plt.subplots(figsize=st.figsize_wide, dpi=dpi)
+
+        ax.plot(pos_scaled, V_scaled, '-', color=st.colour_primary,
+                linewidth=st.line_width)
+        ax.fill_between(pos_scaled, 0, V_scaled,
+                        alpha=st.fill_alpha, color=st.colour_primary)
+        ax.axhline(0, color=st.colour_zero_line, linewidth=1)
+
+        # --- Max annotation: dot + dotted line to y-axis + axis tick ---
+        max_idx    = np.argmax(np.abs(self.shear_forces))
+        x_max      = pos_scaled[max_idx]
+        v_max      = V_scaled[max_idx]
+        x_left     = pos_scaled[0]
+
+        ax.plot(x_max, v_max, 'o', color=st.colour_max, markersize=8, zorder=5)
+        ax.hlines(v_max, x_left, x_max,
+                  colors=st.colour_max, linestyles=':', linewidth=1.5, zorder=4)
+
+        # Filter ticks that clash with the max value
+        existing_ticks = ax.get_yticks()
+        y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
+        min_dist = y_range * 0.05
+        filtered_ticks = [t for t in existing_ticks if abs(t - v_max) > min_dist]
+        filtered_ticks.append(v_max)
+        ax.set_yticks(filtered_ticks)
+
+        # Apply formatting before assigning colours to ensure labels exist
+        ax.yaxis.set_major_formatter(plt.FormatStrFormatter('%.2f'))
+        fig.canvas.draw()
         
-        fig, ax = plt.subplots(figsize=(14, 5), dpi=dpi)
-        
-        ax.plot(self.positions, self.shear_forces / 1000, 'b-', linewidth=2.5)
-        ax.fill_between(self.positions, 0, self.shear_forces / 1000, alpha=0.3, color='blue')
-        ax.axhline(0, color='k', linewidth=1)
-        
-        max_idx = np.argmax(np.abs(self.shear_forces))
-        ax.plot(self.positions[max_idx], self.shear_forces[max_idx] / 1000, 'ro', markersize=8)
-        ax.annotate(f'Max: {self.shear_forces[max_idx]/1000:.2f} kN',
-                   (self.positions[max_idx], self.shear_forces[max_idx] / 1000),
-                   xytext=(10, 10), textcoords='offset points',
-                   fontsize=10, color='red', weight='bold',
-                   bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7))
-        
-        ax.set_xlabel('Position (mm)', fontsize=12)
-        ax.set_ylabel('Shear Force (kN)', fontsize=12)
-        ax.set_title('Shear Force Diagram', fontsize=14, weight='bold')
-        ax.grid(True, alpha=0.3)
-        
+        for val, lbl in zip(ax.get_yticks(), ax.get_yticklabels()):
+            if abs(val - v_max) < abs(v_max) * 1e-3 + 1e-6:
+                lbl.set_color(st.colour_max)
+                lbl.set_weight('bold')
+
+        ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
+        ax.set_ylabel(f'Shear Force ({v_unit})', fontsize=st.label_fontsize)
+        ax.set_title('Shear Force Diagram', fontsize=st.title_fontsize, weight='bold')
+        ax.grid(True, alpha=st.grid_alpha)
+        ax.yaxis.set_major_formatter(plt.FormatStrFormatter('%.2f'))
+
         plt.tight_layout()
         plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
         plt.close()
@@ -236,36 +531,64 @@ class BeamReportGenerator:
     def plot_moment_diagram(self, output_path: str, dpi: int = 150):
         """
         Plot bending moment diagram.
-        
-        Parameters
-        ----------
-        output_path : str
-            Path to save the plot
-        dpi : int
-            Resolution
+
+        The maximum absolute moment is annotated with a red dot, a horizontal
+        dotted line extending to the y-axis, and a custom y-tick showing the
+        value — no yellow annotation box.
         """
+        st = DEFAULT_STYLE
         if self.bending_moments is None:
             self.calculate_internal_forces()
-        
-        fig, ax = plt.subplots(figsize=(14, 5), dpi=dpi)
-        
-        ax.plot(self.positions, self.bending_moments / 1e6, 'g-', linewidth=2.5)
-        ax.fill_between(self.positions, 0, self.bending_moments / 1e6, alpha=0.3, color='green')
-        ax.axhline(0, color='k', linewidth=1)
-        
-        max_idx = np.argmax(np.abs(self.bending_moments))
-        ax.plot(self.positions[max_idx], self.bending_moments[max_idx] / 1e6, 'ro', markersize=8)
-        ax.annotate(f'Max: {self.bending_moments[max_idx]/1e6:.2f} kN·m',
-                   (self.positions[max_idx], self.bending_moments[max_idx] / 1e6),
-                   xytext=(10, 10), textcoords='offset points',
-                   fontsize=10, color='red', weight='bold',
-                   bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7))
-        
-        ax.set_xlabel('Position (mm)', fontsize=12)
-        ax.set_ylabel('Bending Moment (kN·m)', fontsize=12)
-        ax.set_title('Bending Moment Diagram', fontsize=14, weight='bold')
-        ax.grid(True, alpha=0.3)
-        
+
+        beam_length = self.positions[-1] - self.positions[0]
+        x_scale, x_unit = smart_units(beam_length, 'length')
+        max_abs_M = np.max(np.abs(self.bending_moments))
+        m_scale, m_unit = smart_units(max_abs_M, 'moment')
+
+        pos_scaled = self.positions / x_scale
+        M_scaled   = self.bending_moments / m_scale
+
+        fig, ax = plt.subplots(figsize=st.figsize_wide, dpi=dpi)
+
+        ax.plot(pos_scaled, M_scaled, '-', color=st.colour_moment,
+                linewidth=st.line_width)
+        ax.fill_between(pos_scaled, 0, M_scaled,
+                        alpha=st.fill_alpha, color=st.colour_moment)
+        ax.axhline(0, color=st.colour_zero_line, linewidth=1)
+
+        # --- Max annotation: dot + dotted line to y-axis + axis tick ---
+        max_idx    = np.argmax(np.abs(self.bending_moments))
+        x_max      = pos_scaled[max_idx]
+        m_max      = M_scaled[max_idx]
+        x_left     = pos_scaled[0]
+
+        ax.plot(x_max, m_max, 'o', color=st.colour_max, markersize=8, zorder=5)
+        ax.hlines(m_max, x_left, x_max,
+                  colors=st.colour_max, linestyles=':', linewidth=1.5, zorder=4)
+
+        # Filter ticks that clash with the max value
+        existing_ticks = ax.get_yticks()
+        y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
+        min_dist = y_range * 0.05
+        filtered_ticks = [t for t in existing_ticks if abs(t - m_max) > min_dist]
+        filtered_ticks.append(m_max)
+        ax.set_yticks(filtered_ticks)
+
+        # Apply formatting before assigning colours to ensure labels exist
+        ax.yaxis.set_major_formatter(plt.FormatStrFormatter('%.2f'))
+        fig.canvas.draw()
+
+        for val, lbl in zip(ax.get_yticks(), ax.get_yticklabels()):
+            if abs(val - m_max) < abs(m_max) * 1e-3 + 1e-6:
+                lbl.set_color(st.colour_max)
+                lbl.set_weight('bold')
+
+        ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
+        ax.set_ylabel(f'Bending Moment ({m_unit})', fontsize=st.label_fontsize)
+        ax.set_title('Bending Moment Diagram', fontsize=st.title_fontsize, weight='bold')
+        ax.grid(True, alpha=st.grid_alpha)
+        ax.yaxis.set_major_formatter(plt.FormatStrFormatter('%.2f'))
+
         plt.tight_layout()
         plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
         plt.close()

@@ -2,6 +2,15 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v1.7.0] - 2026-02-28
+
+- **Feature**: Replaced hardcoded plot aesthetics with centralized `PlotStyle` dataclass in new `plot_style.py` module
+- **Feature**: Intelligent axis tick formatting and `smart_units` scaling algorithm for plot dimensioning
+- **UX**: Removed yellow annotation boxes in internal force diagrams, replacing them with clean dotted lines and red axis labels
+- **UX**: Overhauled structure diagram drawing logic to map fixed, pinned, and roller supports to authentic mechanical engineering glyphs
+- **Bugfix**: Resolved broken cross-section geometry inputs (`c_channel`, `t_beam`, `l_section`) in visual tests
+- **Tests**: Added an 8-case visual rendering stress test module under `scripts/visual_test_configurations.py`
+
 ## [v1.6.2] - 2026-02-28
 
 - **Docs**: Added explicit Requirements section to `README.md`
