@@ -13,6 +13,7 @@ How to use:
 """
 
 from typing import List, Dict, Any
+import os
 
 from beam_fea import (
     BeamSolver, MeshGenerator, get_material, 
