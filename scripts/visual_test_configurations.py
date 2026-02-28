@@ -238,6 +238,31 @@ def config_8():
 
 
 # ---------------------------------------------------------------------------
+# Test 9 — Fixed-Fixed with Axial Force
+# Cross-section: Rectangular
+# BCs: Fixed at both ends (node 0 and node n)
+# Loads: Multiple point loads + 1 axial component
+# ---------------------------------------------------------------------------
+def config_9():
+    L, n = 5_000.0, 50
+    mesh = MeshGenerator.beam_mesh_1d(L, n)
+    section = rectangular(width=200, height=400)
+
+    lc = LoadCase("Fixed-Fixed Axial")
+    # Vertical loads
+    lc.point_load(node=int(n/2), fy=-50000.0)      # 50 kN mid-span
+    lc.point_load(node=int(n/4), fy=-25000.0)      # 25 kN
+    # Axial load - 100 kN at node n/4 acting horizontally
+    lc.point_load(node=int(n/4), fx=100000.0)
+
+    bc = BoundaryConditionSet("Fixed-Fixed")
+    bc.fixed_support(node=0)
+    bc.fixed_support(node=n)
+
+    return run_config("09_fixed_fixed_axial", mesh, steel, section, lc, bc)
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
@@ -250,6 +275,7 @@ if __name__ == '__main__':
         config_6,
         config_7,
         config_8,
+        config_9,
     ]
 
     print("=" * 75)

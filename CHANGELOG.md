@@ -2,6 +2,12 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v1.7.1] - 2026-03-01
+
+- **UX**: Annotation collision avoidance in structure and FBD diagrams now uses independent stacking counters (`stack_fy`, `stack_fx`, `stack_mz`) per x-coordinate, preventing labels of different force types from displacing each other
+- **UX**: Vertical label offset is now anchored to global `arrow_scale` instead of per-force `length`, giving consistent spacing regardless of load magnitude differences
+- **UX**: Bold `weight='bold'` added to `'Beam Deformation'` plot title in `visualizer.py` for visual consistency with other diagram titles
+
 ## [v1.7.0] - 2026-02-28
 
 - **Feature**: Replaced hardcoded plot aesthetics with centralized `PlotStyle` dataclass in new `plot_style.py` module

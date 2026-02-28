@@ -1,30 +1,38 @@
 # Beam FEA Analysis Report
 
-**Generated:** 2026-02-22 11:04:52
+**Generated:** 01-03-2026 10:19:26
 
 ---
 
-## 1. Analysis Overview
+## 1. Executive Summary
 
-This report presents the results of a finite element analysis of a beam structure subjected to static loading.
+- **Analysis Overview**: Static structural analysis of a 2,000 mm beam subjected to 1 point load(s) and 0 distributed load(s).
+- **Peak Deflection**: 20.1519 mm at x = 2000.0 mm.
+- **Critical Margin of Safety (MoS)**: 3.64 🟢 **PASS** (based on Material Yield Stress vs Max von Mises).
 
-### Load Case
+---
+
+## 2. Model Setup & Inputs
+
+### Structure & Loading Diagram
+
+![Structure Diagram](ex01_report_images/structure_diagram.png)
+
+### Load Cases
 - **Name:** Tip Load 10kN
-- **Number of Point Loads:** 1
-- **Number of Distributed Loads:** 0
+- **Summary:** 1 point load(s), 0 distributed load(s)
 
----
+**Detailed Applied Loads:**
+1. **Point Load** at Node 20: Fy=-10000.0 N
 
-## 2. Model Information
+### Cross-Section Properties
 
-### Mesh Details
-
-| Property | Value |
-|----------|-------|
-| Number of Nodes | 21 |
-| Number of Elements | 20 |
-| Total DOFs | 63 |
-| Element Type | Euler-Bernoulli Beam |
+| Property | Value | Units |
+|----------|-------|-------|
+| Geometric Profile | I-Beam (d=200, bf=100, tw=5.6, tf=8.5) | - |
+| Area (A) | 2,724.80 | mm² |
+| Moment of Inertia (Iy) | 1.85e+07 | mm⁴ |
+| Moment of Inertia (Iz) | 1.42e+06 | mm⁴ |
 
 ### Material Properties
 
@@ -35,118 +43,56 @@ This report presents the results of a finite element analysis of a beam structur
 | Shear Modulus (G) | 26,955 | MPa |
 | Density (ρ) | 2.81e-06 | kg/mm³ |
 | Poisson's Ratio (ν) | 0.330 | - |
-
-### Cross-Section Properties
-
-| Property | Value | Units |
-|----------|-------|-------|
-| Area (A) | 2,724.80 | mm² |
-| Moment of Inertia (Iy) | 1.85e+07 | mm⁴ |
-| Moment of Inertia (Iz) | 1.42e+06 | mm⁴ |
+| Yield Strength | 503.0 | MPa |
 
 ---
 
-## 3. Structural Model
+## 3. Mesh & Solver Details
 
-### Beam Geometry with Boundary Conditions and Loads
-
-![Structure Diagram](ex01_report_images/structure_diagram.png)
-
-### Cross-Section Details
-
-![Cross-Section](ex01_report_images/cross_section.png)
+| Property | Value |
+|----------|-------|
+| Number of Nodes | 21 |
+| Number of Elements | 20 |
+| Total DOFs | 63 |
+| Element Formulation | Euler-Bernoulli Beam |
 
 ---
 
 ## 4. Analysis Results
 
-### Deformed Shape
+### Reaction Forces & FBD Diagram
+
+![Reaction Diagram](ex01_report_images/reaction_diagram.png)
+
+*Equilibrium Check*: 
+- $\Sigma F_x$ Residual = 0.00e+00 N
+- $\Sigma F_y$ Residual = 9.01e-08 N
+- $\Sigma M_z$ Residual (about x=0) = 1.51e-04 N·mm
+
+### Displacements
 
 The following plot shows the deformed shape of the beam (exaggerated by 1× for visualization):
 
 ![Deformed Shape](ex01_report_images/deformed_shape.png)
 
-### Maximum Deflection
-
-| Property | Value |
-|----------|-------|
-| Maximum Deflection | 20.1519 mm |
-| Location | Node 20 (x = 2000.0 mm) |
-
-### Reaction Forces
-
-- **Node 0:** Vertical reaction = 10000.00 N (10.00 kN)
-
-### Equilibrium Check
-
-| Property | Value |
-|----------|-------|
-| Total Vertical Reaction | 10000.00 N (10.00 kN) |
-| Total Applied Load | 10000.00 N (10.00 kN) |
-| Difference | 3.40e-08 N |
-
----
-
-## 5. Internal Forces
-
-### Shear Force Diagram
+### Internal Forces
 
 ![Shear Force Diagram](ex01_report_images/shear_diagram.png)
 
-**Maximum Shear Force:** 10.00 kN
-
-### Bending Moment Diagram
-
 ![Bending Moment Diagram](ex01_report_images/moment_diagram.png)
 
-**Maximum Bending Moment:** 20.00 kN·m
+### Stress Analysis & Structural Integrity
 
----
-
-- The maximum deflection of **20.1519 mm** occurs at x = 2000.0 mm
-- The maximum shear force is **10.00 kN**
-- The maximum bending moment is **20.00 kN·m**
-- **Peak von Mises Stress: 108.37 MPa**
-- Equilibrium is satisfied with a residual of 3.40e-08 N
-
----
-
-## 6. Stress Analysis
-
-### Peak Stress Distributions
-
-The following plot illustrates the peak internal stresses (von Mises, Bending, and Shear) as they vary along the length of the beam. 
+*The distributions below plot the peak stresses at the extreme top and bottom fibers of the cross-section evaluated along the length of the beam.*
 
 ![Stress Distribution](ex01_report_images/stress_distribution.png)
 
-### Summary of Peak Stresses
-
-| Stress Component | Maximum Value | Units |
-|------------------|---------------|-------|
-| von Mises (Peak) | 108.37 | MPa |
-| Bending (Max)    | 108.37 | MPa |
-| Shear (Max)      | 2.70 | MPa |
-| Axial (Max)      | 0.00 | MPa |
-
-### Structural Integrity
-
-| Criterion | Value |
-|-----------|-------|
-| Material Yield Strength | 503.0 MPa |
-| Peak von Mises Stress | 108.37 MPa |
-| **Factor of Safety** | **4.64** |
-
----
-
-## 7. Summary
-
-The finite element analysis has been successfully completed. Key findings:
-
-- The maximum deflection of **20.1519 mm** occurs at x = 2000.0 mm
-- The maximum shear force is **10.00 kN**
-- The maximum bending moment is **20.00 kN·m**
-- The peak internal stress (von Mises) is **108.37 MPa**
-- Equilibrium is satisfied with a residual of 3.40e-08 N
+| Stress Component | Maximum Magnitude | Location (x, y, z) [mm] | Units |
+|------------------|---------------|-------------------------|-------|
+| von Mises (Peak) | 108.37 | (0.0, -100.0, -50.0) | MPa |
+| Bending (Max)    | 108.37 | (0.0, -100.0, -50.0) | MPa |
+| Shear (Max)      | 2.70 | (1414.1, -5.3, -50.0) | MPa |
+| Axial (Max)      | 0.00 | (0.0, -100.0, -50.0) | MPa |
 
 ---
 

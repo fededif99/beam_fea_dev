@@ -20,12 +20,11 @@
 
 ## 📅 Version History
 
-### Latest Version: v1.7.0 *(2026-02-28)*
+### Latest Version: v1.7.1 *(2026-03-01)*
 
-- **Feature**: Replaced hardcoded plot aesthetics with centralized `PlotStyle` dataclass in new `plot_style.py` module
-- **Feature**: Intelligent axis tick formatting and `smart_units` scaling algorithm for plot dimensioning
-- **UX**: Overhauled structure diagram drawing logic to map fixed, pinned, and roller supports to authentic mechanical engineering glyphs
-- **Tests**: Added an 8-case visual rendering stress test module under `scripts/visual_test_configurations.py`
+- **UX**: Annotation collision avoidance uses independent per-axis stacking counters (`stack_fy`, `stack_fx`, `stack_mz`), preventing different force-type labels from displacing each other at shared nodes
+- **UX**: Vertical label offsets are now anchored to global `arrow_scale` for consistent spacing regardless of individual load magnitudes
+- **UX**: `'Beam Deformation'` plot title is now bold, matching the style of all other diagram titles
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).
@@ -43,7 +42,7 @@
    - 3.4 [Loads](#34-loads-beam_fealoads)
    - 3.5 [Boundary Conditions](#35-boundary-conditions-beam_feaboundary_conditions)
    - 3.6 [Solver & Analysis](#36-solver--analysis-beam_feasolver)
-   - 3.7 [Visualization](#37-visualization-beam_feavisualizer)
+   - 3.7 [Visualization](#37-visualization-beam_feavisualizer--beam_feaplot_style)
    - 3.8 [Report Generation](#38-report-generation-beam_feareport_generator)
 4. [Validation & Theory](#-validation--theory)
 

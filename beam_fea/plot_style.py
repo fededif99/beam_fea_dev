@@ -38,16 +38,32 @@ class PlotStyle:
     figsize_square: Tuple[int, int] = field(default_factory=lambda: (8, 8))
 
     # --- Line / fill weights --------------------------------------------
-    line_width: float = 2.5
+    line_width: float = 3.0
     beam_line_width: float = 3.0
     fill_alpha: float = 0.3
     grid_alpha: float = 0.3
+    
+    # --- Component Line Weights -----------------------------------------
+    bc_line_width: float = 2.5
+    bc_hatch_width: float = 1.0
+    load_line_width: float = 2.25
+    load_mutation_scale: float = 20.0
+    reaction_line_width: float = 2.25
+    reaction_mutation_scale: float = 20.0
 
-    # --- Font sizes -----------------------------------------------------
-    title_fontsize: int = 14
+    # --- Font sizes & Positioning ---------------------------------------
+    title_fontsize: int = 18
     label_fontsize: int = 12
-    tick_fontsize: int = 10
-    annotation_fontsize: int = 10
+    tick_fontsize: int = 12
+    annotation_fontsize: int = 12
+    
+    # Text annotation offsets (multipliers of arrow_scale or radius)
+    annot_offset_fy_vert: float = 1.0    # Vertical offset for Fy labels
+    annot_offset_fy_horz: float = 1.5   # Horizontal offset from arrow shaft
+    annot_offset_fx_vert: float = 0.2    # Vertical offset from horz arrow shaft
+    annot_offset_fx_horz: float = 0.5    # Horizontal gap from tip
+    annot_offset_mz: float = 1.5         # Radial offset for moment labels
+    annot_offset_udl: float = 0.25       # Vertical offset for UDL labels
 
     # --- Colours --------------------------------------------------------
     colour_primary: str = "#2563EB"       # blue  – shear / beam

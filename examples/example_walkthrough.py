@@ -131,9 +131,10 @@ def run_analysis(config: Dict[str, Any]):
         print(f"[*] Report saved to: {path}")
 
     if config.get('show_plots', False):
-        from beam_fea.visualizer import BeamVisualizer
-        viz = BeamVisualizer(mesh)
-        viz.plot_deformed_shape(solver.displacements, scale_factor=50)
+        print("\nDisplaying Visualization...")
+        solver.visualize('static', scale_factor=config.get('plot_scale', None))
+        solver.visualize('shear')
+        solver.visualize('moment')
 
     # 8. Modal Analysis (Optional)
     if config.get('num_modes', 0) > 0:

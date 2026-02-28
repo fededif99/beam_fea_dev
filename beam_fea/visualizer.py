@@ -110,7 +110,7 @@ class BeamVisualizer:
             ax.set_ylabel(f'Y Position ({y_unit})', fontsize=st.label_fontsize)
         else:
             ax.set_ylabel(f'Scaled Y Position ({y_unit})', fontsize=st.label_fontsize)
-        ax.set_title('Beam Deformation', fontsize=st.title_fontsize)
+        ax.set_title('Beam Deformation', fontsize=st.title_fontsize, weight='bold')
         ax.legend(fontsize=st.tick_fontsize)
         ax.grid(True, alpha=st.grid_alpha)
         ax.axis('equal')
@@ -124,44 +124,84 @@ class BeamVisualizer:
             plt.show()
     
     def plot_mode_shape(self, mode_shape: np.ndarray, mode_num: int,
-                        frequency: float, scale: float = 1.0):
+                        frequency: float, scale: float = 1.0, 
+                        figsize: Optional[Tuple] = None, dpi: int = 150):
         """Plot a mode shape."""
+        st = DEFAULT_STYLE
+        fs = figsize or st.figsize_wide
         coords = self.mesh.get_node_coords()
         v_mode = mode_shape[1::3] * scale
         
-        fig, ax = plt.subplots(figsize=(12, 4))
+        beam_length = np.max(coords[:, 0]) - np.min(coords[:, 0])
+        x_scale, x_unit = smart_units(beam_length, 'length')
         
-        ax.plot(coords[:, 0], coords[:, 1], 'b--', alpha=0.3, label='Undeformed')
-        ax.plot(coords[:, 0], v_mode, 'r-', linewidth=2,
+        fig, ax = plt.subplots(figsize=fs, dpi=dpi)
+        
+        ax.plot(coords[:, 0] / x_scale, coords[:, 1], '--', color=st.colour_undeformed, 
+                alpha=0.3, label='Undeformed')
+        ax.plot(coords[:, 0] / x_scale, v_mode, color=st.colour_deformed, linewidth=st.line_width,
                label=f'Mode {mode_num} ({frequency:.2f} Hz)')
         
-        ax.axhline(0, color='k', linewidth=0.5)
-        ax.set_xlabel('Position (mm)')
-        ax.set_ylabel('Modal Amplitude')
-        ax.set_title(f'Mode Shape {mode_num}')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
+        ax.axhline(0, color=st.colour_zero_line, linewidth=1)
+        ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
+        ax.set_ylabel('Modal Amplitude', fontsize=st.label_fontsize)
+        ax.set_title(f'Mode Shape {mode_num}', fontsize=st.title_fontsize, weight='bold')
+        ax.legend(fontsize=st.tick_fontsize)
+        ax.grid(True, alpha=st.grid_alpha)
         
         plt.tight_layout()
         plt.show()
     
     def plot_bending_moment(self, moments: np.ndarray, positions: np.ndarray,
-                           output_path: Optional[str] = None, dpi: int = 100):
+                           output_path: Optional[str] = None, figsize: Optional[Tuple] = None, 
+                           dpi: int = 150):
         """Plot bending moment diagram."""
-        fig, ax = plt.subplots(figsize=(12, 5), dpi=dpi)
-        
-        ax.plot(positions, moments, 'b-', linewidth=2)
-        ax.fill_between(positions, 0, moments, alpha=0.3)
-        ax.axhline(0, color='k', linewidth=1)
+        st = DEFAULT_STYLE
+        fs = figsize or st.figsize_wide
         
         max_M = np.max(np.abs(moments))
-        if max_M > 1e-10:
-            ax.set_ylim(-max_M*1.2, max_M*1.2)
+        beam_L = np.max(positions) - np.min(positions)
         
-        ax.set_xlabel('Position (mm)')
-        ax.set_ylabel('Bending Moment (N·mm)')
-        ax.set_title('Bending Moment Diagram')
-        ax.grid(True, alpha=0.3)
+        m_scale, m_unit = smart_units(max_M, 'moment')
+        x_scale, x_unit = smart_units(beam_L, 'length')
+        
+        fig, ax = plt.subplots(figsize=fs, dpi=dpi)
+        
+        # Plot data
+        ax.plot(positions / x_scale, moments / m_scale, color=st.colour_moment, linewidth=st.line_width)
+        ax.fill_between(positions / x_scale, 0, moments / m_scale, 
+                        color=st.colour_moment, alpha=st.fill_alpha)
+        ax.axhline(0, color=st.colour_zero_line, linewidth=1.5)
+        
+        # Mark Maximum
+        if max_M > 1e-10:
+            max_idx = np.argmax(np.abs(moments))
+            x_peak = positions[max_idx] / x_scale
+            y_peak = moments[max_idx] / m_scale
+            
+            # Peak marker
+            ax.plot(x_peak, y_peak, 'o', color=st.colour_max, markersize=8)
+            
+            # Dotted line to Y-axis
+            ax.axhline(y_peak, xmax=x_peak/ax.get_xlim()[1] if ax.get_xlim()[1] != 0 else 0, 
+                       color=st.colour_max, linestyle=':', linewidth=1.5)
+            
+            # Add value to Y-ticks to ensure it's displayed on axis as requested
+            existing_ticks = list(ax.get_yticks())
+            # Filter out ticks that are too close to our peak value to avoid overlap
+            new_ticks = [t for t in existing_ticks if abs(t - y_peak) > 0.1 * max(abs(y_peak), 1)]
+            new_ticks.append(y_peak)
+            ax.set_yticks(new_ticks)
+            
+            # Small annotation near marker (without box)
+            ax.annotate(f'{y_peak:.2f}', (x_peak, y_peak), 
+                        xytext=(5, 5), textcoords='offset points',
+                        color=st.colour_max, weight='bold', fontsize=st.annotation_fontsize)
+        
+        ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
+        ax.set_ylabel(f'Bending Moment ({m_unit})', fontsize=st.label_fontsize)
+        ax.set_title('Bending Moment Diagram', fontsize=st.title_fontsize, weight='bold')
+        ax.grid(True, alpha=st.grid_alpha)
         
         plt.tight_layout()
         
@@ -172,23 +212,56 @@ class BeamVisualizer:
             plt.show()
 
     def plot_shear_force(self, forces: np.ndarray, positions: np.ndarray,
-                         output_path: Optional[str] = None, dpi: int = 100):
+                         output_path: Optional[str] = None, figsize: Optional[Tuple] = None,
+                         dpi: int = 150):
         """Plot shear force diagram."""
-        fig, ax = plt.subplots(figsize=(12, 5), dpi=dpi)
-        
-        # Use step plot for shear force as it's often discontinuous at point loads
-        ax.step(positions, forces, 'r-', linewidth=2, where='post')
-        ax.fill_between(positions, 0, forces, alpha=0.3, color='red', step='post')
-        ax.axhline(0, color='k', linewidth=1)
+        st = DEFAULT_STYLE
+        fs = figsize or st.figsize_wide
         
         max_V = np.max(np.abs(forces))
-        if max_V > 1e-10:
-            ax.set_ylim(-max_V*1.2, max_V*1.2)
+        beam_L = np.max(positions) - np.min(positions)
         
-        ax.set_xlabel('Position (mm)')
-        ax.set_ylabel('Shear Force (N)')
-        ax.set_title('Shear Force Diagram')
-        ax.grid(True, alpha=0.3)
+        v_scale, v_unit = smart_units(max_V, 'force')
+        x_scale, x_unit = smart_units(beam_L, 'length')
+        
+        fig, ax = plt.subplots(figsize=fs, dpi=dpi)
+        
+        # Step plot for shear
+        ax.step(positions / x_scale, forces / v_scale, color=st.colour_primary, 
+                linewidth=st.line_width, where='post')
+        ax.fill_between(positions / x_scale, 0, forces / v_scale, 
+                        color=st.colour_primary, alpha=st.fill_alpha, step='post')
+        ax.axhline(0, color=st.colour_zero_line, linewidth=1.5)
+        
+        # Mark Maxima (often two for shear)
+        if max_V > 1e-10:
+            # Find index of max absolute value
+            max_idx = np.argmax(np.abs(forces))
+            # Just mark the primary max for clarity
+            x_peak = positions[max_idx] / x_scale
+            y_peak = forces[max_idx] / v_scale
+            
+            ax.plot(x_peak, y_peak, 'o', color=st.colour_max, markersize=8)
+            
+            # Dotted line to Y-axis
+            ax.axhline(y_peak, xmax=x_peak/ax.get_xlim()[1] if ax.get_xlim()[1] != 0 else 0,
+                       color=st.colour_max, linestyle=':', linewidth=1.5)
+            
+            # Add value to Y-ticks
+            existing_ticks = list(ax.get_yticks())
+            new_ticks = [t for t in existing_ticks if abs(t - y_peak) > 0.1 * max(abs(y_peak), 1)]
+            new_ticks.append(y_peak)
+            ax.set_yticks(new_ticks)
+            
+            # Small annotation
+            ax.annotate(f'{y_peak:.2f}', (x_peak, y_peak), 
+                        xytext=(5, 5), textcoords='offset points',
+                        color=st.colour_max, weight='bold', fontsize=st.annotation_fontsize)
+        
+        ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
+        ax.set_ylabel(f'Shear Force ({v_unit})', fontsize=st.label_fontsize)
+        ax.set_title('Shear Force Diagram', fontsize=st.title_fontsize, weight='bold')
+        ax.grid(True, alpha=st.grid_alpha)
         
         plt.tight_layout()
         

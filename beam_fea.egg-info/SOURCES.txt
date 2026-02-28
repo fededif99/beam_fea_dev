@@ -8,6 +8,7 @@ beam_fea/loads.py
 beam_fea/materials.py
 beam_fea/mesh.py
 beam_fea/modal_analysis.py
+beam_fea/plot_style.py
 beam_fea/report_generator.py
 beam_fea/solver.py
 beam_fea/static_analysis.py

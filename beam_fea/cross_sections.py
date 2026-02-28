@@ -51,6 +51,8 @@ class SectionProperties:
         Distance from centroid to left fiber (mm)
     z_right : float
         Distance from centroid to right fiber (mm)
+    name : str
+        Descriptive name of the cross-section
     """
     
     A: float
@@ -67,6 +69,7 @@ class SectionProperties:
     y_bottom: float = None
     z_left: float = None
     z_right: float = None
+    name: str = "Custom Profile"
     
     def __post_init__(self):
         """Calculate derived properties if not provided."""
@@ -88,7 +91,7 @@ class SectionProperties:
             
     def __str__(self):
         # Using ^2, ^3, ^4 for compatibility across all consoles
-        res = (f"Section Properties:\n"
+        res = (f"Section Properties ({self.name}):\n"
                f"  Area (A):         {self.A:.2f} mm^2\n"
                f"  I_y:              {self.Iy:.2f} mm^4\n"
                f"  I_z:              {self.Iz:.2f} mm^4\n")
@@ -146,13 +149,6 @@ class RectangularSection(CrossSection):
     def __init__(self, width: float, height: float):
         """
         Initialize rectangular section.
-        
-        Parameters:
-        -----------
-        width : float
-            Width of rectangle (b) in mm
-        height : float
-            Height of rectangle (h) in mm
         """
         if width <= 0:
             raise ValueError(f"Width must be positive, got {width}")
@@ -176,7 +172,8 @@ class RectangularSection(CrossSection):
             A=A, Iy=Iy, Iz=Iz, J=J, Sy=Sy, Sz=Sz,
             y_centroid=0.0, z_centroid=0.0,  # Center is reference
             y_top=h/2, y_bottom=-h/2,
-            z_left=-b/2, z_right=b/2
+            z_left=-b/2, z_right=b/2,
+            name=f"Rectangular ({self.width}w × {self.height}h)"
         )
     
     def __str__(self):
@@ -222,7 +219,8 @@ class CircularSection(CrossSection):
             A=A, Iy=I, Iz=I, J=J, Sy=S, Sz=S,
             y_centroid=0.0, z_centroid=0.0,
             y_top=r, y_bottom=-r,
-            z_left=-r, z_right=r
+            z_left=-r, z_right=r,
+            name=f"Circular (∅{self.diameter})"
         )
     
     def __str__(self):
@@ -279,7 +277,8 @@ class HollowCircularSection(CrossSection):
             A=A, Iy=I, Iz=I, J=J, Sy=S, Sz=S,
             y_centroid=0.0, z_centroid=0.0,
             y_top=ro, y_bottom=-ro,
-            z_left=-ro, z_right=ro
+            z_left=-ro, z_right=ro,
+            name=f"Hollow Circular (∅{self.outer_diameter} × {self.thickness}t)"
         )
     
     def __str__(self):
@@ -379,7 +378,8 @@ class IBeamSection(CrossSection):
             A=A_total, Iy=Iy, Iz=Iz, J=J, Sy=Sy, Sz=Sz,
             y_centroid=0.0, z_centroid=0.0,
             y_top=d/2, y_bottom=-d/2,
-            z_left=-bf/2, z_right=bf/2
+            z_left=-bf/2, z_right=bf/2,
+            name=f"I-Beam (d={self.total_height}, bf={self.flange_width}, tw={self.web_thickness}, tf={self.flange_thickness})"
         )
     
     def __str__(self):
@@ -473,7 +473,8 @@ class TBeamSection(CrossSection):
             A=A_total, Iy=Iy, Iz=Iz, Sy=Sy,
             y_centroid=y_bar, z_centroid=0.0,
             y_top=y_top_val, y_bottom=-y_bottom_val,
-            z_left=-bf/2, z_right=bf/2
+            z_left=-bf/2, z_right=bf/2,
+            name=f"T-Beam (bf={self.flange_width}, tf={self.flange_thickness}, hw={self.web_height}, tw={self.web_thickness})"
         )
     
     def __str__(self):
@@ -582,7 +583,8 @@ class BoxSection(CrossSection):
             A=A, Iy=Iy, Iz=Iz, J=J, Sy=Sy, Sz=Sz,
             y_centroid=0.0, z_centroid=0.0,
             y_top=H/2.0, y_bottom=-H/2.0,
-            z_left=-B/2.0, z_right=B/2.0
+            z_left=-B/2.0, z_right=B/2.0,
+            name=f"Box Section ({self.width}w × {self.height}h × {self.thickness}t)"
         )
     
     def __str__(self):
@@ -675,7 +677,8 @@ class CChannelSection(CrossSection):
             A=A_total, Iy=Iy, Iz=Iz, Sy=Iy / (h / 2.0),
             y_centroid=0.0, z_centroid=x_bar,
             y_top=h/2, y_bottom=-h/2,
-            z_left=-x_bar, z_right=bf-x_bar
+            z_left=-x_bar, z_right=bf-x_bar,
+            name=f"C-Channel (d={self.height}, bf={self.flange_width}, tw={self.web_thickness}, tf={self.flange_thickness})"
         )
     
     def __str__(self):
@@ -788,11 +791,17 @@ class LSection(CrossSection):
         Ix = Ix_vert + Ix_horiz
         Iy = Iy_vert + Iy_horiz
         
+        
+        is_equal = self.leg_length_vertical == self.leg_length_horizontal
+        type_str = "Equal" if is_equal else "Unequal"
+        desc = f"L-Section {type_str} ({self.leg_length_vertical} × {self.leg_length_horizontal} × {self.thickness}t)"
+
         return SectionProperties(
             A=A_total, Iy=Ix, Iz=Iy,
             y_centroid=y_bar, z_centroid=x_bar,
             y_top=h-y_bar, y_bottom=-y_bar,
-            z_left=-x_bar, z_right=b-x_bar
+            z_left=-x_bar, z_right=b-x_bar,
+            name=desc
         )
     
     def __str__(self):
@@ -887,7 +896,8 @@ def offset_section(section_props: SectionProperties,
         y_top=section_props.y_top,
         y_bottom=section_props.y_bottom,
         z_left=section_props.z_left,
-        z_right=section_props.z_right
+        z_right=section_props.z_right,
+        name=f"Offset {section_props.name} (Δy={offset_y}, Δz={offset_z})"
     )
 
 
