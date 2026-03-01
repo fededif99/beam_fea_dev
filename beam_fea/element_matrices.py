@@ -6,7 +6,6 @@ Local element matrix calculations for different beam theories.
 Provides stiffness and mass matrices for:
 - Euler-Bernoulli beam elements
 - Timoshenko beam elements
-- Geometric stiffness (for buckling analysis)
 """
 
 import numpy as np

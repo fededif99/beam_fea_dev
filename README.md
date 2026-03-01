@@ -23,8 +23,9 @@
 ### Latest Version: v1.7.3 *(2026-03-01)*
 
 - **Feature**: Added `_validate_model` pre-analysis check to `BeamSolver` that detects missing mesh, properties, or unstable boundary conditions before computation
-- **UX**: Implemented automated slenderness ratio ($L/h$) check that suggests switching to Timoshenko elements for stout beams (< 10) to improve accuracy
-- **UX**: Added pro-active instability warnings when axial or transverse constraints are missing, preventing singular matrix errors
+- **Feature**: Implemented dynamic version synchronization between `CHANGELOG.md` and package `__version__`
+- **UX**: Implemented automated slenderness ratio ($L/h$) check and pro-active instability warnings
+- **Docs**: Completed a comprehensive audit of all comments and docstrings for clarity and technical accuracy
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).

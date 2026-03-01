@@ -5,8 +5,10 @@ All notable changes to the `beam_fea` project will be documented in this file.
 ## [v1.7.3] - 2026-03-01
 
 - **Feature**: Added `_validate_model` pre-analysis check to `BeamSolver` that detects missing mesh, properties, or unstable boundary conditions before computation
+- **Feature**: Implemented dynamic version synchronization between `CHANGELOG.md` and the package `__version__`
 - **UX**: Implemented automated slenderness ratio ($L/h$) check that suggests switching to Timoshenko elements for stout beams (< 10) to improve accuracy
 - **UX**: Added pro-active instability warnings when axial or transverse constraints are missing, preventing singular matrix errors
+- **Docs**: Completed a comprehensive audit of all comments and docstrings for clarity and technical accuracy
 
 ## [v1.7.2] - 2026-03-01
 
