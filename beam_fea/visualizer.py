@@ -138,16 +138,15 @@ class BeamVisualizer:
         
         fig, ax = plt.subplots(figsize=fs, dpi=dpi)
         
-        ax.plot(coords[:, 0] / x_scale, coords[:, 1], '--', color=st.colour_undeformed, 
-                alpha=0.3, label='Undeformed')
-        ax.plot(coords[:, 0] / x_scale, v_mode, color=st.colour_deformed, linewidth=st.line_width,
-               label=f'Mode {mode_num} ({frequency:.2f} Hz)')
+        # ax.plot(coords[:, 0] / x_scale, coords[:, 1], '--', color=st.colour_undeformed, 
+        #         alpha=0.3, label='Undeformed')
+        ax.plot(coords[:, 0] / x_scale, v_mode, color=st.colour_deformed, linewidth=st.line_width)
         
         ax.axhline(0, color=st.colour_zero_line, linewidth=1)
         ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
         ax.set_ylabel('Modal Amplitude', fontsize=st.label_fontsize)
-        ax.set_title(f'Mode Shape {mode_num}', fontsize=st.title_fontsize, weight='bold')
-        ax.legend(fontsize=st.tick_fontsize)
+        ax.set_title(f'Mode Shape {mode_num} - {frequency:.2f} Hz', fontsize=st.title_fontsize, weight='bold')
+        # ax.legend(fontsize=st.tick_fontsize)
         ax.grid(True, alpha=st.grid_alpha)
         
         plt.tight_layout()

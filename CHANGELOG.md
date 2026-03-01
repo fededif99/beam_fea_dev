@@ -2,6 +2,15 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v1.9.0] - 2026-03-01
+
+- **Feature**: Refactored `BeamReportGenerator` to support dynamic, combined reporting of both static and modal analysis results in a single document
+- **Feature**: Added `examples/ex04_combined_analysis.py` to demonstrate the new multi-analysis reporting capabilities
+- **UX**: Refined mode shape plots to include frequency in the title and hide the undeformed shape for better clarity
+- **UX**: Improved UDL span display in reports to explicitly state "Full Span" for global loads
+- **Fix**: Resolved CI crash caused by missing `Agg` headless Matplotlib backend when running on GitHub Actions
+- **Fix**: Fixed `F821 undefined name 'Union'` in `solver.py` and addressed build isolation dependency issues in the CI workflow
+
 ## [v1.8.0] - 2026-03-01
 
 - **Feature**: Added comprehensive modal analysis reporting to `BeamReportGenerator`, including natural frequency tables and mode shape visualizations
