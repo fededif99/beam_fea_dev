@@ -2,6 +2,12 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v1.7.5] - 2026-03-01
+
+- **UX**: Changed default `deformation_scale` in `BeamSolver.generate_report` to `'auto'`, ensuring report plots are always legible
+- **UX**: Refined `examples/template_static.py` mesh density (reduced to 50 elements) for better responsiveness and usability
+- **Fix**: Resolved inconsistency where interactive `visualize()` used auto-scaling but generated reports defaulted to 1.0x
+
 ## [v1.7.4] - 2026-03-01
 
 - **Refactor**: Completed global removal of redundant `sys.path` hacks and unused imports across `examples/`, `tests/`, and `scripts/`

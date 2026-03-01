@@ -20,11 +20,11 @@
 
 ## 📅 Version History
 
-### Latest Version: v1.7.4 *(2026-03-01)*
+### Latest Version: v1.7.5 *(2026-03-01)*
 
-- **Refactor**: Completed global removal of redundant `sys.path` hacks and unused imports across `examples/`, `tests/`, and `scripts/`
-- **Cleanup**: Standardized imports in `test_coordinate_loads.py` and core modules
-- **UX**: Verified full test suite compatibility with standard editable installation (no path hacks)
+- **UX**: Defaulted `generate_report()` visualization to `'auto'` scaling for improved legibility
+- **UX**: Optimized `template_static.py` mesh density for standard use cases
+- **Refactor**: Cleaned up internal import logic and removed legacy path hacks
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).

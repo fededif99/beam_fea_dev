@@ -544,7 +544,7 @@ class BeamSolver:
         return res
 
     
-    def generate_report(self, output_path: str, deformation_scale: float = 1.0):
+    def generate_report(self, output_path: str, deformation_scale: Union[float, str] = 'auto'):
         """
         Generate a professional markdown report of the analysis.
         Images are saved to a ``<report_name>_images/`` folder alongside the report.
@@ -554,7 +554,7 @@ class BeamSolver:
         output_path : str
             Path to save the report (e.g., 'report.md')
         deformation_scale : float or 'auto', optional
-            Scale factor for deformed shape plots. Default is 1.0.
+            Scale factor for deformed shape plots. Default is 'auto'.
         """
         if self.displacements is None or self.last_load_case is None:
             raise ValueError("Must run solve_static() before generating a report")
