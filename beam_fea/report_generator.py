@@ -62,6 +62,10 @@ class BeamReportGenerator:
         self.displacements = displacements
         self.reactions = reactions
         
+        # Modal Results
+        self.frequencies = None
+        self.mode_shapes = None
+        
         # Will store results
         self.positions = None
         self.shear_forces = None
@@ -350,155 +354,116 @@ class BeamReportGenerator:
                     shown_bc_labels.add(label)
 
         # ---- Load scaling (per-component) ------------------------------
-        all_fy = [abs(l.fy) for l in self.load_case.loads
-                  if isinstance(l, PointLoad) and abs(l.fy) > 1e-10]
-        all_fx = [abs(l.fx) for l in self.load_case.loads
-                  if isinstance(l, PointLoad) and abs(l.fx) > 1e-10]
-        all_mz = [abs(l.mz) for l in self.load_case.loads
-                  if isinstance(l, PointLoad) and abs(l.mz) > 1e-10]
-        max_fy = max(all_fy) if all_fy else 1.0
-        max_fx = max(all_fx) if all_fx else 1.0
-        max_mz = max(all_mz) if all_mz else 1.0
+        if self.load_case:
+            all_fy = [abs(l.fy) for l in self.load_case.loads
+                      if isinstance(l, PointLoad) and abs(l.fy) > 1e-10]
+            all_fx = [abs(l.fx) for l in self.load_case.loads
+                      if isinstance(l, PointLoad) and abs(l.fx) > 1e-10]
+            all_mz = [abs(l.mz) for l in self.load_case.loads
+                      if isinstance(l, PointLoad) and abs(l.mz) > 1e-10]
+            max_fy = max(all_fy) if all_fy else 1.0
+            max_fx = max(all_fx) if all_fx else 1.0
+            max_mz = max(all_mz) if all_mz else 1.0
 
-        # ---- Draw loads ------------------------------------------------
-        stack_fy = {}
-        stack_fx = {}
-        stack_mz = {}
-        for load in self.load_case.loads:
-            if isinstance(load, PointLoad):
-                if load.node is not None:
-                    x_raw, y_pt = coords[load.node, 0], coords[load.node, 1]
-                elif load.x is not None:
-                    x_raw, y_pt = load.x, 0.0
-                else:
-                    continue
-                if not (coords[:, 0].min() <= x_raw <= coords[:, 0].max()):
-                    continue
-                x_pt = x_raw / x_scale
-
-                x_key = round(x_pt, 4)
-
-                if abs(load.fy) > 1e-10:
-                    stack = stack_fy.get(x_key, 0)
-                    f_scale, f_unit = smart_units(max_fy, 'force')
-                    label_str = f"{load.fy / f_scale:+.3g} {f_unit}"
-                    self._draw_point_force_arrow(
-                        ax, x_pt, y_pt, load.fy, max_fy,
-                        arrow_scale, st.colour_load, label_str, is_reaction=False,
-                        x_max=coords[:, 0].max() / x_scale,
-                        stack_level=stack
-                    )
-                    stack_fy[x_key] = stack + 1
-                    
-                if abs(load.fx) > 1e-10:
-                    f_scale, f_unit = smart_units(max_fx, 'force')
-                    label_str = f"{load.fx / f_scale:+.3g} {f_unit} (axial)"
-                    # Horizontal arrow
-                    h_len = max(abs(load.fx) / max_fx * arrow_scale,
-                                arrow_scale * 0.25)
-                    if load.fx > 0:
-                        ax.annotate('', xy=(x_pt, y_pt),
-                                    xytext=(x_pt - h_len / x_scale, y_pt),
-                                    arrowprops=dict(arrowstyle='->', lw=st.load_line_width,
-                                                   color=st.colour_load,
-                                                   mutation_scale=st.load_mutation_scale))
+            # ---- Draw loads ------------------------------------------------
+            stack_fy = {}
+            stack_fx = {}
+            stack_mz = {}
+            for load in self.load_case.loads:
+                if isinstance(load, PointLoad):
+                    if load.node is not None:
+                        x_raw, y_pt = coords[load.node, 0], coords[load.node, 1]
+                    elif load.x is not None:
+                        x_raw, y_pt = load.x, 0.0
                     else:
-                        ax.annotate('', xy=(x_pt, y_pt),
-                                    xytext=(x_pt + h_len / x_scale, y_pt),
-                                    arrowprops=dict(arrowstyle='->', lw=st.load_line_width,
-                                                   color=st.colour_load,
-                                                   mutation_scale=st.load_mutation_scale))
-                    # Dynamic text positioning for horizontal loads
-                    ha_val = 'center'
-                    x_label = x_pt
-                    if x_pt >= coords[:, 0].max() / x_scale - 1e-4:
-                        ha_val = 'right'
-                        x_label = x_pt - st.annot_offset_fx_horz * arrow_scale
-                    elif x_pt <= coords[:, 0].min() / x_scale + 1e-4:
-                        ha_val = 'left'
-                        x_label = x_pt + st.annot_offset_fx_horz * arrow_scale
+                        continue
+                    if not (coords[:, 0].min() <= x_raw <= coords[:, 0].max()):
+                        continue
+                    x_pt = x_raw / x_scale
 
-                    stack = stack_fx.get(x_key, 0)
-                    y_text = y_pt - arrow_scale * (st.annot_offset_fx_vert + stack * 0.4)
+                    x_key = round(x_pt, 4)
 
-                    ax.text(x_label, y_text, label_str,
-                            color=st.colour_load,
-                            fontsize=st.annotation_fontsize - 1, ha=ha_val)
-                    stack_fx[x_key] = stack + 1
-                    
-                if abs(load.mz) > 1e-10:
-                    stack = stack_mz.get(x_key, 0)
-                    m_scale, m_unit = smart_units(max_mz, 'moment')
-                    label_str = f"{load.mz / m_scale:+.3g} {m_unit}"
-                    self._draw_moment_arc(
-                        ax, x_pt, y_pt, load.mz,
-                        moment_radius,
-                        st.colour_moment_load, label_str, is_reaction=False,
-                        stack_level=stack
-                    )
-                    stack_mz[x_key] = stack + 1
+                    if abs(load.fy) > 1e-10:
+                        stack = stack_fy.get(x_key, 0)
+                        f_scale, f_unit = smart_units(max_fy, 'force')
+                        label_str = f"{load.fy / f_scale:+.3g} {f_unit}"
+                        self._draw_point_force_arrow(
+                            ax, x_pt, y_pt, load.fy, max_fy,
+                            arrow_scale, st.colour_load, label_str, is_reaction=False,
+                            x_max=coords[:, 0].max() / x_scale,
+                            stack_level=stack
+                        )
+                        stack_fy[x_key] = stack + 1
+                        
+                    if abs(load.fx) > 1e-10:
+                        f_scale, f_unit = smart_units(max_fx, 'force')
+                        label_str = f"{load.fx / f_scale:+.3g} {f_unit} (axial)"
+                        h_len = max(abs(load.fx) / max_fx * arrow_scale, arrow_scale * 0.25)
+                        if load.fx > 0:
+                            ax.annotate('', xy=(x_pt, y_pt), xytext=(x_pt - h_len / x_scale, y_pt),
+                                        arrowprops=dict(arrowstyle='->', lw=st.load_line_width, color=st.colour_load,
+                                                       mutation_scale=st.load_mutation_scale))
+                        else:
+                            ax.annotate('', xy=(x_pt, y_pt), xytext=(x_pt + h_len / x_scale, y_pt),
+                                        arrowprops=dict(arrowstyle='->', lw=st.load_line_width, color=st.colour_load,
+                                                       mutation_scale=st.load_mutation_scale))
+                        # Dynamic text positioning for horizontal loads
+                        ha_val = 'center'
+                        x_label = x_pt
+                        if x_pt >= coords[:, 0].max() / x_scale - 1e-4:
+                            ha_val = 'right'
+                            x_label = x_pt - st.annot_offset_fx_horz * arrow_scale
+                        elif x_pt <= coords[:, 0].min() / x_scale + 1e-4:
+                            ha_val = 'left'
+                            x_label = x_pt + st.annot_offset_fx_horz * arrow_scale
 
-            elif isinstance(load, (UniformDistributedLoad,
-                                   TrapezoidalDistributedLoad,
-                                   TriangularDistributedLoad)):
-                # Resolve span
-                if hasattr(load, 'element') and load.element is not None:
-                    elements = ([load.element] if isinstance(load.element, int)
-                                else load.element)
-                    x_s = coords[self.mesh.elements[elements[0]].node1, 0]
-                    x_e = coords[self.mesh.elements[elements[-1]].node2, 0]
-                elif (hasattr(load, 'x_start') and load.x_start is not None):
-                    x_s, x_e = load.x_start, load.x_end
-                else:
-                    continue
+                        stack = stack_fx.get(x_key, 0)
+                        y_text = y_pt - arrow_scale * (st.annot_offset_fx_vert + stack * 0.4)
 
-                # Get intensities
-                if isinstance(load, UniformDistributedLoad):
-                    wy1 = load.wy
-                    wy2 = None
-                elif isinstance(load, TrapezoidalDistributedLoad):
-                    wy1, wy2 = load.wy1, load.wy2
-                else:  # Triangular
-                    if load.peak_loc == 'start':
-                        wy1, wy2 = load.w_peak, 0.0
-                    else:
-                        wy1, wy2 = 0.0, load.w_peak
+                        ax.text(x_label, y_text, label_str, color=st.colour_load,
+                                fontsize=st.annotation_fontsize - 1, ha=ha_val)
+                        stack_fx[x_key] = stack + 1
+                        
+                    if abs(load.mz) > 1e-10:
+                        stack = stack_mz.get(x_key, 0)
+                        m_scale, m_unit = smart_units(max_mz, 'moment')
+                        label_str = f"{load.mz / m_scale:+.3g} {m_unit}"
+                        self._draw_moment_arc(
+                            ax, x_pt, y_pt, load.mz, moment_radius, st.colour_moment_load, label_str,
+                            is_reaction=False, stack_level=stack
+                        )
+                        stack_mz[x_key] = stack + 1
 
-                if abs(wy1) < 1e-12 and (wy2 is None or abs(wy2) < 1e-12):
-                    continue
+                elif isinstance(load, (UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad)):
+                    if hasattr(load, 'element') and load.element is not None:
+                        elements = ([load.element] if isinstance(load.element, int) else load.element)
+                        x_s = coords[self.mesh.elements[elements[0]].node1, 0]
+                        x_e = coords[self.mesh.elements[elements[-1]].node2, 0]
+                    elif (hasattr(load, 'x_start') and load.x_start is not None):
+                        x_s, x_e = load.x_start, load.x_end
+                    else: continue
 
-                ref_wy = max(abs(wy1), abs(wy2 or wy1))
-                w_scale, w_unit = smart_units(ref_wy, 'udl')
-                if wy2 is None:
-                    label_str = f"{wy1 / w_scale:.3g} {w_unit}"
-                else:
-                    label_str = (f"{wy1 / w_scale:.3g}–"
-                                 f"{wy2 / w_scale:.3g} {w_unit}")
+                    if isinstance(load, UniformDistributedLoad): wy1, wy2 = load.wy, None
+                    elif isinstance(load, TrapezoidalDistributedLoad): wy1, wy2 = load.wy1, load.wy2
+                    else: 
+                        if load.peak_loc == 'start': wy1, wy2 = load.w_peak, 0.0
+                        else: wy1, wy2 = 0.0, load.w_peak
 
-                self._draw_udl_comb(
-                    ax, x_s / x_scale, x_e / x_scale,
-                    wy1, glyph_h,
-                    st.colour_udl, label_str, wy2=wy2
-                )
+                    if abs(wy1) < 1e-12 and (wy2 is None or abs(wy2) < 1e-12): continue
+                    ref_wy = max(abs(wy1), abs(wy2 or wy1))
+                    w_scale, w_unit = smart_units(ref_wy, 'udl')
+                    label_str = f"{wy1/w_scale:.3g} {w_unit}" if wy2 is None else f"{wy1/w_scale:.3g}–{wy2/w_scale:.3g} {w_unit}"
+                    self._draw_udl_comb(ax, x_s/x_scale, x_e/x_scale, wy1, glyph_h, st.colour_udl, label_str, wy2=wy2)
 
         # ---- Axes, grid, legend ----------------------------------------
-        # Ensure aspect ratio is equal so 1m of beam looks physically identical to 1m of arrow/BC
         ax.set_aspect('equal', adjustable='datalim')
-        # Add padding so large annotations don't get cut off
         ax.margins(y=0.4, x=0.05)
-
         ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
         ax.set_title('Structure & Loading Diagram', fontsize=st.title_fontsize, weight='bold')
         ax.legend(fontsize=st.tick_fontsize, loc='upper right')
         ax.grid(True, alpha=st.grid_alpha)
-
-        # Hide y-axis since there's no meaning to the physical y-span
         ax.get_yaxis().set_visible(False)
-
-        # Draw line representing the ground for visual grounding
-        y_min = ax.get_ylim()[0]
-        ax.hlines(0, coords[:, 0].min() / x_scale, coords[:, 0].max() / x_scale,
-                  colors='gray', linestyles='--', alpha=0.3, zorder=0)
+        ax.hlines(0, coords[:, 0].min() / x_scale, coords[:, 0].max() / x_scale, colors='gray', linestyles='--', alpha=0.3, zorder=0)
 
         plt.tight_layout()
         plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
@@ -530,9 +495,14 @@ class BeamReportGenerator:
                 color=st.colour_primary, markersize=5, zorder=2)
 
         # ---- Load scaling (per-component) including reactions ----------
-        all_fy = [abs(l.fy) for l in self.load_case.loads if isinstance(l, PointLoad)]
-        all_fx = [abs(l.fx) for l in self.load_case.loads if isinstance(l, PointLoad)]
-        all_mz = [abs(l.mz) for l in self.load_case.loads if isinstance(l, PointLoad)]
+        all_fy = []
+        all_fx = []
+        all_mz = []
+        
+        if self.load_case:
+            all_fy = [abs(l.fy) for l in self.load_case.loads if isinstance(l, PointLoad)]
+            all_fx = [abs(l.fx) for l in self.load_case.loads if isinstance(l, PointLoad)]
+            all_mz = [abs(l.mz) for l in self.load_case.loads if isinstance(l, PointLoad)]
         
         for bc in self.bc_set.conditions:
             node_id = bc.node
@@ -557,7 +527,6 @@ class BeamReportGenerator:
             node_id = bc.node
             x_pt = coords[node_id, 0] / x_scale
             y_pt = coords[node_id, 1]
-
             x_key = round(x_pt, 4)
 
             if isinstance(bc, (PinnedSupport, RollerSupport, FixedSupport)):
@@ -568,160 +537,102 @@ class BeamReportGenerator:
                 if abs(fy) > threshold:
                     stack = stack_fy.get(x_key, 0)
                     f_scale, f_unit = smart_units(max_fy, 'force')
-                    label_str = f"$\\mathbf{{R_{{y,{i+1}}}}}$={fy / f_scale:+.3g} {f_unit}"
-                    self._draw_point_force_arrow(
-                        ax, x_pt, y_pt, fy, max_fy,
-                        arrow_scale, reaction_color, label_str, is_reaction=True,
-                        x_max=coords[:, 0].max() / x_scale,
-                        stack_level=stack
-                    )
+                    label_str = rf"$\mathbf{{R_{{y,{i+1}}}}}$={fy / f_scale:+.3g} {f_unit}"
+                    self._draw_point_force_arrow(ax, x_pt, y_pt, fy, max_fy, arrow_scale, reaction_color, label_str, is_reaction=True, x_max=coords[:, 0].max() / x_scale, stack_level=stack)
                     stack_fy[x_key] = stack + 1
                 if abs(fx) > threshold:
                     f_scale, f_unit = smart_units(max_fx, 'force')
-                    label_str = f"$\\mathbf{{R_{{x,{i+1}}}}}$={fx / f_scale:+.3g} {f_unit}"
+                    label_str = rf"$\mathbf{{R_{{x,{i+1}}}}}$={fx / f_scale:+.3g} {f_unit}"
                     h_len = max(abs(fx) / max_fx * arrow_scale, arrow_scale * 0.25)
+                    tip_x = x_pt + h_len / x_scale if fx > 0 else x_pt - h_len / x_scale
+                    ha_val = 'left' if fx > 0 else 'right'
                     
-                    # Point AWAY from node (node is the tail)
-                    if fx > 0:
-                        # Force is positive (right), node is tail, arrow points right
-                        tip_x = x_pt + h_len / x_scale
-                        ha_val = 'left'
-                    else:
-                        # Force is negative (left), node is tail, arrow points left
-                        tip_x = x_pt - h_len / x_scale
-                        ha_val = 'right'
-
-                    # Dynamic text positioning for Rx labels
                     x_label = tip_x
                     if x_pt >= coords[:, 0].max() / x_scale - 1e-4:
-                        ha_val = 'right'
-                        x_label = tip_x - st.annot_offset_fx_horz * arrow_scale
+                        ha_val, x_label = 'right', tip_x - st.annot_offset_fx_horz * arrow_scale
                     elif x_pt <= coords[:, 0].min() / x_scale + 1e-4:
-                        ha_val = 'left'
-                        x_label = tip_x + st.annot_offset_fx_horz * arrow_scale
+                        ha_val, x_label = 'left', tip_x + st.annot_offset_fx_horz * arrow_scale
                         
-                    ax.annotate('', xy=(tip_x, y_pt), xytext=(x_pt, y_pt),
-                                arrowprops=dict(arrowstyle='->', lw=st.reaction_line_width, 
-                                               color=reaction_color, mutation_scale=st.reaction_mutation_scale))
-                    
+                    ax.annotate('', xy=(tip_x, y_pt), xytext=(x_pt, y_pt), arrowprops=dict(arrowstyle='->', lw=st.reaction_line_width, color=reaction_color, mutation_scale=st.reaction_mutation_scale))
                     stack = stack_fx.get(x_key, 0)
                     y_text = y_pt - arrow_scale * (st.annot_offset_fx_vert + stack * 0.4)
-
-                    # Move text to tip to avoid clashing with vertical reaction
-                    ax.text(x_label, y_text, label_str,
-                            color=reaction_color, fontsize=fs_react, ha=ha_val, va='top', weight='bold')
+                    ax.text(x_label, y_text, label_str, color=reaction_color, fontsize=fs_react, ha=ha_val, va='top', weight='bold')
                     stack_fx[x_key] = stack + 1
                     
                 if abs(mz) > threshold:
                     stack = stack_mz.get(x_key, 0)
                     m_scale, m_unit = smart_units(max_mz, 'moment')
-                    label_str = f"$\\mathbf{{M_{{z,{i+1}}}}}$={mz / m_scale:+.3g} {m_unit}"
-                    self._draw_moment_arc(
-                        ax, x_pt, y_pt, mz, moment_radius, reaction_color, label_str, is_reaction=True, stack_level=stack
-                    )
+                    label_str = rf"$\mathbf{{M_{{z,{i+1}}}}}$={mz / m_scale:+.3g} {m_unit}"
+                    self._draw_moment_arc(ax, x_pt, y_pt, mz, moment_radius, reaction_color, label_str, is_reaction=True, stack_level=stack)
                     stack_mz[x_key] = stack + 1
 
         ax.plot([], [], 's', color=reaction_color, label='Reactions', markerfacecolor='#fca5a5')
 
         # ---- Draw Loads ------------------------------------------------
-        for load in self.load_case.loads:
-            if isinstance(load, PointLoad):
-                if load.node is not None:
-                    x_raw, y_pt = coords[load.node, 0], coords[load.node, 1]
-                elif load.x is not None:
-                    x_raw, y_pt = load.x, 0.0
-                else: continue
-                if not (coords[:, 0].min() <= x_raw <= coords[:, 0].max()): continue
-                x_pt = x_raw / x_scale
+        if self.load_case:
+            for load in self.load_case.loads:
+                if isinstance(load, PointLoad):
+                    if load.node is not None: x_raw, y_pt = coords[load.node, 0], coords[load.node, 1]
+                    elif load.x is not None: x_raw, y_pt = load.x, 0.0
+                    else: continue
+                    if not (coords[:, 0].min() <= x_raw <= coords[:, 0].max()): continue
+                    x_pt = x_raw / x_scale
+                    x_key = round(x_pt, 4)
 
-                x_key = round(x_pt, 4)
+                    if abs(load.fy) > 1e-10:
+                        stack = stack_fy.get(x_key, 0)
+                        f_scale, f_unit = smart_units(max_fy, 'force')
+                        label_str = f"{load.fy / f_scale:+.3g} {f_unit}"
+                        self._draw_point_force_arrow(ax, x_pt, y_pt, load.fy, max_fy, arrow_scale, st.colour_load, label_str, is_reaction=False, x_max=coords[:, 0].max() / x_scale, stack_level=stack)
+                        stack_fy[x_key] = stack + 1
+                    if abs(load.fx) > 1e-10:
+                        f_scale, f_unit = smart_units(max_fx, 'force')
+                        label_str = f"{load.fx / f_scale:+.3g} {f_unit} (axial)"
+                        h_len = max(abs(load.fx) / max_fx * arrow_scale, arrow_scale * 0.25)
+                        tip_x = x_pt + h_len / x_scale if load.fx > 0 else x_pt - h_len / x_scale
+                        ha_val = 'left' if load.fx > 0 else 'right'
+                        x_label = tip_x
+                        if x_pt >= coords[:, 0].max() / x_scale - 1e-4:
+                            ha_val, x_label = 'right', tip_x - st.annot_offset_fx_horz * arrow_scale
+                        elif x_pt <= coords[:, 0].min() / x_scale + 1e-4:
+                            ha_val, x_label = 'left', tip_x + st.annot_offset_fx_horz * arrow_scale
+                        ax.annotate('', xy=(tip_x, y_pt), xytext=(x_pt, y_pt), arrowprops=dict(arrowstyle='->', lw=st.load_line_width, color=st.colour_load, mutation_scale=st.load_mutation_scale))
+                        stack = stack_fx.get(x_key, 0)
+                        y_text = y_pt - arrow_scale * (st.annot_offset_fx_vert + stack * 0.4)
+                        ax.text(x_label, y_text, label_str, color=st.colour_load, fontsize=st.annotation_fontsize - 1, ha=ha_val, weight='bold')
+                        stack_fx[x_key] = stack + 1
+                    if abs(load.mz) > 1e-10:
+                        stack = stack_mz.get(x_key, 0)
+                        m_scale, m_unit = smart_units(max_mz, 'moment')
+                        label_str = f"{load.mz / m_scale:+.3g} {m_unit}"
+                        self._draw_moment_arc(ax, x_pt, y_pt, load.mz, moment_radius, st.colour_moment_load, label_str, is_reaction=False, stack_level=stack)
+                        stack_mz[x_key] = stack + 1
 
-                if abs(load.fy) > 1e-10:
-                    stack = stack_fy.get(x_key, 0)
-                    f_scale, f_unit = smart_units(max_fy, 'force')
-                    label_str = f"{load.fy / f_scale:+.3g} {f_unit}"
-                    self._draw_point_force_arrow(ax, x_pt, y_pt, load.fy, max_fy, arrow_scale, st.colour_load, label_str, is_reaction=False, x_max=coords[:, 0].max() / x_scale, stack_level=stack)
-                    stack_fy[x_key] = stack + 1
-                if abs(load.fx) > 1e-10:
-                    f_scale, f_unit = smart_units(max_fx, 'force')
-                    label_str = f"{load.fx / f_scale:+.3g} {f_unit} (axial)"
-                    h_len = max(abs(load.fx) / max_fx * arrow_scale, arrow_scale * 0.25)
-                    # Applied load: Node is TAIL
-                    if load.fx > 0:
-                        tip_x = x_pt + h_len / x_scale
-                        ha_val = 'left'
-                    else:
-                        tip_x = x_pt - h_len / x_scale
-                        ha_val = 'right'
+                elif isinstance(load, (UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad)):
+                    if hasattr(load, 'element') and load.element is not None:
+                        elements = ([load.element] if isinstance(load.element, int) else load.element)
+                        x_s, x_e = coords[self.mesh.elements[elements[0]].node1, 0], coords[self.mesh.elements[elements[-1]].node2, 0]
+                    elif hasattr(load, 'x_start') and load.x_start is not None: x_s, x_e = load.x_start, load.x_end
+                    else: continue
+                    if isinstance(load, UniformDistributedLoad): wy1, wy2 = load.wy, None
+                    elif isinstance(load, TrapezoidalDistributedLoad): wy1, wy2 = load.wy1, load.wy2
+                    else: wy1, wy2 = (load.w_peak, 0.0) if load.peak_loc == 'start' else (0.0, load.w_peak)
+                    w_scale, w_unit = smart_units(max(abs(wy1), abs(wy2 or wy1)), 'udl')
+                    label_str = f"{wy1/w_scale:.3g} {w_unit}" if wy2 is None else f"{wy1/w_scale:.3g}–{wy2/w_scale:.3g} {w_unit}"
+                    self._draw_udl_comb(ax, x_s/x_scale, x_e/x_scale, wy1, glyph_h, st.colour_udl, label_str, wy2=wy2)
 
-                    # Dynamic text positioning for Fx labels in FBD
-                    x_label = tip_x
-                    if x_pt >= coords[:, 0].max() / x_scale - 1e-4:
-                        ha_val = 'right'
-                        x_label = tip_x - st.annot_offset_fx_horz * arrow_scale
-                    elif x_pt <= coords[:, 0].min() / x_scale + 1e-4:
-                        ha_val = 'left'
-                        x_label = tip_x + st.annot_offset_fx_horz * arrow_scale
-
-                    ax.annotate('', xy=(tip_x, y_pt), xytext=(x_pt, y_pt),
-                                arrowprops=dict(arrowstyle='->', lw=st.load_line_width, 
-                                               color=st.colour_load, mutation_scale=st.load_mutation_scale))
-                    
-                    stack = stack_fx.get(x_key, 0)
-                    y_text = y_pt - arrow_scale * (st.annot_offset_fx_vert + stack * 0.4)
-
-                    ax.text(x_label, y_text, label_str,
-                            color=st.colour_load, fontsize=st.annotation_fontsize - 1, ha=ha_val, weight='bold')
-                    stack_fx[x_key] = stack + 1
-                    
-                if abs(load.mz) > 1e-10:
-                    stack = stack_mz.get(x_key, 0)
-                    m_scale, m_unit = smart_units(max_mz, 'moment')
-                    label_str = f"{load.mz / m_scale:+.3g} {m_unit}"
-                    self._draw_moment_arc(ax, x_pt, y_pt, load.mz, moment_radius, st.colour_moment_load, label_str, is_reaction=False, stack_level=stack)
-                    stack_mz[x_key] = stack + 1
-
-            elif isinstance(load, (UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad)):
-                if hasattr(load, 'element') and load.element is not None:
-                    elements = ([load.element] if isinstance(load.element, int) else load.element)
-                    x_s = coords[self.mesh.elements[elements[0]].node1, 0]
-                    x_e = coords[self.mesh.elements[elements[-1]].node2, 0]
-                elif hasattr(load, 'x_start') and load.x_start is not None:
-                    x_s, x_e = load.x_start, load.x_end
-                else: continue
-
-                if isinstance(load, UniformDistributedLoad): wy1, wy2 = load.wy, None
-                elif isinstance(load, TrapezoidalDistributedLoad): wy1, wy2 = load.wy1, load.wy2
-                else: 
-                    if load.peak_loc == 'start': wy1, wy2 = load.w_peak, 0.0
-                    else: wy1, wy2 = 0.0, load.w_peak
-
-                if abs(wy1) < 1e-12 and (wy2 is None or abs(wy2) < 1e-12): continue
-
-                ref_wy = max(abs(wy1), abs(wy2 or wy1))
-                w_scale, w_unit = smart_units(ref_wy, 'udl')
-                if wy2 is None: label_str = f"{wy1 / w_scale:.3g} {w_unit}"
-                else: label_str = f"{wy1 / w_scale:.3g}–{wy2 / w_scale:.3g} {w_unit}"
-
-                self._draw_udl_comb(ax, x_s / x_scale, x_e / x_scale, wy1, glyph_h, st.colour_udl, label_str, wy2=wy2)
-
-        ax.plot([], [], 's', color=st.colour_load, label='Applied Loads', markerfacecolor='#e0e7ff')
-
-        # ---- Axes, grid, legend ----------------------------------------
         ax.set_aspect('equal', adjustable='datalim')
         ax.margins(y=0.4, x=0.05)
         ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
-        ax.set_title('Free Body Diagram (Reactions & Loads)', fontsize=st.title_fontsize, weight='bold')
+        ax.set_title('Reaction Force Diagram', fontsize=st.title_fontsize, weight='bold')
         ax.legend(fontsize=st.tick_fontsize, loc='upper right')
         ax.grid(True, alpha=st.grid_alpha)
         ax.get_yaxis().set_visible(False)
-        ax.hlines(0, coords[:, 0].min() / x_scale, coords[:, 0].max() / x_scale,
-                  colors='gray', linestyles='--', alpha=0.3, zorder=0)
-
+        ax.hlines(0, coords[:, 0].min() / x_scale, coords[:, 0].max() / x_scale, colors='gray', linestyles='--', alpha=0.3, zorder=0)
         plt.tight_layout()
         plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
         plt.close()
-    
+
     def _plot_udl_segment(self, ax, x1, x2, wy, label=False):
         """Helper to plot a UDL segment with arrows."""
         num_arrows = 5
@@ -972,13 +883,6 @@ class BeamReportGenerator:
         """
         Generate complete markdown report. Images are saved to a
         ``<report_name>_images/`` folder alongside the report file.
-        
-        Parameters
-        ----------
-        output_path : str
-            Path for the markdown report file (e.g., 'report.md')
-        deformation_scale : float or 'auto'
-            Scale factor for deformation visualization
         """
         output_path = Path(output_path)
         output_dir = output_path.parent
@@ -988,10 +892,18 @@ class BeamReportGenerator:
         images_dir.mkdir(parents=True, exist_ok=True)
         images_rel_path = f"{report_name}_images"
         
+        # Branch based on analysis type
+        if self.load_case is not None:
+            return self._generate_static_report(output_path, images_dir, images_rel_path, deformation_scale)
+        elif self.frequencies is not None:
+            return self._generate_modal_report(output_path, images_dir, images_rel_path)
+        else:
+            raise ValueError("No analysis results found to generate report")
+
+    def _generate_static_report(self, output_path, images_dir, images_rel_path, deformation_scale):
         # Stress and image generation pipeline
         self.calculate_internal_forces()
         
-        # [Fix]: Compute stresses once and cache it
         if self.stresses is None:
             self.stresses = self.solver.calculate_stresses(num_x_points=100, num_y_points=20, num_z_points=10)
 
@@ -1009,7 +921,6 @@ class BeamReportGenerator:
         max_deflection_node = v_displacements.argmin()
         max_deflection_pos = self.mesh.nodes[max_deflection_node].x
         
-        # Determine actual scale used for deformation plot label
         if deformation_scale == 'auto':
             from .visualizer import BeamVisualizer
             _s = BeamVisualizer(self.mesh)._auto_scale_factor(self.displacements)
@@ -1044,7 +955,7 @@ class BeamReportGenerator:
             mos_text = "N/A"
             status_color = "⚪"
 
-        # Equilibrium Check (Fx, Fy, Mz)
+        # Equilibrium Check
         total_fy_reaction = 0.0
         total_fx_reaction = 0.0
         total_mz_res = 0.0
@@ -1084,12 +995,6 @@ class BeamReportGenerator:
                         L_el = abs(load.x_end - load.x_start)
                         total_fy_load += wy * L_el
                         total_mz_res += (wy * L_el) * ((load.x_start + load.x_end) / 2)
-            elif hasattr(load, 'wy1') and hasattr(load, 'wy2'): # Trapezoidal
-                wy_avg = (load.wy1 + load.wy2) / 2
-                if hasattr(load, 'x_start') and load.x_start is not None:
-                    L_el = abs(load.x_end - load.x_start)
-                    total_fy_load += wy_avg * L_el
-                    total_mz_res += (wy_avg * L_el) * ((load.x_start + load.x_end) / 2)
 
         residual_fx = abs(total_fx_reaction + total_fx_load)
         residual_fy = abs(total_fy_reaction + total_fy_load)
@@ -1101,10 +1006,6 @@ class BeamReportGenerator:
         num_pt_loads = len([l for l in self.load_case.loads if isinstance(l, PointLoad)])
         num_dist_loads = len([l for l in self.load_case.loads if isinstance(l, UniformDistributedLoad)])
 
-        max_shear = np.max(np.abs(self.shear_forces))
-        max_moment = np.max(np.abs(self.bending_moments))
-
-        # Load cases summary formatting
         load_details_list = []
         for i, load in enumerate(self.load_case.loads, 1):
             if isinstance(load, PointLoad):
@@ -1123,13 +1024,10 @@ class BeamReportGenerator:
             elif hasattr(load, 'w_peak'):
                 span_str = f"Elements {load.element}" if load.element is not None else f"x = {load.x_start} to {load.x_end} mm"
                 load_details_list.append(f"{i}. **Triangular Load** on {span_str}: wy_peak={load.w_peak} N/mm at {load.peak_loc}")
-            else:
-                load_details_list.append(f"{i}. **{load.__class__.__name__}**")
         
-        load_details_str = "\\n".join(load_details_list) if load_details_list else "None"
+        load_details_str = "\n".join(load_details_list) if load_details_list else "None"
 
-        # Generate markdown content
-        md_content = f"""# Beam FEA Analysis Report
+        md_content = rf"""# Beam FEA Analysis Report (Static)
 
 **Generated:** {datetime.now().strftime('%d-%m-%Y %H:%M:%S')}
 
@@ -1196,9 +1094,9 @@ class BeamReportGenerator:
 ![Reaction Diagram]({images_rel_path}/reaction_diagram.png)
 
 *Equilibrium Check*: 
-- $\\Sigma F_x$ Residual = {residual_fx:.2e} N
-- $\\Sigma F_y$ Residual = {residual_fy:.2e} N
-- $\\Sigma M_z$ Residual (about x=0) = {residual_mz:.2e} N·mm
+- $\Sigma F_x$ Residual = {residual_fx:.2e} N
+- $\Sigma F_y$ Residual = {residual_fy:.2e} N
+- $\Sigma M_z$ Residual (about x=0) = {residual_mz:.2e} N·mm
 
 ### Displacements
 
@@ -1229,11 +1127,90 @@ The following plot shows the deformed shape of the beam (exaggerated by {_s:.0f}
 
 *Report generated by Beam FEA Analysis Tool*
 """
-        
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(md_content)
-        
         return str(output_path)
+
+    def _generate_modal_report(self, output_path, images_dir, images_rel_path):
+        # Generate Structure Plot
+        self.plot_structure_diagram(str(images_dir / "structure_diagram.png"))
+        
+        # Generate Mode Shape Plots (Top 3)
+        from .visualizer import BeamVisualizer
+        viz = BeamVisualizer(self.mesh)
+        mode_shape_plots = []
+        for i in range(min(3, len(self.frequencies))):
+            f_val = self.frequencies[i]
+            img_name = f"mode_{i+1}_shape.png"
+            viz.plot_mode_shape(self.mode_shapes[:, i], i+1, f_val, output_path=str(images_dir / img_name))
+            mode_shape_plots.append((i+1, f_val, img_name))
+
+        # Frequency Table
+        freq_rows = []
+        for i, f in enumerate(self.frequencies):
+            freq_rows.append(f"| {i+1} | {f:8.2f} | {f*60:12.0f} |")
+        freq_table = "\n".join(freq_rows)
+
+        coords = self.mesh.get_node_coords()
+        beam_length = coords[:, 0].max() - coords[:, 0].min()
+
+        md_content = f"""# Beam FEA Analysis Report (Modal)
+
+**Generated:** {datetime.now().strftime('%d-%m-%Y %H:%M:%S')}
+
+---
+
+## 1. Executive Summary
+
+- **Analysis Overview**: Modal analysis of a {beam_length:,.0f} mm beam.
+- **Fundamental Frequency**: {self.frequencies[0]:.2f} Hz ({self.frequencies[0]*60:.0f} RPM).
+- **Number of Modes Calculated**: {len(self.frequencies)}
+
+---
+
+## 2. Model Setup & Inputs
+
+### Structure Diagram
+
+![Structure Diagram]({images_rel_path}/structure_diagram.png)
+
+### Cross-Section Properties
+
+| Property | Value | Units |
+|----------|-------|-------|
+| Area (A) | {self.section.A:,.2f} | mm² |
+| Moment of Inertia (Iy) | {self.section.Iy:.2e} | mm⁴ |
+
+### Material Properties
+
+| Property | Value | Units |
+|----------|-------|-------|
+| Material | {self.material.name} | - |
+| Young's Modulus (E) | {self.material.E:,.0f} | MPa |
+| Density (ρ) | {self.material.rho:.2e} | kg/mm³ |
+
+---
+
+## 3. Modal Results
+
+### Natural Frequencies
+
+| Mode | Frequency (Hz) | Frequency (RPM) |
+|------|----------------|-----------------|
+{freq_table}
+
+### Mode Shapes (First 3)
+
+"""
+        for mode_idx, freq, img in mode_shape_plots:
+            md_content += f"#### Mode {mode_idx} ({freq:.2f} Hz)\n\n![Mode {mode_idx}]({images_rel_path}/{img})\n\n"
+
+        md_content += "\n---\n\n*Report generated by Beam FEA Analysis Tool*\n"
+
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(md_content)
+        return str(output_path)
+
 
 
 if __name__ == "__main__":

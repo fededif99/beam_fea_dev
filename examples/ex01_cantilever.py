@@ -22,21 +22,19 @@ This example demonstrates:
 import os
 
 from beam_fea import (
-    BeamSolver, MeshGenerator, Material, 
-    LoadCase, BoundaryConditionSet
+    BeamSolver, MeshGenerator, get_material, 
+    LoadCase, BoundaryConditionSet, i_beam
 )
-from beam_fea.cross_sections import i_beam
 
 def run_example():
-    print("Running Example 1: Cantilever Beam Verification")
-    print("-----------------------------------------------")
+    print(f"[*] Running {os.path.basename(__file__)}...")
     
     # 1. Define Parameters
     L = 2000.0  # mm (2 m)
     P = -10000.0  # N (10 kN, downward)
     
     # Material: Aluminum 7075-T6 (aerospace grade)
-    aluminum = Material("Aluminum 7075-T6", E=71700, nu=0.33, rho=2.81e-6, yield_strength=503)
+    aluminum = get_material('aluminum_7075')
     
     # Section: I-Beam (wing spar mockup)
     # IPE 200: h=200mm, b=100mm, tw=5.6mm, tf=8.5mm
@@ -46,7 +44,6 @@ def run_example():
         web_thickness=5.6,
         flange_thickness=8.5
     )
-    print(f"Section Properties:\n  I_y = {props.Iy:.2f} mm^4\n  Area = {props.A:.2f} mm^2")
     
     # 2. Create Model
     # 20 elements provides good accuracy
@@ -64,10 +61,10 @@ def run_example():
     lc.point_load(node=20, fy=P)
     
     # 4. Solve
-    print("Solving...")
+    print("  Solving...")
     solver.solve_static(lc, bc)
     
-    # 5. Verification
+    # 5. Verification (Calculation only, results in report)
     disp_fem, node_fem = solver.get_max_deflection()
     
     # Analytical solution
@@ -77,26 +74,14 @@ def run_example():
     
     error = abs((disp_fem - disp_analytical) / disp_analytical) * 100
     
-    print(f"Max Deflection (FEA): {disp_fem:.4f} mm at node {node_fem}")
-    print(f"Max Deflection (Analytical): {disp_analytical:.4f} mm")
-    print(f"Error: {error:.4f}%")
-    
     # 6. Extract 3D Stress Field
-    print("\nCalculating 3D Stress Field...")
-    stresses = solver.calculate_stresses(num_x_points=21, num_y_points=20, num_z_points=10)
-    import numpy as np
-    max_bend = np.max(np.abs(stresses['bending']))
-    max_shear = np.max(np.abs(stresses['shear']))
-    max_vm = np.max(stresses['von_mises'])
-    print(f"  Maximum Bending Stress: {max_bend:.2f} MPa")
-    print(f"  Maximum Shear Stress:   {max_shear:.2f} MPa")
-    print(f"  Peak von Mises Stress:  {max_vm:.2f} MPa")
+    solver.calculate_stresses(num_x_points=21, num_y_points=20, num_z_points=10)
     
     # 7. Generate Report
     base_dir = os.path.dirname(os.path.abspath(__file__))
     report_path = os.path.join(base_dir, "ex01_report.md")
     solver.generate_report(report_path)
-    print(f"Report generated: {report_path}")
+    print(f"[SUCCESS] Report generated: {report_path}")
     
     return error
 

@@ -15,13 +15,12 @@ Workflow:
 
 from beam_fea import (
     BeamSolver, MeshGenerator, get_material, 
-    LoadCase, BoundaryConditionSet
+    LoadCase, BoundaryConditionSet, circular
 )
-from beam_fea.cross_sections import circular
 
 def main():
-    # 1. MATERIAL & SECTION
-    material = get_material('aluminium_7075')
+    # Material (Aluminum from database)
+    material = get_material('aluminum_6061')
     
     # Defining a circular section: diameter=50mm
     section = circular(diameter=50.0)
@@ -30,7 +29,8 @@ def main():
     # Create a 1000mm beam with 50 elements (Higher density for better modal accuracy)
     length = 1000.0
     mesh = MeshGenerator.beam_mesh_1d(length, num_elements=50)
-    print(f"[*] Mesh created: {mesh.num_nodes} nodes, {mesh.num_elements} elements")
+    import os
+    print(f"[*] Running {os.path.basename(__file__)}...")
 
     # 3. BOUNDARY CONDITIONS
     # Define a simply supported beam (Pinned at both ends)
@@ -39,24 +39,19 @@ def main():
     bc.pinned_support(node=mesh.num_nodes - 1)
 
     # 4. SOLVE MODAL
-    # Initialize solver and find the first 5 natural frequencies
-    # Note: Modal analysis does NOT require a LoadCase.
+    print("  Solving Modal Analysis...")
     solver = BeamSolver(mesh, material, section)
     num_modes = 5
     frequencies, mode_shapes = solver.solve_modal(bc, num_modes=num_modes)
     
     # 5. RESULTS
-    print(f"[SUCCESS] Modal Analysis Complete.")
-    print(f"\nFirst {num_modes} Natural Frequencies:")
-    print("-" * 30)
-    for i, f in enumerate(frequencies, 1):
-        print(f"  Mode {i}: {f:8.2f} Hz")
-    print("-" * 30)
-
-    # 6. (Optional) VISUALIZATION
-    # Note: Report generation for modal analysis is primarily numeric, 
-    # but mode shapes can be plotted using the visualizer.
-    print("[TIP] Use 'solver.visualize('modal', mode=1)' in an interactive environment to see mode shapes.")
+    print(f"[SUCCESS] Calculated {len(frequencies)} natural frequencies.")
+    
+    # 6. REPORT GENERATION
+    import os
+    report_path = os.path.join(os.getcwd(), "template_modal_report.md")
+    solver.generate_report(report_path)
+    print(f"[SUCCESS] Report generated: {report_path}")
 
 if __name__ == "__main__":
     main()

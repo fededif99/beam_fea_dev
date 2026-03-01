@@ -59,6 +59,10 @@ class BeamSolver:
         self._cached_stresses = None
         self._cached_stresses_params = None
         
+        # Modal Results
+        self.last_frequencies = None
+        self.last_mode_shapes = None
+        
         # Analysis objects
         self.static_solver = StaticAnalysis(use_sparse=True)
         self.modal_solver = ModalAnalysis()
@@ -267,6 +271,10 @@ class BeamSolver:
         frequencies, mode_shapes = self.modal_solver.solve(
             self.K_global, self.M_global, num_modes, bc_set
         )
+    
+        self.last_bc_set = bc_set
+        self.last_frequencies = frequencies
+        self.last_mode_shapes = mode_shapes
 
         return frequencies, mode_shapes
     
@@ -556,8 +564,8 @@ class BeamSolver:
         deformation_scale : float or 'auto', optional
             Scale factor for deformed shape plots. Default is 'auto'.
         """
-        if self.displacements is None or self.last_load_case is None:
-            raise ValueError("Must run solve_static() before generating a report")
+        if self.displacements is None and self.last_frequencies is None:
+            raise ValueError("Must run solve_static() or solve_modal() before generating a report")
             
         from .report_generator import BeamReportGenerator
         
@@ -571,6 +579,11 @@ class BeamSolver:
             displacements=self.displacements,
             reactions=self.reactions
         )
+        
+        # Add modal results if available
+        if self.last_frequencies is not None:
+            report_gen.frequencies = self.last_frequencies
+            report_gen.mode_shapes = self.last_mode_shapes
         
         return report_gen.generate_report(output_path, deformation_scale)
     

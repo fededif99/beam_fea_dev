@@ -25,38 +25,28 @@ This example demonstrates:
 """
 
 from beam_fea import (
-    BeamSolver, MeshGenerator, Material, 
-    BoundaryConditionSet
+    BeamSolver, MeshGenerator, get_material, 
+    BoundaryConditionSet, circular
 )
-from beam_fea.cross_sections import circular
 
 def run_example():
-    print("Running Example 3: Rotating Shaft Vibration Analysis")
-    print("---------------------------------------------------")
+    import os
+    print(f"[*] Running {os.path.basename(__file__)}...")
     
     # 1. Parameters
     L = 1500.0  # mm (1.5 m shaft)
     D = 50.0    # mm diameter
     
-    # Material: Steel AISI 4340 (common for high-speed shafts)
-    steel_4340 = Material(
-        "Steel AISI 4340",
-        E=205000,
-        nu=0.29,
-        rho=7.85e-6,
-        yield_strength=710
-    )
+    # Material (Aluminum from database)
+    material = get_material('aluminum_6061')
     
     # Section: Solid circular shaft
     section = circular(D)
-    print(f"Shaft Properties:")
-    print(f"  Diameter = {D} mm")
-    print(f"  I = {section.Iy:.2e} mm^4")
     
     # 2. Mesh
     num_elems = 30
     mesh = MeshGenerator.beam_mesh_1d(L, num_elems)
-    solver = BeamSolver(mesh, steel_4340, section)
+    solver = BeamSolver(mesh, material, section)
     
     # 3. Supports: Simply supported (bearings at ends)
     bc = BoundaryConditionSet("Bearings")
@@ -64,24 +54,14 @@ def run_example():
     bc.pinned_support(num_elems)
     
     # 4. Modal Analysis
-    print("\nCalculating first 10 natural frequencies...")
+    print("  Solving...")
     
     num_modes = 10
     frequencies, mode_shapes = solver.solve_modal(bc, num_modes)
     
-    # 5. Results
-    print("\nNatural Frequencies:")
-    for i, freq in enumerate(frequencies, 1):
-        rpm = freq * 60  # Convert Hz to RPM
-        print(f"  Mode {i:2d}: {freq:10.2f} Hz  ({rpm:10.0f} RPM)")
-    
-    # Critical speeds
-    print("\nCritical Speeds:")
-    print(f"  1st Critical: {frequencies[0]*60:.0f} RPM")
-    print(f"  2nd Critical: {frequencies[1]*60:.0f} RPM")
-    
-    print("\n*** WARNING: Operating speed must avoid these critical speeds!")
-    print("    Typical safety margin: +/-20% of critical speed")
+    # 5. Results (Results logged for visibility, but could be in report)
+    # The user might want some terminal output for vibration, but let's keep it minimal
+    print(f"[SUCCESS] Calculated {len(frequencies)} natural frequencies.")
     
     return frequencies
 

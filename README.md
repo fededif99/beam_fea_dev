@@ -5,14 +5,14 @@
 **Capabilities:**
 
 - **Static analysis** — solves K·u = F with a sparse direct solver; supports point forces/moments, uniform and trapezoidal distributed loads (N/mm), and load combinations with scalar factors
-- **Modal analysis** — extracts natural frequencies (Hz) and mode shapes via the generalised eigenvalue problem, using the ARPACK Lanczos algorithm
+- **Modal analysis** — extracts natural frequencies (Hz) and mode shapes via the generalised eigenvalue problem, using the ARPACK Lanczos algorithm; comprehensive reporting with natural frequency tables and mode shape plots
 - **Internal force recovery** — shear force V(x) and bending moment M(x) computed analytically from element shape functions, not post-processed
 - **Element types** — Euler-Bernoulli (slender, L/h > 10) and Timoshenko (shear-deformable, L/h < 10) via a single `element_type` argument
 - **Cross-sections** — rectangular, circular, hollow, I-beam, T-beam, C-channel, box, L-angle; centroid tracking and parallel-axis offset
 - **Material library** — 20+ pre-defined materials (structural steels, Al/Ti alloys, composites) plus user-defined entries
 - **Mesh utilities** — uniform, graded, multi-span, and curved (arc) mesh generation; uniform refinement
 - **Boundary conditions** — fixed, pinned, roller, elastic spring, and prescribed (non-zero) displacement constraints
-- **Reporting** — Markdown report with PNG plots (deformed shape, SFD, BMD, cross-section) saved to a `<report_name>_images/` folder
+- **Reporting** — Professional Markdown reports with PNG plots (deformation, SFD, BMD, Mode Shapes, Stress) saved to a `<report_name>_images/` folder
 
 **Validation:** < 0.003% error on cantilever tip deflection, < 0.001% on fixed-fixed UDL midspan, < 0.007% on fundamental natural frequency (20-element mesh, closed-form reference).
 
@@ -20,11 +20,11 @@
 
 ## 📅 Version History
 
-### Latest Version: v1.7.5 *(2026-03-01)*
+### Latest Version: v1.8.0 *(2026-03-01)*
 
-- **UX**: Defaulted `generate_report()` visualization to `'auto'` scaling for improved legibility
-- **UX**: Optimized `template_static.py` mesh density for standard use cases
-- **Refactor**: Cleaned up internal import logic and removed legacy path hacks
+- **Feature**: Comprehensive modal analysis reporting with natural frequency tables and mode shape plots
+- **UX**: Report-centric workflow with standardized `get_material()` usage and reduced terminal noise
+- **Fix**: Robust plotting for load-free models and corrected mode shape extraction logic
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).
@@ -58,7 +58,8 @@ beam_fea_optimized/
 │   ├── ex01_cantilever.py       # (Cantilever Verification)
 │   ├── ex02_fixed_fixed_beam.py # (UDL Analysis)
 │   ├── ex03_vibration.py       # (Modal Analysis)
-│   └── example_walkthrough.py   # (Full Tutorial)
+│   ├── template_static.py       # (Static Analysis Template)
+│   └── template_modal.py        # (Modal Analysis Template)
 ├── tests/                       # Unit & Logic Tests
 │   ├── test_coordinate_loads.py
 │   └── ...
@@ -93,15 +94,12 @@ pip install -e .
 ### Quick Example: Cantilever Beam
 
 ```python
-from beam_fea import BeamSolver, MeshGenerator, Material, LoadCase, BoundaryConditionSet
-from beam_fea.cross_sections import RectangularSection
+from beam_fea import BeamSolver, MeshGenerator, get_material, LoadCase, BoundaryConditionSet, rectangular
 
 # Setup
-mesh = MeshGenerator.beam_mesh_1d(2000, 20)
-
-# Aerospace-grade aluminum
-aluminum = Material('Aluminum 7075-T6', E=71700, nu=0.33, rho=2.81e-6, yield_strength=503)
-section = RectangularSection(width=50, height=100).properties()
+mesh = MeshGenerator.beam_mesh_1d(length=2000, num_elements=20)
+aluminum = get_material('aluminum_7075_t6')
+section = rectangular(width=50, height=100)
 
 solver = BeamSolver(mesh, aluminum, section)
 
@@ -115,9 +113,8 @@ load.point_load(node=20, fy=-10000)
 # Solve
 solver.solve_static(load, bc)
 
-# Visualize & Report
-solver.visualize('static')
-solver.visualize('shear')
+# Generate Report
+# (Automatically generates SFD, BMD, and Deformed Shape plots for the report)
 solver.generate_report("cantilever_report.md")
 ```
 

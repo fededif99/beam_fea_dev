@@ -125,7 +125,8 @@ class BeamVisualizer:
     
     def plot_mode_shape(self, mode_shape: np.ndarray, mode_num: int,
                         frequency: float, scale: float = 1.0, 
-                        figsize: Optional[Tuple] = None, dpi: int = 150):
+                        figsize: Optional[Tuple] = None, dpi: int = 150,
+                        output_path: Optional[str] = None):
         """Plot a mode shape."""
         st = DEFAULT_STYLE
         fs = figsize or st.figsize_wide
@@ -150,7 +151,12 @@ class BeamVisualizer:
         ax.grid(True, alpha=st.grid_alpha)
         
         plt.tight_layout()
-        plt.show()
+        
+        if output_path:
+            plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
+            plt.close()
+        else:
+            plt.show()
     
     def plot_bending_moment(self, moments: np.ndarray, positions: np.ndarray,
                            output_path: Optional[str] = None, figsize: Optional[Tuple] = None, 

@@ -2,6 +2,18 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v1.8.0] - 2026-03-01
+
+- **Feature**: Added comprehensive modal analysis reporting to `BeamReportGenerator`, including natural frequency tables and mode shape visualizations
+- **Feature**: `BeamSolver` now persists modal results (`frequencies`, `mode_shapes`) and last-used boundary conditions to enable high-quality documented reporting
+- **UX**: All examples and templates now use `get_material()` for standardized and physically consistent material retrieval from the database
+- **UX**: Enabled automated report generation in `template_modal.py` to match the static analysis experience
+- **Refactor**: Cleaned up verbose terminal output across all example scripts, transitioning to a report-centric user experience
+- **Fix**: Resolved `plot_structure_diagram` crash when running modal analysis without a defined load case
+- **Fix**: Updated `BeamVisualizer.plot_mode_shape` to support file output for automated reporting
+- **Fix**: Corrected mode shape vector extraction logic (column-wise eigenvectors) to prevent displacement shape mismatch errors
+- **Fix**: Resolved CI dependency conflict by pre-installing core scientific libraries before package installation
+
 ## [v1.7.5] - 2026-03-01
 
 - **UX**: Changed default `deformation_scale` in `BeamSolver.generate_report` to `'auto'`, ensuring report plots are always legible
