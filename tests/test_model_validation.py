@@ -1,0 +1,81 @@
+import pytest
+import warnings
+from beam_fea import BeamSolver, MeshGenerator, Material, LoadCase, BoundaryConditionSet
+from beam_fea.cross_sections import RectangularSection
+
+def test_missing_mesh():
+    material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
+    section = RectangularSection(10, 10).properties()
+    with pytest.raises(ValueError, match="No mesh assigned"):
+        solver = BeamSolver(None, material, section)
+        solver.solve_static(LoadCase(), BoundaryConditionSet())
+
+def test_empty_mesh():
+    from beam_fea.mesh import Mesh
+    material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
+    section = RectangularSection(10, 10).properties()
+    mesh = Mesh()
+    solver = BeamSolver(mesh, material, section)
+    with pytest.raises(ValueError, match="Mesh has no nodes"):
+        solver.solve_static(LoadCase(), BoundaryConditionSet())
+
+def test_missing_properties():
+    mesh = MeshGenerator.beam_mesh_1d(100, 1)
+    material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
+    section = RectangularSection(10, 10).properties()
+    
+    solver = BeamSolver(mesh, None, section)
+    with pytest.raises(ValueError, match="No material assigned"):
+        solver.solve_static(LoadCase(), BoundaryConditionSet())
+        
+    solver = BeamSolver(mesh, material, None)
+    with pytest.raises(ValueError, match="No cross-section properties assigned"):
+        solver.solve_static(LoadCase(), BoundaryConditionSet())
+
+def test_no_bc():
+    mesh = MeshGenerator.beam_mesh_1d(100, 1)
+    material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
+    section = RectangularSection(10, 10).properties()
+    solver = BeamSolver(mesh, material, section)
+    
+    with pytest.raises(ValueError, match="No boundary conditions or spring supports defined"):
+        solver.solve_static(LoadCase(), BoundaryConditionSet())
+
+def test_instability_y():
+    mesh = MeshGenerator.beam_mesh_1d(100, 1)
+    material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
+    section = RectangularSection(10, 10).properties()
+    solver = BeamSolver(mesh, material, section)
+    
+    bc = BoundaryConditionSet()
+    bc.roller_support(0, direction='x') # No Y constraint
+    
+    with pytest.raises(ValueError, match="unstable in the transverse direction"):
+        solver.solve_static(LoadCase(), bc)
+
+def test_slenderness_warning():
+    # Stout beam: L=50, H=20 -> L/H = 2.5
+    mesh = MeshGenerator.beam_mesh_1d(50, 5)
+    material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
+    section = RectangularSection(10, 20).properties()
+    
+    # Use Euler for a stout beam -> should warn
+    solver = BeamSolver(mesh, material, section, element_type='euler')
+    
+    bc = BoundaryConditionSet()
+    bc.fixed_support(0)
+    
+    with pytest.warns(UserWarning, match="Slenderness ratio.*is low"):
+        solver.solve_static(LoadCase(), bc)
+
+def test_axial_stability_warning():
+    mesh = MeshGenerator.beam_mesh_1d(100, 1)
+    material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
+    section = RectangularSection(10, 10).properties()
+    solver = BeamSolver(mesh, material, section)
+    
+    bc = BoundaryConditionSet()
+    bc.roller_support(0, direction='y') # Only Y constraint
+    
+    with pytest.warns(UserWarning, match="No X-direction constraints found"):
+        solver.solve_static(LoadCase(), bc)

@@ -5,6 +5,7 @@ Main FEA solver that coordinates all modules.
 """
 
 import numpy as np
+import warnings
 from .mesh import Mesh, MeshGenerator
 from .materials import Material, get_material
 from .cross_sections import CrossSection, SectionProperties
@@ -66,6 +67,66 @@ class BeamSolver:
         # State for reporting
         self.last_load_case = None
         self.last_bc_set = None
+    
+    def _validate_model(self, bc_set: BoundaryConditionSet = None):
+        """
+        Validate the model state before analysis to catch common errors.
+        """
+        # 1. Mesh Validation
+        if self.mesh is None:
+            raise ValueError("No mesh assigned to BeamSolver.")
+        if self.mesh.num_nodes == 0:
+            raise ValueError("Mesh has no nodes.")
+        if self.mesh.num_elements == 0:
+            raise ValueError("Mesh has no elements.")
+            
+        # 2. Property Validation
+        if self.material is None:
+            raise ValueError("No material assigned to BeamSolver.")
+        if self.section is None:
+            raise ValueError("No cross-section properties assigned to BeamSolver.")
+            
+        # 3. Boundary Condition Validation
+        if bc_set is None:
+            raise ValueError("No boundary conditions mapping (bc_set) provided for analysis.")
+            
+        constrained_dofs = bc_set.get_all_constrained_dofs()
+        if not constrained_dofs and not bc_set.spring_supports:
+            raise ValueError("No boundary conditions or spring supports defined. The structure is unstable.")
+
+        # Check for basic rigid body stability
+        has_x_const = any(dof % 3 == 0 for dof in constrained_dofs)
+        has_y_const = any(dof % 3 == 1 for dof in constrained_dofs)
+        
+        if not has_x_const:
+            warnings.warn("No X-direction constraints found. The beam may be free to slide axially.")
+        if not has_y_const:
+            raise ValueError("No Y-direction constraints found. The beam is unstable in the transverse direction.")
+
+        # 4. Slenderness Ratio Check (L/h)
+        coords = self.mesh.get_node_coords()
+        if len(coords) > 0:
+            L_total = np.max(coords[:, 0]) - np.min(coords[:, 0])
+            
+            # Section height (depth)
+            if hasattr(self.section, 'y_top') and self.section.y_top is not None:
+                h = self.section.y_top - self.section.y_bottom
+            else:
+                # Fallback for simple properties
+                h = np.sqrt(self.section.A) 
+                
+            if h > 0:
+                slenderness = L_total / h
+                
+                if slenderness < 10 and self.element_type == 'euler':
+                    warnings.warn(
+                        f"Slenderness ratio L/h = {slenderness:.1f} is low (< 10). "
+                        f"Euler-Bernoulli elements may under-predict deflections by ignoring shear. "
+                        f"Consider using element_type='timoshenko' for more accurate results."
+                    )
+                elif slenderness > 30 and self.element_type == 'timoshenko':
+                    # Optional info: Timoshenko is fine but overkill
+                    pass 
     
     def _assemble_stiffness_matrix(self):
         """Assemble global stiffness matrix only."""
@@ -158,10 +219,14 @@ class BeamSolver:
         self._assemble_mass_matrix()
     
     def solve_static(self, load_case: LoadCase, bc_set: BoundaryConditionSet):
-        """Solve static analysis.
-
+        """
+        Solve static analysis.
+        
         Only the stiffness matrix is required; the mass matrix is not assembled.
         """
+        # Pre-analysis validation
+        self._validate_model(bc_set)
+        
         if self.K_global is None:
             self._assemble_stiffness_matrix()
 
@@ -184,11 +249,16 @@ class BeamSolver:
         return self.displacements
 
     def solve_modal(self, bc_set: BoundaryConditionSet, num_modes: int = 10):
-        """Solve modal analysis.
-
+        """
+        Solve modal analysis.
+        
         Assembles the stiffness matrix if not already done, then assembles the
         mass matrix lazily (only when this method is first called).
         """
+        # Pre-analysis validation
+        self._validate_model(bc_set)
+        
+        # Ensure Stiffness is assembled
         if self.K_global is None:
             self._assemble_stiffness_matrix()
         if self.M_global is None:

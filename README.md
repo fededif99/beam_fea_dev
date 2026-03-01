@@ -20,10 +20,11 @@
 
 ## 📅 Version History
 
-### Latest Version: v1.7.2 *(2026-03-01)*
+### Latest Version: v1.7.3 *(2026-03-01)*
 
-- **Optimization**: `solver.assemble_global_matrices()` was split; the mass matrix is now assembled lazily only when `solve_modal()` is called, halving element loop operations for pure static analyses
-- **UX**: Visualizer defaults for SFD/BMD now scale dynamically with mesh density (`max(50, 4 * num_elements)`) rather than using a hardcoded 100 points, ensuring curves are smooth but not over-sampled
+- **Feature**: Added `_validate_model` pre-analysis check to `BeamSolver` that detects missing mesh, properties, or unstable boundary conditions before computation
+- **UX**: Implemented automated slenderness ratio ($L/h$) check that suggests switching to Timoshenko elements for stout beams (< 10) to improve accuracy
+- **UX**: Added pro-active instability warnings when axial or transverse constraints are missing, preventing singular matrix errors
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).
@@ -413,8 +414,8 @@ solver = BeamSolver(mesh, material, section, element_type='euler')
 
 **Methods:**
 
-- **`solve_static(load_case, bc_set)`**: Runs linear static analysis.
-- **`solve_modal(bc_set, num_modes)`**: Runs eigenvalue analysis (Frequencies & Mode Shapes).
+- **`solve_static(load_case, bc_set)`**: Runs linear static analysis. Performs automatic model validation (mesh, materials, stability, slenderness checks) before solving.
+- **`solve_modal(bc_set, num_modes)`**: Runs eigenvalue analysis (Frequencies & Mode Shapes). Performs automatic model validation before solving.
 - **`calculate_internal_forces(num_points=100)`**: Returns dictionary of `axial_forces`, `shear_forces`, and `bending_moments`.
 - **`calculate_stresses(num_x, num_y, num_z)`**: Generates 3D stress matrices (Axial, Bending, Shear, von Mises, Principal).
 - **`visualize(analysis_type, **kwargs)`**: Orchestrates plots (see 3.7).
