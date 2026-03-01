@@ -892,166 +892,132 @@ class BeamReportGenerator:
         images_dir.mkdir(parents=True, exist_ok=True)
         images_rel_path = f"{report_name}_images"
         
-        # Branch based on analysis type
-        if self.load_case is not None:
-            return self._generate_static_report(output_path, images_dir, images_rel_path, deformation_scale)
-        elif self.frequencies is not None:
-            return self._generate_modal_report(output_path, images_dir, images_rel_path)
-        else:
+        # Determine analysis types present
+        has_static = self.displacements is not None
+        has_modal = self.frequencies is not None
+        
+        if not has_static and not has_modal:
             raise ValueError("No analysis results found to generate report")
 
-    def _generate_static_report(self, output_path, images_dir, images_rel_path, deformation_scale):
-        # Stress and image generation pipeline
-        self.calculate_internal_forces()
+        # Start generating content
+        md_content = self._generate_header()
+        md_content += self._generate_executive_summary(has_static, has_modal)
+        md_content += self._generate_model_setup(images_dir, images_rel_path)
         
-        if self.stresses is None:
-            self.stresses = self.solver.calculate_stresses(num_x_points=100, num_y_points=20, num_z_points=10)
-
-        # Generate all plots
-        self.plot_structure_diagram(str(images_dir / "structure_diagram.png"))
-        self.plot_reaction_diagram(str(images_dir / "reaction_diagram.png"))
-        self.plot_deformed_shape(str(images_dir / "deformed_shape.png"), scale_factor=deformation_scale)
-        self.plot_shear_diagram(str(images_dir / "shear_diagram.png"))
-        self.plot_moment_diagram(str(images_dir / "moment_diagram.png"))
-        self.plot_stress_distributions(str(images_dir / "stress_distribution.png"))
-        
-        # Calculate key results
-        v_displacements = self.displacements[1::3]
-        max_deflection = abs(min(v_displacements))
-        max_deflection_node = v_displacements.argmin()
-        max_deflection_pos = self.mesh.nodes[max_deflection_node].x
-        
-        if deformation_scale == 'auto':
-            from .visualizer import BeamVisualizer
-            _s = BeamVisualizer(self.mesh)._auto_scale_factor(self.displacements)
-        else:
-            _s = float(deformation_scale)
-
-        def get_max_stress_info(stress_array):
-            if stress_array.size == 0: return 0.0, 0.0, 0.0, 0.0
-            max_idx = np.unravel_index(np.argmax(np.abs(stress_array)), stress_array.shape)
-            idx_x, idx_y, idx_z = max_idx
-            max_val = np.abs(stress_array[idx_x, idx_y, idx_z])
-            x_loc = self.stresses['x'][idx_x]
-            y_loc = self.stresses['y'][idx_y, idx_z]
-            z_loc = self.stresses['z'][idx_y, idx_z]
-            return max_val, x_loc, y_loc, z_loc
-
-        max_vm, vm_x, vm_y, vm_z = get_max_stress_info(self.stresses['von_mises'])
-        max_bend_val, bend_x, bend_y, bend_z = get_max_stress_info(self.stresses['bending'])
-        max_shear_val, shear_x, shear_y, shear_z = get_max_stress_info(self.stresses['shear'])
-        max_axial_val, axial_x, axial_y, axial_z = get_max_stress_info(self.stresses['axial'])
-
-        # Margin of Safety
-        yield_strength = getattr(self.material, 'yield_strength', 0.0)
-        if yield_strength and max_vm > 0:
-            mos = (yield_strength / max_vm) - 1.0
-            status_text = "PASS" if mos >= 0 else "FAIL"
-            mos_text = f"{mos:.2f}"
-            status_color = "🟢" if mos >= 0 else "🔴"
-        else:
-            mos = float('inf')
-            status_text = "N/A"
-            mos_text = "N/A"
-            status_color = "⚪"
-
-        # Equilibrium Check
-        total_fy_reaction = 0.0
-        total_fx_reaction = 0.0
-        total_mz_res = 0.0
-        for bc in self.bc_set.conditions:
-            node_id = bc.node
-            if isinstance(bc, (PinnedSupport, RollerSupport, FixedSupport)):
-                fx = self.reactions[3*node_id]
-                fy = self.reactions[3*node_id + 1]
-                mz = self.reactions[3*node_id + 2]
-                total_fx_reaction += fx
-                total_fy_reaction += fy
-                x_pos = self.mesh.nodes[node_id].x
-                total_mz_res += mz + (fy * x_pos)
-                
-        total_fy_load = 0.0
-        total_fx_load = 0.0
-        for load in self.load_case.loads:
-            if hasattr(load, 'fy'): total_fy_load += getattr(load, 'fy', 0)
-            if hasattr(load, 'fx'): total_fx_load += getattr(load, 'fx', 0)
+        if has_static:
+            md_content += self._generate_static_results(images_dir, images_rel_path, deformation_scale)
             
-            if isinstance(load, PointLoad):
-                x_pos = self.mesh.nodes[load.node].x if load.node is not None else load.x
-                total_mz_res += getattr(load, 'mz', 0.0) + (getattr(load, 'fy', 0.0) * x_pos)
-            elif isinstance(load, UniformDistributedLoad):
-                wy = getattr(load, 'wy', 0)
-                if wy != 0:
-                    if hasattr(load, 'element') and load.element is not None:
-                        elements = [load.element] if isinstance(load.element, int) else load.element
-                        for elem_id in elements:
-                            n1 = self.mesh.elements[elem_id].node1
-                            n2 = self.mesh.elements[elem_id].node2
-                            x1, x2 = self.mesh.nodes[n1].x, self.mesh.nodes[n2].x
-                            L_el = abs(x2 - x1)
-                            total_fy_load += wy * L_el
-                            total_mz_res += (wy * L_el) * ((x1 + x2) / 2)
-                    elif hasattr(load, 'x_start') and load.x_start is not None:
-                        L_el = abs(load.x_end - load.x_start)
-                        total_fy_load += wy * L_el
-                        total_mz_res += (wy * L_el) * ((load.x_start + load.x_end) / 2)
+        if has_modal:
+            md_content += self._generate_modal_results(images_dir, images_rel_path)
+            
+        md_content += self._generate_footer()
 
-        residual_fx = abs(total_fx_reaction + total_fx_load)
-        residual_fy = abs(total_fy_reaction + total_fy_load)
-        residual_mz = abs(total_mz_res)
-        
-        coords = self.mesh.get_node_coords()
-        beam_length = coords[:, 0].max() - coords[:, 0].min()
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(md_content)
+            
+        return str(output_path)
 
-        num_pt_loads = len([l for l in self.load_case.loads if isinstance(l, PointLoad)])
-        num_dist_loads = len([l for l in self.load_case.loads if isinstance(l, UniformDistributedLoad)])
-
-        load_details_list = []
-        for i, load in enumerate(self.load_case.loads, 1):
-            if isinstance(load, PointLoad):
-                loc_str = f"Node {load.node}" if load.node is not None else f"x = {load.x} mm"
-                vals = []
-                if load.fx: vals.append(f"Fx={load.fx} N")
-                if load.fy: vals.append(f"Fy={load.fy} N")
-                if load.mz: vals.append(f"Mz={load.mz} N·mm")
-                load_details_list.append(f"{i}. **Point Load** at {loc_str}: {', '.join(vals)}")
-            elif isinstance(load, UniformDistributedLoad):
-                span_str = f"Elements {load.element}" if load.element is not None else f"x = {load.x_start} to {load.x_end} mm"
-                load_details_list.append(f"{i}. **Uniform Load** on {span_str}: wy={load.wy} N/mm")
-            elif hasattr(load, 'wy1') and hasattr(load, 'wy2'):
-                span_str = f"Elements {load.element}" if load.element is not None else f"x = {load.x_start} to {load.x_end} mm"
-                load_details_list.append(f"{i}. **Trapezoidal Load** on {span_str}: wy1={load.wy1}, wy2={load.wy2} N/mm")
-            elif hasattr(load, 'w_peak'):
-                span_str = f"Elements {load.element}" if load.element is not None else f"x = {load.x_start} to {load.x_end} mm"
-                load_details_list.append(f"{i}. **Triangular Load** on {span_str}: wy_peak={load.w_peak} N/mm at {load.peak_loc}")
-        
-        load_details_str = "\n".join(load_details_list) if load_details_list else "None"
-
-        md_content = rf"""# Beam FEA Analysis Report (Static)
+    def _generate_header(self):
+        """Generate report header section."""
+        title = "Beam FEA Analysis Report"
+        if self.displacements is not None and self.frequencies is not None:
+            title += " (Static & Modal)"
+        elif self.displacements is not None:
+            title += " (Static)"
+        else:
+            title += " (Modal)"
+            
+        return rf"""# {title}
 
 **Generated:** {datetime.now().strftime('%d-%m-%Y %H:%M:%S')}
 
 ---
+"""
 
-## 1. Executive Summary
+    def _generate_executive_summary(self, has_static, has_modal):
+        """Generate executive summary based on available results."""
+        coords = self.mesh.get_node_coords()
+        beam_length = coords[:, 0].max() - coords[:, 0].min()
+        
+        summary = f"\n## 1. Executive Summary\n\n- **Structure**: {beam_length:,.0f} mm beam with {self.mesh.num_nodes} nodes and {self.mesh.num_elements} elements.\n"
+        
+        if has_static:
+            v_displacements = self.displacements[1::3]
+            max_deflection = abs(min(v_displacements))
+            max_deflection_node = v_displacements.argmin()
+            max_deflection_pos = self.mesh.nodes[max_deflection_node].x
+            
+            # Stress highlights
+            if self.stresses is None:
+                self.stresses = self.solver.calculate_stresses(num_x_points=100, num_y_points=20, num_z_points=10)
+            
+            max_vm = np.max(self.stresses['von_mises'])
+            yield_strength = getattr(self.material, 'yield_strength', 0.0)
+            
+            summary += f"- **Static Results**: Peak deflection of {max_deflection:.4f} mm at x = {max_deflection_pos:.1f} mm.\n"
+            if yield_strength:
+                mos = (yield_strength / max_vm) - 1.0 if max_vm > 0 else float('inf')
+                status = "PASS" if mos >= 0 else "FAIL"
+                summary += f"- **Structural Integrity**: {status} (Margin of Safety: {mos:.2f}).\n"
 
-- **Analysis Overview**: Static structural analysis of a {beam_length:,.0f} mm beam subjected to {num_pt_loads} point load(s) and {num_dist_loads} distributed load(s).
-- **Peak Deflection**: {max_deflection:.4f} mm at x = {max_deflection_pos:.1f} mm.
-- **Critical Margin of Safety (MoS)**: {mos_text} {status_color} **{status_text}** (based on Material Yield Stress vs Max von Mises).
+        if has_modal:
+            summary += f"- **Modal Results**: Found {len(self.frequencies)} natural frequencies. Fundamental frequency: {self.frequencies[0]:.2f} Hz.\n"
+            
+        summary += "\n---\n"
+        return summary
 
----
+    def _generate_model_setup(self, images_dir, images_rel_path):
+        """Generate shared model setup section."""
+        self.plot_structure_diagram(str(images_dir / "structure_diagram.png"))
+        
+        # Load details
+        num_pt_loads = 0
+        num_dist_loads = 0
+        load_details_str = "None"
+        
+        if self.load_case:
+            num_pt_loads = len([l for l in self.load_case.loads if isinstance(l, PointLoad)])
+            num_dist_loads = len([l for l in self.load_case.loads if not isinstance(l, PointLoad)])
+            
+            load_details_list = []
+            for i, load in enumerate(self.load_case.loads, 1):
+                if isinstance(load, PointLoad):
+                    loc_str = f"Node {load.node}" if load.node is not None else f"x = {load.x} mm"
+                    vals = []
+                    if load.fx: vals.append(f"Fx={load.fx} N")
+                    if load.fy: vals.append(f"Fy={load.fy} N")
+                    if load.mz: vals.append(f"Mz={load.mz} N·mm")
+                    load_details_list.append(f"{i}. **Point Load** at {loc_str}: {', '.join(vals)}")
+                elif isinstance(load, UniformDistributedLoad):
+                    if load.element is not None:
+                        span_str = f"Elements {load.element}"
+                    elif load.x_start is not None:
+                        span_str = f"x = {load.x_start} to {load.x_end} mm"
+                    else:
+                        span_str = "Full Span"
+                    load_details_list.append(f"{i}. **Uniform Load** on {span_str}: wy={load.wy} N/mm")
+                elif hasattr(load, 'wy1') and hasattr(load, 'wy2'):
+                    span_str = f"Elements {load.element}" if load.element is not None else f"x = {load.x_start} to {load.x_end} mm"
+                    load_details_list.append(f"{i}. **Trapezoidal Load** on {span_str}: wy1={load.wy1}, wy2={load.wy2} N/mm")
+                elif hasattr(load, 'w_peak'):
+                    span_str = f"Elements {load.element}" if load.element is not None else f"x = {load.x_start} to {load.x_end} mm"
+                    load_details_list.append(f"{i}. **Triangular Load** on {span_str}: wy_peak={load.w_peak} N/mm at {load.peak_loc}")
+            
+            if load_details_list:
+                load_details_str = "\n".join(load_details_list)
 
+        return rf"""
 ## 2. Model Setup & Inputs
 
 ### Structure & Loading Diagram
 
 ![Structure Diagram]({images_rel_path}/structure_diagram.png)
 
-### Load Cases
-- **Name:** {self.load_case.name}
-- **Summary:** {num_pt_loads} point load(s), {num_dist_loads} distributed load(s)
+### Load Case Information
+- **Name:** {self.load_case.name if self.load_case else 'N/A'}
+- **Applied Loads:** {num_pt_loads} point load(s), {num_dist_loads} distributed load(s)
 
-**Detailed Applied Loads:**
+**Detailed Loads:**
 {load_details_str}
 
 ### Cross-Section Properties
@@ -1069,27 +1035,105 @@ class BeamReportGenerator:
 |----------|-------|-------|
 | Material | {self.material.name} | - |
 | Young's Modulus (E) | {self.material.E:,.0f} | MPa |
-| Shear Modulus (G) | {self.material.G:,.0f} | MPa |
 | Density (ρ) | {self.material.rho:.2e} | kg/mm³ |
 | Poisson's Ratio (ν) | {self.material.nu:.3f} | - |
 | Yield Strength | {self.material.yield_strength:,.1f} | MPa |
 
 ---
+"""
 
-## 3. Mesh & Solver Details
+    def _generate_static_results(self, images_dir, images_rel_path, deformation_scale):
+        """Generate static analysis results section."""
+        # Ensure results are computed
+        self.calculate_internal_forces()
+        if self.stresses is None:
+            self.stresses = self.solver.calculate_stresses(num_x_points=100, num_y_points=20, num_z_points=10)
 
-| Property | Value |
-|----------|-------|
-| Number of Nodes | {self.mesh.num_nodes} |
-| Number of Elements | {self.mesh.num_elements} |
-| Total DOFs | {self.mesh.num_dofs} |
-| Element Formulation | Euler-Bernoulli Beam |
+        # Generate plots
+        self.plot_reaction_diagram(str(images_dir / "reaction_diagram.png"))
+        self.plot_deformed_shape(str(images_dir / "deformed_shape.png"), scale_factor=deformation_scale)
+        self.plot_shear_diagram(str(images_dir / "shear_diagram.png"))
+        self.plot_moment_diagram(str(images_dir / "moment_diagram.png"))
+        self.plot_stress_distributions(str(images_dir / "stress_distribution.png"))
 
----
+        # Equilibrium calculations
+        total_fy_reaction = 0.0
+        total_fx_reaction = 0.0
+        total_mz_res = 0.0
+        for bc in self.bc_set.conditions:
+            node_id = bc.node
+            if isinstance(bc, (PinnedSupport, RollerSupport, FixedSupport)):
+                fx = self.reactions[3*node_id]
+                fy = self.reactions[3*node_id + 1]
+                mz = self.reactions[3*node_id + 2]
+                total_fx_reaction += fx
+                total_fy_reaction += fy
+                x_pos = self.mesh.nodes[node_id].x
+                total_mz_res += mz + (fy * x_pos)
+                
+        total_fy_load = 0.0
+        total_fx_load = 0.0
+        if self.load_case:
+            for load in self.load_case.loads:
+                if hasattr(load, 'fy'): total_fy_load += getattr(load, 'fy', 0)
+                if hasattr(load, 'fx'): total_fx_load += getattr(load, 'fx', 0)
+                
+                if isinstance(load, PointLoad):
+                    x_pos = self.mesh.nodes[load.node].x if load.node is not None else load.x
+                    total_mz_res += getattr(load, 'mz', 0.0) + (getattr(load, 'fy', 0.0) * x_pos)
+                elif isinstance(load, UniformDistributedLoad):
+                    wy = getattr(load, 'wy', 0)
+                    if wy != 0:
+                        if hasattr(load, 'element') and load.element is not None:
+                            elements = [load.element] if isinstance(load.element, int) else load.element
+                            for elem_id in elements:
+                                n1 = self.mesh.elements[elem_id].node1
+                                n2 = self.mesh.elements[elem_id].node2
+                                x1, x2 = self.mesh.nodes[n1].x, self.mesh.nodes[n2].x
+                                L_el = abs(x2 - x1)
+                                total_fy_load += wy * L_el
+                                total_mz_res += (wy * L_el) * ((x1 + x2) / 2)
+                        elif hasattr(load, 'x_start') and load.x_start is not None:
+                            L_el = abs(load.x_end - load.x_start)
+                            total_fy_load += wy * L_el
+                            total_mz_res += (wy * L_el) * ((load.x_start + load.x_end) / 2)
 
-## 4. Analysis Results
+        residual_fx = abs(total_fx_reaction + total_fx_load)
+        residual_fy = abs(total_fy_reaction + total_fy_load)
+        residual_mz = abs(total_mz_res)
 
-### Reaction Forces & FBD Diagram
+        # Deflection / Auto-scale
+        v_displacements = self.displacements[1::3]
+        max_deflection = abs(min(v_displacements))
+        max_deflection_node = v_displacements.argmin()
+        max_deflection_pos = self.mesh.nodes[max_deflection_node].x
+
+        if deformation_scale == 'auto':
+            from .visualizer import BeamVisualizer
+            _s = BeamVisualizer(self.mesh)._auto_scale_factor(self.displacements)
+        else:
+            _s = float(deformation_scale)
+
+        # Stress Info
+        def get_max_stress_info(stress_array):
+            if stress_array.size == 0: return 0.0, 0.0, 0.0, 0.0
+            max_idx = np.unravel_index(np.argmax(np.abs(stress_array)), stress_array.shape)
+            idx_x, idx_y, idx_z = max_idx
+            max_val = np.abs(stress_array[idx_x, idx_y, idx_z])
+            x_loc = self.stresses['x'][idx_x]
+            y_loc = self.stresses['y'][idx_y, idx_z]
+            z_loc = self.stresses['z'][idx_y, idx_z]
+            return max_val, x_loc, y_loc, z_loc
+
+        max_vm, vm_x, vm_y, vm_z = get_max_stress_info(self.stresses['von_mises'])
+        max_bend_val, bend_x, bend_y, bend_z = get_max_stress_info(self.stresses['bending'])
+        max_shear_val, shear_x, shear_y, shear_z = get_max_stress_info(self.stresses['shear'])
+        max_axial_val, axial_x, axial_y, axial_z = get_max_stress_info(self.stresses['axial'])
+
+        return rf"""
+## 3. Static Analysis Results
+
+### Reaction Forces & Equilibrium Check
 
 ![Reaction Diagram]({images_rel_path}/reaction_diagram.png)
 
@@ -1098,21 +1142,21 @@ class BeamReportGenerator:
 - $\Sigma F_y$ Residual = {residual_fy:.2e} N
 - $\Sigma M_z$ Residual (about x=0) = {residual_mz:.2e} N·mm
 
-### Displacements
-
+### Deformed Shape
 The following plot shows the deformed shape of the beam (exaggerated by {_s:.0f}× for visualization):
 
 ![Deformed Shape]({images_rel_path}/deformed_shape.png)
 
-### Internal Forces
+- **Max Deflection**: {max_deflection:.4f} mm at x = {max_deflection_pos:.1f} mm.
+
+### Internal Force Recovery
+Shear Force (V) and Bending Moment (M) distributions:
 
 ![Shear Force Diagram]({images_rel_path}/shear_diagram.png)
 
 ![Bending Moment Diagram]({images_rel_path}/moment_diagram.png)
 
-### Stress Analysis & Structural Integrity
-
-*The distributions below plot the peak stresses at the extreme top and bottom fibers of the cross-section evaluated along the length of the beam.*
+### Stress Analysis & Integrity
 
 ![Stress Distribution]({images_rel_path}/stress_distribution.png)
 
@@ -1124,18 +1168,10 @@ The following plot shows the deformed shape of the beam (exaggerated by {_s:.0f}
 | Axial (Max)      | {max_axial_val:.2f} | ({axial_x:.1f}, {axial_y:.1f}, {axial_z:.1f}) | MPa |
 
 ---
-
-*Report generated by Beam FEA Analysis Tool*
 """
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(md_content)
-        return str(output_path)
 
-    def _generate_modal_report(self, output_path, images_dir, images_rel_path):
-        # Generate Structure Plot
-        self.plot_structure_diagram(str(images_dir / "structure_diagram.png"))
-        
-        # Generate Mode Shape Plots (Top 3)
+    def _generate_modal_results(self, images_dir, images_rel_path):
+        """Generate modal analysis results section."""
         from .visualizer import BeamVisualizer
         viz = BeamVisualizer(self.mesh)
         mode_shape_plots = []
@@ -1151,47 +1187,8 @@ The following plot shows the deformed shape of the beam (exaggerated by {_s:.0f}
             freq_rows.append(f"| {i+1} | {f:8.2f} | {f*60:12.0f} |")
         freq_table = "\n".join(freq_rows)
 
-        coords = self.mesh.get_node_coords()
-        beam_length = coords[:, 0].max() - coords[:, 0].min()
-
-        md_content = f"""# Beam FEA Analysis Report (Modal)
-
-**Generated:** {datetime.now().strftime('%d-%m-%Y %H:%M:%S')}
-
----
-
-## 1. Executive Summary
-
-- **Analysis Overview**: Modal analysis of a {beam_length:,.0f} mm beam.
-- **Fundamental Frequency**: {self.frequencies[0]:.2f} Hz ({self.frequencies[0]*60:.0f} RPM).
-- **Number of Modes Calculated**: {len(self.frequencies)}
-
----
-
-## 2. Model Setup & Inputs
-
-### Structure Diagram
-
-![Structure Diagram]({images_rel_path}/structure_diagram.png)
-
-### Cross-Section Properties
-
-| Property | Value | Units |
-|----------|-------|-------|
-| Area (A) | {self.section.A:,.2f} | mm² |
-| Moment of Inertia (Iy) | {self.section.Iy:.2e} | mm⁴ |
-
-### Material Properties
-
-| Property | Value | Units |
-|----------|-------|-------|
-| Material | {self.material.name} | - |
-| Young's Modulus (E) | {self.material.E:,.0f} | MPa |
-| Density (ρ) | {self.material.rho:.2e} | kg/mm³ |
-
----
-
-## 3. Modal Results
+        results_md = rf"""
+## 4. Modal Analysis Results
 
 ### Natural Frequencies
 
@@ -1203,13 +1200,13 @@ The following plot shows the deformed shape of the beam (exaggerated by {_s:.0f}
 
 """
         for mode_idx, freq, img in mode_shape_plots:
-            md_content += f"#### Mode {mode_idx} ({freq:.2f} Hz)\n\n![Mode {mode_idx}]({images_rel_path}/{img})\n\n"
+            results_md += f"#### Mode {mode_idx} ({freq:.2f} Hz)\n\n![Mode {mode_idx}]({images_rel_path}/{img})\n\n"
 
-        md_content += "\n---\n\n*Report generated by Beam FEA Analysis Tool*\n"
+        return results_md + "---\n"
 
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(md_content)
-        return str(output_path)
+    def _generate_footer(self):
+        """Generate report footer."""
+        return "\n\n*Report generated by Beam FEA Analysis Tool*\n"
 
 
 
