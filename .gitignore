@@ -1,8 +1,21 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.egg-info/
 .pytest_cache/
-*_images/
+build/
+dist/
+
+# Reports & Visualization
+**/*_images/
+examples/*.md
+!examples/README.md
+
+# Environment & Internal
 .agent/
 .gemini/
 .env
+.DS_Store
 visual_stress_tests/
+test_force_report_images/
