@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 from beam_fea.mesh import MeshGenerator
-from beam_fea.loads import LoadCase, PointLoad, UniformDistributedLoad, TrapezoidalDistributedLoad
+from beam_fea.loads import LoadCase
 from beam_fea.materials import Material
 from beam_fea.cross_sections import rectangular
 from beam_fea.solver import BeamSolver

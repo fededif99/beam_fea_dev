@@ -17,13 +17,11 @@ Reports and images are saved to:
 """
 
 import os
-import sys
 import traceback
 import numpy as np
 
-# Ensure we pick up the installed (or editable-installed) beam_fea package
+# ROOT is used for defining OUTPUT_ROOT
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, ROOT)
 
 from beam_fea import (
     BeamSolver, MeshGenerator, Material, get_material,

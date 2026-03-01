@@ -1,11 +1,6 @@
 
 import numpy as np
-import sys
 import os
-from pathlib import Path
-
-# Add project root to path
-sys.path.append(str(Path(__file__).parent.parent))
 
 from beam_fea.mesh import MeshGenerator
 from beam_fea.materials import get_material

@@ -1,7 +1,4 @@
 import numpy as np
-import sys
-import os
-sys.path.insert(0, os.path.abspath('.'))
 
 from beam_fea.mesh import MeshGenerator
 from beam_fea.materials import Material

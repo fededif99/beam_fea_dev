@@ -2,6 +2,12 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v1.7.4] - 2026-03-01
+
+- **Refactor**: Completed global removal of redundant `sys.path` hacks and unused imports across `examples/`, `tests/`, and `scripts/`
+- **Cleanup**: Standardized imports in `tests/test_coordinate_loads.py` by removing unused class imports
+- **Maintenance**: Verified core `beam_fea/` package for import redundancy to ensure a lean development installation
+
 ## [v1.7.3] - 2026-03-01
 
 - **Feature**: Added `_validate_model` pre-analysis check to `BeamSolver` that detects missing mesh, properties, or unstable boundary conditions before computation

@@ -1,10 +1,5 @@
-import os
-import sys
 import numpy as np
 import matplotlib.pyplot as plt
-
-# Add the project root to sys.path to ensure beam_fea is found
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from beam_fea.cross_sections import rectangular, l_section, offset_section
 from beam_fea.visualizer import BeamVisualizer

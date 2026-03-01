@@ -20,12 +20,11 @@
 
 ## 📅 Version History
 
-### Latest Version: v1.7.3 *(2026-03-01)*
+### Latest Version: v1.7.4 *(2026-03-01)*
 
-- **Feature**: Added `_validate_model` pre-analysis check to `BeamSolver` that detects missing mesh, properties, or unstable boundary conditions before computation
-- **Feature**: Implemented dynamic version synchronization between `CHANGELOG.md` and package `__version__`
-- **UX**: Implemented automated slenderness ratio ($L/h$) check and pro-active instability warnings
-- **Docs**: Completed a comprehensive audit of all comments and docstrings for clarity and technical accuracy
+- **Refactor**: Completed global removal of redundant `sys.path` hacks and unused imports across `examples/`, `tests/`, and `scripts/`
+- **Cleanup**: Standardized imports in `test_coordinate_loads.py` and core modules
+- **UX**: Verified full test suite compatibility with standard editable installation (no path hacks)
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).

@@ -1,9 +1,4 @@
-import os
-import sys
 import numpy as np
-
-# Add the project root to sys.path to ensure beam_fea is found
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from beam_fea.cross_sections import (
     rectangular, circular, i_beam, l_section, offset_section, SectionProperties
