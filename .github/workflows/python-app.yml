@@ -23,8 +23,8 @@ jobs:
         python -m pip install --upgrade pip
         # Pre-install core dependencies to avoid build issues with dynamic versioning
         pip install numpy scipy matplotlib pytest flake8
-        # Install the package in editable mode
-        pip install -e .
+        # Install the package in editable mode with no build isolation to use pre-installed dependencies
+        pip install --no-build-isolation -e .
         
     - name: Lint with flake8
       run: |

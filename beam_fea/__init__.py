@@ -43,6 +43,16 @@ Usage Example:
 >>> solver.visualize()
 """
 
+# Set headless matplotlib backend before any other imports
+import os
+import matplotlib
+if os.environ.get('GITHUB_ACTIONS') == 'true' or os.environ.get('DISPLAY') is None:
+    try:
+        matplotlib.use('Agg')
+    except Exception:
+        pass
+
+
 # Core modules
 # Core modules
 from .materials import Material, get_material, MATERIAL_LIBRARY
