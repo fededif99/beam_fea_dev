@@ -20,11 +20,10 @@
 
 ## 📅 Version History
 
-### Latest Version: v1.7.1 *(2026-03-01)*
+### Latest Version: v1.7.2 *(2026-03-01)*
 
-- **UX**: Annotation collision avoidance uses independent per-axis stacking counters (`stack_fy`, `stack_fx`, `stack_mz`), preventing different force-type labels from displacing each other at shared nodes
-- **UX**: Vertical label offsets are now anchored to global `arrow_scale` for consistent spacing regardless of individual load magnitudes
-- **UX**: `'Beam Deformation'` plot title is now bold, matching the style of all other diagram titles
+- **Optimization**: `solver.assemble_global_matrices()` was split; the mass matrix is now assembled lazily only when `solve_modal()` is called, halving element loop operations for pure static analyses
+- **UX**: Visualizer defaults for SFD/BMD now scale dynamically with mesh density (`max(50, 4 * num_elements)`) rather than using a hardcoded 100 points, ensuring curves are smooth but not over-sampled
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).

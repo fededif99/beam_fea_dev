@@ -67,35 +67,20 @@ class BeamSolver:
         self.last_load_case = None
         self.last_bc_set = None
     
-    def assemble_global_matrices(self):
-        """Assemble global stiffness and mass matrices."""
+    def _assemble_stiffness_matrix(self):
+        """Assemble global stiffness matrix only."""
         from scipy.sparse import coo_matrix
-        
+
         num_dofs = self.mesh.num_dofs
-        
-        # Lists to store sparse matrix data
-        # Stiffness
-        K_rows = []
-        K_cols = []
-        K_data = []
-        
-        # Mass
-        M_rows = []
-        M_cols = []
-        M_data = []
-        
-        # Prepare element data
+        K_rows, K_cols, K_data = [], [], []
+
         ElementClass = EulerBernoulliElement if self.element_type == 'euler' else TimoshenkoElement
-        
-        # Precompute coordinates and lengths for all elements
         coords = self.mesh.get_node_coords()
-        
+
         for elem in self.mesh.elements:
-            # Calculate length directly from cached coords
             p1, p2 = coords[elem.node1], coords[elem.node2]
             L = np.sqrt(np.sum((p2 - p1)**2))
-            
-            # Create element matrices
+
             element = ElementClass(
                 E=self.material.E,
                 G=self.material.G,
@@ -104,70 +89,115 @@ class BeamSolver:
                 L=L,
                 rho=self.material.rho
             )
-            
+
             k_local = element.stiffness_matrix()
-            m_local = element.mass_matrix()
-            
-            # Get DOF indices
+
             dof_indices = np.array([
                 3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
                 3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2
             ])
-            
-            # Vectorized scatter using meshgrid
             ii, jj = np.meshgrid(dof_indices, dof_indices, indexing='ij')
-            
+
             K_rows.append(ii.ravel())
             K_cols.append(jj.ravel())
             K_data.append(k_local.ravel())
-            
-            M_rows.append(ii.ravel())
-            M_cols.append(jj.ravel())
-            M_data.append(m_local.ravel())
-        
-        # Create sparse matrices (concatenate all arrays once)
+
         self.K_global = coo_matrix(
             (np.concatenate(K_data), (np.concatenate(K_rows), np.concatenate(K_cols))),
             shape=(num_dofs, num_dofs)
         ).tocsr()
-        
+
+    def _assemble_mass_matrix(self):
+        """Assemble global mass matrix only (called lazily for modal analysis)."""
+        from scipy.sparse import coo_matrix
+
+        num_dofs = self.mesh.num_dofs
+        M_rows, M_cols, M_data = [], [], []
+
+        ElementClass = EulerBernoulliElement if self.element_type == 'euler' else TimoshenkoElement
+        coords = self.mesh.get_node_coords()
+
+        for elem in self.mesh.elements:
+            p1, p2 = coords[elem.node1], coords[elem.node2]
+            L = np.sqrt(np.sum((p2 - p1)**2))
+
+            element = ElementClass(
+                E=self.material.E,
+                G=self.material.G,
+                I=self.section.Iy,
+                A=self.section.A,
+                L=L,
+                rho=self.material.rho
+            )
+
+            m_local = element.mass_matrix()
+
+            dof_indices = np.array([
+                3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
+                3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2
+            ])
+            ii, jj = np.meshgrid(dof_indices, dof_indices, indexing='ij')
+
+            M_rows.append(ii.ravel())
+            M_cols.append(jj.ravel())
+            M_data.append(m_local.ravel())
+
         self.M_global = coo_matrix(
             (np.concatenate(M_data), (np.concatenate(M_rows), np.concatenate(M_cols))),
             shape=(num_dofs, num_dofs)
         ).tocsr()
+
+    def assemble_global_matrices(self):
+        """Assemble both global stiffness and mass matrices.
+
+        Calling this directly assembles both matrices upfront. In normal
+        workflows the solver assembles them lazily: K is built on the first
+        static or modal solve, M is built only when a modal solve is requested.
+        """
+        self._assemble_stiffness_matrix()
+        self._assemble_mass_matrix()
     
     def solve_static(self, load_case: LoadCase, bc_set: BoundaryConditionSet):
-        """Solve static analysis."""
+        """Solve static analysis.
+
+        Only the stiffness matrix is required; the mass matrix is not assembled.
+        """
         if self.K_global is None:
-            self.assemble_global_matrices()
-        
+            self._assemble_stiffness_matrix()
+
         # Store for reporting
         self.last_load_case = load_case
         self.last_bc_set = bc_set
-        
+
         F = load_case.create_force_vector(self.mesh.num_dofs, self.mesh)
-        
+
         K_bc, F_bc = bc_set.apply_to_system(self.K_global, F)
-        
+
         self.displacements = self.static_solver.solve(K_bc, F_bc)
-        
+
         self.reactions = self.static_solver.calculate_reactions(self.K_global, F)
-        
+
         # Reset cache
         self._cached_forces = None
         self._cached_stresses = None
-        
+
         return self.displacements
-    
+
     def solve_modal(self, bc_set: BoundaryConditionSet, num_modes: int = 10):
-        """Solve modal analysis."""
+        """Solve modal analysis.
+
+        Assembles the stiffness matrix if not already done, then assembles the
+        mass matrix lazily (only when this method is first called).
+        """
         if self.K_global is None:
-            self.assemble_global_matrices()
-        
+            self._assemble_stiffness_matrix()
+        if self.M_global is None:
+            self._assemble_mass_matrix()
+
         frequencies, mode_shapes = self.modal_solver.solve(
             self.K_global, self.M_global, num_modes, bc_set
         )
-        
+
         return frequencies, mode_shapes
     
     def get_max_deflection(self):
@@ -488,11 +518,13 @@ class BeamSolver:
         if analysis_type == 'static':
             return self.visualizer.plot_deformed_shape(self.displacements, **kwargs)
         elif analysis_type == 'shear':
-            num_points = kwargs.pop('num_points', 100)
+            default_pts = max(50, 4 * self.mesh.num_elements)
+            num_points = kwargs.pop('num_points', default_pts)
             forces = self.calculate_internal_forces(num_points)
             return self.visualizer.plot_shear_force(forces['shear_forces'], forces['positions'], **kwargs)
         elif analysis_type == 'moment':
-            num_points = kwargs.pop('num_points', 100)
+            default_pts = max(50, 4 * self.mesh.num_elements)
+            num_points = kwargs.pop('num_points', default_pts)
             forces = self.calculate_internal_forces(num_points)
             return self.visualizer.plot_bending_moment(forces['bending_moments'], forces['positions'], **kwargs)
         elif analysis_type == 'modal':
