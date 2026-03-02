@@ -57,7 +57,8 @@ class BeamElementMatrices(ABC):
         pass
 
     @abstractmethod
-    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float) -> Tuple[float, float, float]:
+    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float,
+                                   dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[float, float, float]:
         """
         Interpolate axial force, shear force, and bending moment at a normalized position.
         
@@ -67,6 +68,8 @@ class BeamElementMatrices(ABC):
             Local element displacement vector [u1, v1, theta1, u2, v2, theta2]
         xi : float
             Normalized position along element [0, 1]
+        dist_load : Tuple[float, float, float, float]
+            Distributed loads: (wy1, wy2, wx1, wx2) at start and end of element
             
         Returns:
         --------
@@ -163,9 +166,11 @@ class EulerBernoulliElement(BeamElementMatrices):
         
         return M
 
-    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float) -> Tuple[float, float, float]:
+    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float,
+                                   dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[float, float, float]:
         """
         Interpolate axial, shear, and moment for Euler-Bernoulli beam using Hermite shape functions.
+        Includes particular solution for distributed loads.
         """
         L = self.L
         E = self.E
@@ -179,9 +184,9 @@ class EulerBernoulliElement(BeamElementMatrices):
         v2 = u_local[4]
         theta2 = u_local[5]
         
-        # Axial force is constant in standard beam element: N = EA * (u2 - u1) / L
-        axial_force = E * A * (u2 - u1) / L
+        wy1, wy2, wx1, wx2 = dist_load
         
+        # 1. Homogeneous Solution (from nodal displacements)
         # Hermite shape functions second derivatives (for moment: M = -EI * d2v/dx2)
         d2N1 = (6 - 12*xi) / L**2
         d2N2 = (4 - 6*xi) / L
@@ -194,9 +199,127 @@ class EulerBernoulliElement(BeamElementMatrices):
         d3N3 = 12 / L**3
         d3N4 = -6 / L**2
         
-        # Results consistent with V=V1, M=-M1 (standard diagram convention for this solver)
-        bending_moment = -E * I * (d2N1 * v1 + d2N2 * theta1 + d2N3 * v2 + d2N4 * theta2)
-        shear_force = -E * I * (d3N1 * v1 + d3N2 * theta1 + d3N3 * v2 + d3N4 * theta2)
+        moment_h = -E * I * (d2N1 * v1 + d2N2 * theta1 + d2N3 * v2 + d2N4 * theta2)
+        shear_h = -E * I * (d3N1 * v1 + d3N2 * theta1 + d3N3 * v2 + d3N4 * theta2)
+
+        # 2. Particular Solution (from distributed loads assuming fixed-fixed element)
+        # We need the internal forces in a fixed-fixed beam due to the distributed load
+        # For simplicity, we can use the actual internal force equilibrium if we know the nodal reactions
+        # but here we use the superposition: Total = Homogeneous (from u) + Particular (from load with u=0)
+        # However, 'u' already contains the effect of the distributed load!
+        # The correct FEA recovery is: Internal Force = Force from u - Force from Particular solution if we use fixed-fixed?
+        # NO. Standard approach: Internal Force(x) = Nodal reactions + integrate distributed load from one end.
+        # But we want to use the shape functions.
+        # V(x) = V_nodes(x) + V_particular(x)
+        # M(x) = M_nodes(x) + M_particular(x)
+        # For a fixed-fixed beam of length L:
+        # UDL w: V_p(x) = w(L/2 - x), M_p(x) = w(L*x/2 - x^2/2 - L^2/12)
+
+        # Linear transverse load: wy(xi) = wy1 + (wy2 - wy1)*xi
+        # Total force W = (wy1 + wy2)*L/2
+        # Center of pressure...
+
+        # Let's use a more general approach: integration of the load.
+        # w(xi) = wy1 * (1-xi) + wy2 * xi
+        # V_p(xi) = L * integral[ (wy1(1-s) + wy2*s) ds ] from 0 to xi - Reactions
+        # Actually, it's easier to just use the nodal forces and then subtract/add the load effect.
+
+        # For Euler-Bernoulli, the shape functions give the exact solution for point loads at nodes.
+        # For distributed loads, the shape functions are not exact.
+        # The relationship is:
+        # EI v'''' = wy(x)
+        # V = -EI v'''
+        # M = -EI v''
+
+        # Particular solution for wy(xi) = wy1*(1-xi) + wy2*xi
+        # v_p(xi) = (L^4 / (EI)) * [ wy1 * (xi^4/24 - xi^5/120) + wy2 * (xi^5/120) ]
+        # v_p'' (xi) = (L^2 / (EI)) * [ wy1 * (xi^2/2 - xi^3/6) + wy2 * (xi^3/6) ]
+        # v_p''' (xi) = (L / (EI)) * [ wy1 * (xi - xi^2/2) + wy2 * (xi^2/2) ]
+
+        # Particular Moment M_p = -EI * v_p'' = -L^2 * [ wy1 * (xi^2/2 - xi^3/6) + wy2 * (xi^3/6) ]
+        # Particular Shear V_p = -EI * v_p''' = -L * [ wy1 * (xi - xi^2/2) + wy2 * (xi^2/2) ]
+
+        # BUT, we must also subtract the effect of the particular solution that was ALREADY
+        # included in the nodal forces (the work-equivalent loads).
+        # Equivalent nodal forces for linear load:
+        # Fy1 = L/20 * (7*wy1 + 3*wy2)
+        # M1  = L^2/60 * (3*wy1 + 2*wy2)
+        # Fy2 = L/20 * (3*wy1 + 7*wy2)
+        # M2  = -L^2/60 * (2*wy1 + 3*wy2)
+
+        # Particular solution (fixed-fixed):
+        # M_p(xi) = L^2 * [ wy1 * (-1/12 + xi/2 - xi^2/2 + xi^3/6) + wy2 * (-1/20 + xi/3 - xi^3/6) ]
+        # V_p(xi) = L * [ wy1 * (1/2 - xi + xi^2/2) + wy2 * (3/20 - xi^2/2) ]
+        # Wait, let's just use the consistent approach:
+        # Internal force = Homogeneous from u + Particular where Particular is for a beam with FIXED ends.
+
+        # Correct particular solution for fixed-fixed beam with linear load:
+        # wy(xi) = wy1*(1-xi) + wy2*xi
+        # M_p(xi) = L^2/60 * [ wy1*(-3 + 10*xi - 15*xi^2 + 10*xi^3 - 2*xi^4) + wy2*(-2 + 5*xi - 10*xi^3 + 7*xi^4) ] - no this is getting complex.
+
+        # Let's use the simple UDL first: wy1=wy2=w
+        # M_p = w*L^2/12 * (6*xi - 6*xi^2 - 1)
+        # V_p = w*L * (1/2 - xi)
+
+        # For general linear load:
+        # Shear Particular:
+        # V_p(xi) = wy1*L*(1/2 - xi + xi^2/2 - 1/20) + ... NO.
+
+        # Actually, the simplest is:
+        # Total V(xi) = -EI v'''_h(xi) + V_particular(xi)
+        # where V_particular(xi) is the shear from a simply supported beam? No, from the load itself.
+
+        # Let's use the analytical integration from node 1:
+        # V(xi) = V1_from_u - integral[w(s) ds] from 0 to xi
+        # M(xi) = -M1_from_u + V1_from_u * (xi*L) - integral[w(s) * (xi*L - s*L) ds] from 0 to xi
+        # BUT V1 and M1 are nodal reactions.
+
+        # For statically consistent internal force recovery:
+        # 1. Total force F = K_local * u_local - F_equivalent_distributed
+        # 2. V(xi) = V1_total - integral[w(s) L ds]
+        # 3. M(xi) = -M1_total + V1_total*(xi*L) - integral[w(s)*(xi*L - s*L) ds]
+
+        # Consistent nodal forces (equivalent loads) for linear distributed load:
+        # Fy1 = L/20 * (7*wy1 + 3*wy2)
+        # M1  = L^2/60 * (3*wy1 + 2*wy2)
+        # Fy2 = L/20 * (3*wy1 + 7*wy2)
+        # M2  = -L^2/60 * (2*wy1 + 3*wy2)
+        f_eq = np.zeros(6)
+        f_eq[1] = (L/20) * (7*wy1 + 3*wy2)
+        f_eq[2] = (L**2/60) * (3*wy1 + 2*wy2)
+        f_eq[4] = (L/20) * (3*wy1 + 7*wy2)
+        f_eq[5] = -(L**2/60) * (2*wy1 + 3*wy2)
+
+        # Axial equivalent loads
+        # Fx1 = L/6 * (2*wx1 + wx2)
+        # Fx2 = L/6 * (wx1 + 2*wx2)
+        f_eq[0] = (L/6) * (2*wx1 + wx2)
+        f_eq[3] = (L/6) * (wx1 + 2*wx2)
+
+        # Total nodal reactions at element ends (internal forces)
+        # f_total = K*u - f_eq represents the internal forces at the nodes
+        # For node 1, f_total[1] is the shear force at the start of the element.
+        f_total = self.stiffness_matrix() @ u_local - f_eq
+
+        V1 = f_total[1]
+        M1 = f_total[2]
+        N1 = f_total[0]
+
+        # In this solver's convention:
+        # Positive V is upward on left face.
+        # Positive M is bottom-tension (which is -M1 if M1 is CCW acting on the beam end).
+
+        # V(xi) = V1 + integral[w(s) L ds] from 0 to xi (if w is positive upward)
+        int_w = L * (wy1 * (xi - 0.5*xi**2) + wy2 * (0.5*xi**2))
+        shear_force = V1 + int_w
+
+        # M(xi) = -M1 + V1 * (xi*L) + integral[w(s)*(xi*L - s*L) ds]
+        int_w_dist = L**2 * (wy1 * (0.5*xi**2 - xi**3/6) + wy2 * (xi**3/6))
+        bending_moment = -M1 + V1 * (xi * L) + int_w_dist
+
+        # Axial: N(xi) = -N1 - integral[wx(s) L ds] (if N is positive tension)
+        int_wx = L * (wx1 * (xi - 0.5*xi**2) + wx2 * (0.5*xi**2))
+        axial_force = -N1 - int_wx
         
         return axial_force, shear_force, bending_moment
 
@@ -278,19 +401,56 @@ class TimoshenkoElement(BeamElementMatrices):
             return self._lumped_mass_matrix()
     
     def _consistent_mass_matrix_timoshenko(self) -> np.ndarray:
-        """Consistent mass matrix for Timoshenko beam (simplified)."""
-        # Use Euler-Bernoulli mass matrix as approximation
-        # (exact Timoshenko mass matrix is more complex)
-        m, L = self.m, self.L
+        """
+        Consistent mass matrix for Timoshenko beam.
+        Includes rotational inertia and shear deformation effects.
+        """
+        E, G, I, A, L, rho = self.E, self.G, self.I, self.A, self.L, self.rho
+        As = self.As
+        m = rho * A
         
-        M = (m * L / 420) * np.array([
-            [ 140,      0,         0,   70,      0,         0 ],
-            [   0,    156,    22*L,     0,     54,   -13*L ],
-            [   0,   22*L,  4*L**2,     0,   13*L, -3*L**2 ],
-            [  70,      0,         0,  140,      0,         0 ],
-            [   0,     54,    13*L,     0,    156,   -22*L ],
-            [   0, -13*L, -3*L**2,     0, -22*L,  4*L**2 ]
-        ])
+        # Shear flexibility parameter
+        phi = 12 * E * I / (G * As * L**2)
+
+        M = np.zeros((6, 6))
+
+        # Axial terms (same as Euler-Bernoulli)
+        M[0, 0] = M[3, 3] = rho * A * L / 3
+        M[0, 3] = M[3, 0] = rho * A * L / 6
+
+        # Bending and shear terms (including rotational inertia)
+        # Coefficients for translational mass
+        c1 = m * L / (420 * (1 + phi)**2)
+        m1 = 156 + 294*phi + 140*phi**2
+        m2 = (22 + 77*phi + 70*phi**2) * L
+        m3 = 54 + 126*phi + 70*phi**2
+        m4 = -(13 + 63*phi + 70*phi**2) * L
+        m5 = (4 + 14*phi + 14*phi**2) * L**2
+        m6 = -(3 + 7*phi + 7*phi**2) * L**2
+
+        # Coefficients for rotational mass
+        c2 = rho * I / (30 * L * (1 + phi)**2)
+        r1 = 36
+        r2 = (3 - 15*phi) * L
+        r3 = (4 + 5*phi + 10*phi**2) * L**2
+        r4 = (-1 + 5*phi - 5*phi**2) * L**2
+
+        # Assemble v and theta DOFs: indices 1, 2, 4, 5
+        # Node 1
+        M[1, 1] = c1 * m1 + c2 * r1
+        M[1, 2] = M[2, 1] = c1 * m2 + c2 * r2
+        M[2, 2] = c1 * m5 + c2 * r3
+
+        # Node 2
+        M[4, 4] = c1 * m1 + c2 * r1
+        M[4, 5] = M[5, 4] = -(c1 * m2 + c2 * r2)
+        M[5, 5] = c1 * m5 + c2 * r3
+
+        # Coupling
+        M[1, 4] = M[4, 1] = c1 * m3 - c2 * r1
+        M[1, 5] = M[5, 1] = c1 * m4 + c2 * r2
+        M[2, 4] = M[4, 2] = -(c1 * m4 + c2 * r2)
+        M[2, 5] = M[5, 2] = c1 * m6 + c2 * r4
         
         return M
     
@@ -299,27 +459,43 @@ class TimoshenkoElement(BeamElementMatrices):
         m, L = self.m, self.L
         return np.diag([m*L/2, m*L/2, 0, m*L/2, m*L/2, 0])
 
-    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float) -> Tuple[float, float, float]:
+    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float,
+                                   dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[float, float, float]:
         """
         Interpolate axial, shear, and moment for Timoshenko beam.
-        For simplicity, we use the average shear and linear moment interpolation 
-        consistent with Timoshenko beam theory.
+        Includes particular solution for distributed loads.
         """
-        # Get element stiffness for force recovery
-        K_local = self.stiffness_matrix()
-        forces = K_local @ u_local
+        L = self.L
+        wy1, wy2, wx1, wx2 = dist_load
+
+        # Similar logic to Euler-Bernoulli for static consistency
+        # Equivalent nodal forces for Timoshenko might differ slightly in their derivation
+        # but for internal force recovery using equilibrium, we use the same principle.
+
+        # Use same equivalent loads (standard for linear distribution)
+        f_eq = np.zeros(6)
+        f_eq[1] = (L/20) * (7*wy1 + 3*wy2)
+        f_eq[2] = (L**2/60) * (3*wy1 + 2*wy2)
+        f_eq[4] = (L/20) * (3*wy1 + 7*wy2)
+        f_eq[5] = -(L**2/60) * (2*wy1 + 3*wy2)
+        f_eq[0] = (L/6) * (2*wx1 + wx2)
+        f_eq[3] = (L/6) * (wx1 + 2*wx2)
+
+        f_total = self.stiffness_matrix() @ u_local - f_eq
+
+        N1, V1, M1 = f_total[0], f_total[1], f_total[2]
         
-        # forces = [N1, V1, M1, N2, V2, M2]
-        # Axial force and shear are constant within the element (averaging or taking end values)
-        # Moment is linear.
+        # Axial
+        int_wx = L * (wx1 * (xi - 0.5*xi**2) + wx2 * (0.5*xi**2))
+        axial_force = -N1 - int_wx
         
-        N1, V1, M1 = forces[0], forces[1], forces[2]
-        N2, V2, M2 = forces[3], forces[4], forces[5]
+        # Shear
+        int_wy = L * (wy1 * (xi - 0.5*xi**2) + wy2 * (0.5*xi**2))
+        shear_force = V1 + int_wy
         
-        # Consistent with conventions: Axial=-N1 at start, Shear=V1, Moment=-M1 at start
-        axial_force = -N1
-        shear_force = V1 
-        bending_moment = -M1 * (1-xi) + M2 * xi
+        # Moment
+        int_wy_dist = L**2 * (wy1 * (0.5*xi**2 - xi**3/6) + wy2 * (xi**3/6))
+        bending_moment = -M1 + V1 * (xi * L) + int_wy_dist
         
         return axial_force, shear_force, bending_moment
 

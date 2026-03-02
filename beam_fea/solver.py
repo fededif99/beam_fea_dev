@@ -147,13 +147,17 @@ class BeamSolver:
             p1, p2 = coords[elem.node1], coords[elem.node2]
             L = np.sqrt(np.sum((p2 - p1)**2))
 
+            # Determine properties for this element
+            mat = elem.material or self.material
+            sec = elem.section or self.section
+
             element = ElementClass(
-                E=self.material.E,
-                G=self.material.G,
-                I=self.section.Iy,
-                A=self.section.A,
+                E=mat.E,
+                G=mat.G,
+                I=sec.Iy,
+                A=sec.A,
                 L=L,
-                rho=self.material.rho
+                rho=mat.rho
             )
 
             k_local = element.stiffness_matrix()
@@ -187,13 +191,17 @@ class BeamSolver:
             p1, p2 = coords[elem.node1], coords[elem.node2]
             L = np.sqrt(np.sum((p2 - p1)**2))
 
+            # Determine properties for this element
+            mat = elem.material or self.material
+            sec = elem.section or self.section
+
             element = ElementClass(
-                E=self.material.E,
-                G=self.material.G,
-                I=self.section.Iy,
-                A=self.section.A,
+                E=mat.E,
+                G=mat.G,
+                I=sec.Iy,
+                A=sec.A,
                 L=L,
-                rho=self.material.rho
+                rho=mat.rho
             )
 
             m_local = element.mass_matrix()
@@ -350,9 +358,62 @@ class BeamSolver:
         # Determine evaluation points per element to avoid redundant element instantiation
         from .element_matrices import EulerBernoulliElement, TimoshenkoElement
         
+        # Pre-calculate distributed loads per element
+        # This simplifies the interpolation loop significantly
+        element_dist_loads = {}
+        if self.last_load_case:
+            from .loads import UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad
+            for load in self.last_load_case.loads:
+                # Transverse (wy) and Axial (wx)
+                wy1 = wy2 = wx1 = wx2 = 0.0
+
+                if isinstance(load, UniformDistributedLoad):
+                    wy1 = wy2 = load.wy
+                    wx1 = wx2 = load.wx
+                elif isinstance(load, TrapezoidalDistributedLoad):
+                    wy1, wy2 = load.wy1, load.wy2
+                    wx1, wx2 = load.wx1, load.wx2
+                elif isinstance(load, TriangularDistributedLoad):
+                    if load.peak_loc == 'start':
+                        wy1, wy2 = load.w_peak, 0.0
+                    else:
+                        wy1, wy2 = 0.0, load.w_peak
+                else:
+                    continue # Not a distributed load
+
+                # Identify elements affected
+                if load.element is not None:
+                    elems = [load.element] if isinstance(load.element, int) else load.element
+                    for eid in elems:
+                        curr = element_dist_loads.get(eid, (0, 0, 0, 0))
+                        element_dist_loads[eid] = (curr[0] + wy1, curr[1] + wy2, curr[2] + wx1, curr[3] + wx2)
+                elif load.x_start is not None and load.x_end is not None:
+                    x_s, x_e = min(load.x_start, load.x_end), max(load.x_start, load.x_end)
+                    for eid, elem in enumerate(self.mesh.elements):
+                        p1, p2 = coords[elem.node1], coords[elem.node2]
+                        e_min, e_max = min(p1[0], p2[0]), max(p1[0], p2[0])
+
+                        # Intersection
+                        i_min, i_max = max(e_min, x_s), min(e_max, x_e)
+                        if i_max > i_min:
+                            # For simplicity, if coordinate-based distributed load is used,
+                            # we interpolate the intensities at element ends
+                            def get_w(x, w1, w2, xs, xe):
+                                if abs(xe - xs) < 1e-9: return w1
+                                return w1 + (w2 - w1) * (x - xs) / (xe - xs)
+
+                            wya = get_w(p1[0], wy1, wy2, load.x_start, load.x_end)
+                            wyb = get_w(p2[0], wy1, wy2, load.x_start, load.x_end)
+                            wxa = get_w(p1[0], wx1, wx2, load.x_start, load.x_end)
+                            wxb = get_w(p2[0], wx1, wx2, load.x_start, load.x_end)
+
+                            curr = element_dist_loads.get(eid, (0, 0, 0, 0))
+                            element_dist_loads[eid] = (curr[0] + wya, curr[1] + wyb, curr[2] + wxa, curr[3] + wxb)
+
         # Re-instantiate expert and cache element properties only if element changes
         current_elem_idx = -1
         x1, L, u_local = 0.0, 1.0, None
+        element_expert = None
 
         for i, x in enumerate(positions):
             # Find element containing point x
@@ -396,7 +457,10 @@ class BeamSolver:
                 
                 # Instantiate the correct element type expert
                 # [Optimization]: Pre-extract all properties once per element change
-                E, G, I, A, rho = self.material.E, self.material.G, self.section.Iy, self.section.A, self.material.rho
+                # Support multiple materials/sections
+                mat = elem.material or self.material
+                sec = elem.section or self.section
+                E, G, I, A, rho = mat.E, mat.G, sec.Iy, sec.A, mat.rho
                 
                 if self.element_type == 'euler':
                     element_expert = EulerBernoulliElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
@@ -406,7 +470,9 @@ class BeamSolver:
             # Local position xi [0, 1] - Uses cached L and x1
             xi = np.clip((x - x1) / L, 0, 1) if L > 0 else 0
             
-            N, V, M = element_expert.interpolate_internal_forces(u_local, xi)
+            # Pass distributed load for this element
+            d_load = element_dist_loads.get(current_elem_idx, (0.0, 0.0, 0.0, 0.0))
+            N, V, M = element_expert.interpolate_internal_forces(u_local, xi, dist_load=d_load)
             axial_forces[i] = N
             shear_forces[i] = V
             bending_moments[i] = M
@@ -468,70 +534,103 @@ class BeamSolver:
         eval_x_count = len(x_positions)
         
         # 2. Build 2D grid for the cross-section
-        y_min, y_max = self.section.y_bottom, self.section.y_top
-        z_min, z_max = self.section.z_left, self.section.z_right
+        # If multiple sections are used, we need the union of all bounding boxes
+        y_min_global, y_max_global = self.section.y_bottom, self.section.y_top
+        z_min_global, z_max_global = self.section.z_left, self.section.z_right
+
+        for elem in self.mesh.elements:
+            if elem.section:
+                y_min_global = min(y_min_global, elem.section.y_bottom)
+                y_max_global = max(y_max_global, elem.section.y_top)
+                z_min_global = min(z_min_global, elem.section.z_left)
+                z_max_global = max(z_max_global, elem.section.z_right)
         
-        if y_min is None or y_max is None:
+        # Fallback for simple properties
+        if y_min_global is None:
             r = np.sqrt(self.section.Iy / self.section.A)
-            y_min, y_max = -2*r, 2*r
-            
-        if z_min is None or z_max is None:
+            y_min_global, y_max_global = -2*r, 2*r
+        if z_min_global is None:
             r = np.sqrt(self.section.Iz / self.section.A) if self.section.Iz else np.sqrt(self.section.Iy / self.section.A)
-            z_min, z_max = -2*r, 2*r
+            z_min_global, z_max_global = -2*r, 2*r
             
-        y_coords = np.linspace(y_min, y_max, num_y_points)
-        z_coords = np.linspace(z_min, z_max, num_z_points)
+        y_coords = np.linspace(y_min_global, y_max_global, num_y_points)
+        z_coords = np.linspace(z_min_global, z_max_global, num_z_points)
         Y, Z = np.meshgrid(y_coords, z_coords, indexing='ij')
         
-        # 3. Query section profile
-        try:
-            mask, t_yz, Q_yz = self.section.get_stress_profile(Y, Z)
-        except AttributeError:
-            mask = np.ones_like(Y, dtype=bool)
-            t_yz = np.full_like(Y, z_max - z_min)
-            Q_yz = (z_max - z_min) / 2.0 * ((y_max)**2 - Y**2)
-            
-        # 5. Calculate stresses (Full Vectorization)
-        A, Iy = self.section.A, self.section.Iy
+        # 3. Calculate stresses at each x-station
         shape_3d = (eval_x_count, num_y_points, num_z_points)
+        sigma_a = np.zeros(shape_3d)
+        sigma_b = np.zeros(shape_3d)
+        tau_s = np.zeros(shape_3d)
+        sigma_vm = np.zeros(shape_3d)
+        sigma_1 = np.zeros(shape_3d)
+        sigma_2 = np.zeros(shape_3d)
         
-        # Expand forces to 3D: (nx, 1, 1) to allow broadcasting with (ny, nz) grids
-        N_3d = N_x[:, np.newaxis, np.newaxis]
-        V_3d = V_x[:, np.newaxis, np.newaxis]
-        M_3d = M_x[:, np.newaxis, np.newaxis]
-        
-        # 1. Axial stress (Broadcasting nx -> nx, ny, nz)
-        sigma_a = np.broadcast_to(N_3d / A, shape_3d).copy()
-        
-        # 2. Bending stress (Broadcasting (nx, 1, 1) * (1, ny, nz) -> (nx, ny, nz))
-        sigma_b = -M_3d * Y[np.newaxis, :, :] / Iy
-        
-        # 3. Shear stress
-        valid_t = t_yz > 1e-9
-        shear_base = np.zeros_like(Y)
-        shear_base[valid_t] = Q_yz[valid_t] / (Iy * t_yz[valid_t])
-        tau_s = V_3d * shear_base[np.newaxis, :, :]
-        
-        # 4. von Mises and Principal Stresses
-        sigma_x = sigma_a + sigma_b
-        # sigma_y = 0 for 1D beam elements in local coordinates
-        
-        # Principal stresses (plane stress): (sigma_x/2) +/- sqrt((sigma_x/2)^2 + tau_xy^2)
-        avg_sigma = sigma_x / 2.0
-        R = np.sqrt(avg_sigma**2 + tau_s**2)
-        sigma_1 = avg_sigma + R
-        sigma_2 = avg_sigma - R
-        
-        sigma_vm = np.sqrt(sigma_x**2 + 3 * tau_s**2)
-        
-        # 5. Apply cross-section mask to all 3D arrays at once
-        inv_mask = ~np.broadcast_to(mask[np.newaxis, :, :], shape_3d)
-        sigma_a[inv_mask] = 0.0
-        sigma_b[inv_mask] = 0.0
-        tau_s[inv_mask] = 0.0
-        sigma_1[inv_mask] = 0.0
-        sigma_2[inv_mask] = 0.0
-        sigma_vm[inv_mask] = 0.0
+        # Cache section profiles to avoid redundant mask/Q calculations
+        profile_cache = {}
+
+        for i, x in enumerate(x_positions):
+            # Resolve section for this x
+            elem_idx = self.mesh.find_element_at_x(x)
+            if elem_idx == -1:
+                if x <= x_positions[0]: elem_idx = 0
+                else: elem_idx = self.mesh.num_elements - 1
+
+            elem = self.mesh.elements[elem_idx]
+            sec = elem.section or self.section
+
+            # Get stress profile (mask, t, Q) - cache by section ID
+            sec_id = id(sec)
+            if sec_id not in profile_cache:
+                try:
+                    mask, t_yz, Q_yz = sec.get_stress_profile(Y, Z)
+                except AttributeError:
+                    mask = np.ones_like(Y, dtype=bool)
+                    t_yz = np.full_like(Y, (sec.z_right or 10) - (sec.z_left or -10))
+                    Q_yz = (t_yz) / 2.0 * ((sec.y_top or 10)**2 - Y**2)
+                profile_cache[sec_id] = (mask, t_yz, Q_yz)
+
+            mask, t_yz, Q_yz = profile_cache[sec_id]
+
+            # Section properties
+            A, Iy = sec.A, sec.Iy
+
+            # Axial stress
+            sigma_a_x = np.full_like(Y, N_x[i] / A)
+
+            # Bending stress
+            sigma_b_x = -M_x[i] * Y / Iy
+
+            # Shear stress
+            tau_s_x = np.zeros_like(Y)
+            valid_t = t_yz > 1e-9
+            tau_s_x[valid_t] = V_x[i] * Q_yz[valid_t] / (Iy * t_yz[valid_t])
+
+            # Principal and von Mises
+            sig_x = sigma_a_x + sigma_b_x
+            avg_sig = sig_x / 2.0
+            R = np.sqrt(avg_sig**2 + tau_s_x**2)
+
+            s1 = avg_sig + R
+            s2 = avg_sig - R
+            svm = np.sqrt(sig_x**2 + 3 * tau_s_x**2)
+
+            # Masking
+            sig_x[~mask] = 0.0
+            sigma_a_x[~mask] = 0.0
+            sigma_b_x[~mask] = 0.0
+            tau_s_x[~mask] = 0.0
+            s1[~mask] = 0.0
+            s2[~mask] = 0.0
+            svm[~mask] = 0.0
+
+            # Store
+            sigma_a[i] = sigma_a_x
+            sigma_b[i] = sigma_b_x
+            tau_s[i] = tau_s_x
+            sigma_1[i] = s1
+            sigma_2[i] = s2
+            sigma_vm[i] = svm
 
         res = {
             'x': x_positions,
