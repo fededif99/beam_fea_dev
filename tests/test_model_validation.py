@@ -24,13 +24,11 @@ def test_missing_properties():
     material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
     section = RectangularSection(10, 10).properties()
     
-    solver = BeamSolver(mesh, None, section)
-    with pytest.raises(ValueError, match="No material assigned"):
-        solver.solve_static(LoadCase(), BoundaryConditionSet())
+    with pytest.raises(ValueError, match="Property Assignment Incomplete"):
+        solver = BeamSolver(mesh, None, section)
         
-    solver = BeamSolver(mesh, material, None)
-    with pytest.raises(ValueError, match="No cross-section properties assigned"):
-        solver.solve_static(LoadCase(), BoundaryConditionSet())
+    with pytest.raises(ValueError, match="Property Assignment Incomplete"):
+        solver = BeamSolver(mesh, material, None)
 
 def test_no_bc():
     mesh = MeshGenerator.beam_mesh_1d(100, 1)

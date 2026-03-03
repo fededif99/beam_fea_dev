@@ -11,90 +11,146 @@ from .cross_sections import SectionProperties
 
 class PropertySet:
     """
-    A collector for material and section properties across the beam.
-
-    Supports global defaults and per-element overrides.
+    A collector for material and cross-section properties across the beam.
+    
+    Acts as both a single property assignment and a container for multiple 
+    assignments (similar to LoadCase or BoundaryConditionSet).
     """
 
-    def __init__(self, default_material: Optional[Material] = None,
-                 default_section: Optional[SectionProperties] = None):
+    def __init__(self, material: Optional[Material] = None,
+                 section: Optional[SectionProperties] = None,
+                 elements: Optional[Union[int, List[int], range]] = None,
+                 name: str = "Property Set"):
         """
         Initialize property set.
 
         Parameters:
         -----------
-        default_material : Material, optional
-            Global default material
-        default_section : SectionProperties, optional
-            Global default section
+        material : Material, optional
+            The material assigned to these elements.
+        section : SectionProperties, optional
+            The cross-section assigned to these elements.
+        elements : int, list, or range, optional
+            Element ID(s) this set applies to. If None, it implies a global 
+            fallback/default set for the whole beam.
+        name : str
+            Identifier for this property collector.
         """
-        self.default_material = default_material
-        self.default_section = default_section
+        self.name = name
+        self._assignments = []
+        
+        # Internal resolved state
+        self._mat_map = {}
+        self._sec_map = {}
+        self._is_resolved = False
 
-        # Mapping: element_id -> Material
-        self.material_overrides: Dict[int, Material] = {}
+        # If initialized with arguments, add them as the first assignment
+        if material is not None or section is not None:
+            self.add(material, section, elements)
 
-        # Mapping: element_id -> SectionProperties
-        self.section_overrides: Dict[int, SectionProperties] = {}
-
-    def assign_material(self, material: Material, elements: Optional[Union[int, List[int]]] = None):
+    def add(self, material: Optional[Material] = None,
+            section: Optional[SectionProperties] = None,
+            elements: Optional[Union[int, List[int], range]] = None):
         """
-        Assign a material to specific elements.
+        Add a property assignment to the set.
 
         Parameters:
         -----------
-        material : Material
-            The material to assign
-        elements : int or list, optional
-            Element ID(s). If None, sets the global default.
+        material : Material, optional
+        section : SectionProperties, optional
+        elements : int, list, or range, optional
+            If None, applies to all elements (global default).
         """
-        if elements is None:
-            self.default_material = material
-        else:
-            e_ids = [elements] if isinstance(elements, int) else elements
-            for eid in e_ids:
-                self.material_overrides[eid] = material
+        self._assignments.append({
+            'material': material,
+            'section': section,
+            'elements': elements
+        })
+        self._is_resolved = False
 
-    def assign_section(self, section: SectionProperties, elements: Optional[Union[int, List[int]]] = None):
+    def resolve(self, num_elements: int):
         """
-        Assign a section to specific elements.
-
-        Parameters:
-        -----------
-        section : SectionProperties
-            The section properties to assign
-        elements : int or list, optional
-            Element ID(s). If None, sets the global default.
+        Pre-calculate mapping for all elements and validate coverage.
+        
+        Precedence: Later assignments in the set override earlier ones.
         """
-        if elements is None:
-            self.default_section = section
-        else:
-            e_ids = [elements] if isinstance(elements, int) else elements
+        self._mat_map = {}
+        self._sec_map = {}
+        
+        for assignment in self._assignments:
+            material = assignment['material']
+            section = assignment['section']
+            elements = assignment['elements']
+            
+            e_ids = elements if elements is not None else range(num_elements)
+            # Handle single int or range
+            if isinstance(e_ids, int):
+                e_ids = [e_ids]
+            elif isinstance(e_ids, range):
+                e_ids = list(e_ids)
+                
             for eid in e_ids:
-                self.section_overrides[eid] = section
+                if material is not None:
+                    self._mat_map[eid] = material
+                if section is not None:
+                    self._sec_map[eid] = section
+        
+        self.validate(num_elements)
+        self._is_resolved = True
+
+    def validate(self, num_elements: int):
+        """
+        Ensure every element has both a material and a section assigned.
+        """
+        missing_mats = []
+        missing_secs = []
+        
+        for i in range(num_elements):
+            if i not in self._mat_map:
+                missing_mats.append(i)
+            if i not in self._sec_map:
+                missing_secs.append(i)
+                
+        if missing_mats or missing_secs:
+            msg = f"Property Assignment Incomplete in '{self.name}':\n"
+            if missing_mats:
+                msg += f" - Elements missing Material: {self._format_list(missing_mats)}\n"
+            if missing_secs:
+                msg += f" - Elements missing Section:  {self._format_list(missing_secs)}\n"
+            raise ValueError(msg)
+
+    def _format_list(self, ids: List[int], max_show: int = 5) -> str:
+        if len(ids) <= max_show:
+            return str(ids)
+        return f"{ids[:max_show]}... (+{len(ids)-max_show} more)"
 
     def get_material(self, element_id: int) -> Material:
-        """Get material for a specific element."""
-        mat = self.material_overrides.get(element_id, self.default_material)
-        if mat is None:
-            raise ValueError(f"No material defined for element {element_id} and no default set.")
-        return mat
+        if not self._is_resolved:
+            raise RuntimeError("PropertySet must be resolved via solver before access.")
+        return self._mat_map[element_id]
 
     def get_section(self, element_id: int) -> SectionProperties:
-        """Get section for a specific element."""
-        sec = self.section_overrides.get(element_id, self.default_section)
-        if sec is None:
-            raise ValueError(f"No section defined for element {element_id} and no default set.")
-        return sec
-
+        if not self._is_resolved:
+            raise RuntimeError("PropertySet must be resolved via solver before access.")
+        return self._sec_map[element_id]
+        
     def has_multiple_sections(self, num_elements: int) -> bool:
-        """Check if different sections are used across the structure."""
-        if not self.section_overrides:
+        """Check if different section objects are used across the structure."""
+        if num_elements <= 1:
             return False
-
-        # If any element has an override different from default, return True
+            
         first_sec = self.get_section(0)
         for i in range(1, num_elements):
             if self.get_section(i) is not first_sec:
                 return True
         return False
+
+    @property
+    def default_material(self):
+        # Compatibility helper (returns material of first element)
+        return self.get_material(0) if self._mat_map else None
+
+    @property
+    def default_section(self):
+        # Compatibility helper (returns section of first element)
+        return self.get_section(0) if self._sec_map else None

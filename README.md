@@ -20,11 +20,11 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.0.0 *(2026-03-03)*
+### Latest Version: v2.1.0 *(2026-03-03)*
 
-- **Architecture**: Unified `PropertySet` architecture for flexible multi-property modeling
+- **API**: Unified `PropertySet` collector for seamless multi-property modeling and validation
+- **Validation**: Mandatory element coverage checks to ensure physical model consistency
 - **Theory**: Statically consistent force recovery and high-fidelity Timoshenko dynamics
-- **Fix**: Re-applied 3D stress masking fix for heterogeneous beam sections
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).
@@ -266,7 +266,34 @@ The `.properties()` method returns a `SectionProperties` object containing:
 Manages nodes and elements.
 
 - **`add_node(x, y, z=0)`**: Adds a node, returns ID.
-- **`add_element(n1, n2)`**: Connects two nodes, returns ID. Material and section assignments are managed via the `PropertySet` collector.
+
+#### `PropertySet` Class
+
+A collector for material and cross-section properties across the beam.
+
+```python
+# Initialization (can be empty or with an initial assignment)
+props = PropertySet(material=None, section=None, elements=None, name="My Properties")
+
+# Imperative adding (Collector style)
+props.add(material=steel, section=sec1)  # Applies to all (default)
+props.add(material=alum, elements=[2, 3]) # Overrides specific elements
+```
+
+- **`material`**: A `Material` object.
+- **`section`**: A `SectionProperties` object.
+- **`elements`**: Element ID(s) this assignment applies to. Can be an `int`, `list`, `range`, or `None` (applies to all).
+
+**Validation**: The `BeamSolver` will raise a `ValueError` during initialization if any element in the mesh is missing either a material or a section assignment.
+
+```python
+# Example: Multi-Property Beam
+props = PropertySet()
+props.add(material=steel, section=large_sec) # Global default
+props.add(material=aluminum, elements=5)     # Local material override
+
+solver = BeamSolver(mesh, material=props)
+```
 
 #### `MeshGenerator` Class
 

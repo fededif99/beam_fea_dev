@@ -2,6 +2,13 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.1.0] - 2026-03-03
+
+- **API**: Refactored `PropertySet` into a unified **Collector** model (similar to `LoadCase`), supporting both single-assignment and multi-assignment workflows via `.add()`
+- **Validation**: Introduced mandatory element-coverage validation; `BeamSolver` now raises a detailed `ValueError` if any element is missing a material or section assignment
+- **UX**: Unified assignment and resolution logic into a single class, removing the internal `PropertyResolver` from the public API
+- **Verification**: Expanded test suite to cover declarative property assignments, legacy compatibility, and partial overrides (101 passes)
+
 ## [v2.0.0] - 2026-03-03
 
 - **Architecture**: Introduced `PropertySet` collector for decoupled management of materials and cross-sections, enabling advanced multi-property modeling

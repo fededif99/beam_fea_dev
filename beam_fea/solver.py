@@ -26,7 +26,7 @@ class BeamSolver:
     Coordinates meshing, assembly, solution, and post-processing.
     """
     
-    def __init__(self, mesh: Mesh, material: Union[Material, PropertySet],
+    def __init__(self, mesh: Mesh, material: Union[Material, PropertySet, List[PropertySet]],
                  section: Optional[SectionProperties] = None, element_type: str = 'euler'):
         """
         Initialize beam solver.
@@ -35,8 +35,8 @@ class BeamSolver:
         -----------
         mesh : Mesh
             Finite element mesh
-        material : Material or PropertySet
-            Material properties or a unified PropertySet collector.
+        material : Material, PropertySet, or list of PropertySet
+            Material properties or declarative PropertySet(s).
         section : SectionProperties, optional
             Cross-section properties. Required if material is a Material object.
         element_type : str
@@ -45,13 +45,26 @@ class BeamSolver:
         self.mesh = mesh
         self.element_type = element_type.lower()
         
-        # Unified Property Management
-        if isinstance(material, PropertySet):
+        # 1. Standardize properties into a unified PropertySet collector
+        if isinstance(material, list):
+            # Merge multiple sets into a new master set
+            self.properties = PropertySet(name="Merged Properties")
+            for ps in material:
+                if isinstance(ps, PropertySet):
+                    self.properties._assignments.extend(ps._assignments)
+                else:
+                    raise TypeError(f"List of properties must contain only PropertySet objects, got {type(ps)}")
+        elif isinstance(material, PropertySet):
             self.properties = material
         else:
-            self.properties = PropertySet(default_material=material, default_section=section)
+            # Legacy/Simple path: Material + Section -> single PropertySet
+            self.properties = PropertySet(material=material, section=section)
 
-        # Legacy pointers for reporting compatibility
+        # 2. Resolve and Validate
+        if self.mesh and self.mesh.num_elements > 0:
+            self.properties.resolve(self.mesh.num_elements)
+
+        # Legacy pointers for reporting/internal compatibility
         self.material = self.properties.default_material
         self.section = self.properties.default_section
 
@@ -543,8 +556,16 @@ class BeamSolver:
         y_min_global, y_max_global = self.properties.default_section.y_bottom, self.properties.default_section.y_top
         z_min_global, z_max_global = self.properties.default_section.z_left, self.properties.default_section.z_right
         
-        # Check overrides for bounding box expansions
-        for sec in self.properties.section_overrides.values():
+        # Check all unique sections for bounding box expansions
+        processed_ids = set()
+        unique_secs = []
+        for i in range(self.mesh.num_elements):
+            sec = self.properties.get_section(i)
+            if id(sec) not in processed_ids:
+                processed_ids.add(id(sec))
+                unique_secs.append(sec)
+            
+        for sec in unique_secs:
             y_min_global = min(y_min_global, sec.y_bottom)
             y_max_global = max(y_max_global, sec.y_top)
             z_min_global = min(z_min_global, sec.z_left)

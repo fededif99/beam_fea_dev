@@ -33,12 +33,14 @@ def main():
     sec_large = rectangular(width=100.0, height=200.0)
     sec_small = rectangular(width=100.0, height=100.0)
 
-    # Use PropertySet collector
-    props = PropertySet(default_material=steel, default_section=sec_large)
-
-    # Element 1 (1000-2000mm): Aluminum + Small Section
-    props.assign_material(aluminum, elements=1)
-    props.assign_section(sec_small, elements=1)
+    # Use a single PropertySet collector
+    props = PropertySet(name="Main Properties")
+    
+    # 1. Base properties (default for the whole beam)
+    props.add(material=steel, section=sec_large)
+    
+    # 2. Specific override for Element 1
+    props.add(material=aluminum, section=sec_small, elements=1)
 
     # 2. MESH GENERATION
     # We use a very coarse mesh (only 2 elements) to demonstrate intra-element recovery
