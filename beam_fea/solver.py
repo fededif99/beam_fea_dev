@@ -130,7 +130,7 @@ class BeamSolver:
                         f"Consider using element_type='timoshenko' for more accurate results."
                     )
                 elif slenderness > 30 and self.element_type == 'timoshenko':
-                    # Optional info: Timoshenko is fine but overkill
+                    # Timoshenko is fine but overkill for very slender beams
                     pass 
     
     def _assemble_stiffness_matrix(self):
@@ -359,10 +359,10 @@ class BeamSolver:
         from .element_matrices import EulerBernoulliElement, TimoshenkoElement
         
         # Pre-calculate distributed loads per element
-        # This simplifies the interpolation loop significantly
         element_dist_loads = {}
         if self.last_load_case:
-            from .loads import UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad
+            from .loads import (UniformDistributedLoad, TrapezoidalDistributedLoad,
+                               TriangularDistributedLoad)
             for load in self.last_load_case.loads:
                 # Transverse (wy) and Axial (wx)
                 wy1 = wy2 = wx1 = wx2 = 0.0
@@ -456,7 +456,6 @@ class BeamSolver:
                 u_local = self.displacements[dof_indices]
                 
                 # Instantiate the correct element type expert
-                # [Optimization]: Pre-extract all properties once per element change
                 # Support multiple materials/sections
                 mat = elem.material or self.material
                 sec = elem.section or self.section
@@ -530,11 +529,8 @@ class BeamSolver:
         V_x = forces['shear_forces']
         M_x = forces['bending_moments']
         
-        # Resolve evaluation count for stress field allocation
-        eval_x_count = len(x_positions)
-        
         # 2. Build 2D grid for the cross-section
-        # If multiple sections are used, we need the union of all bounding boxes
+        # Use union of all bounding boxes to accommodate multiple sections
         y_min_global, y_max_global = self.section.y_bottom, self.section.y_top
         z_min_global, z_max_global = self.section.z_left, self.section.z_right
 
@@ -557,80 +553,98 @@ class BeamSolver:
         z_coords = np.linspace(z_min_global, z_max_global, num_z_points)
         Y, Z = np.meshgrid(y_coords, z_coords, indexing='ij')
         
-        # 3. Calculate stresses at each x-station
+        # 3. Calculate stresses (Vectorized if single section, else loop)
+        eval_x_count = len(x_positions)
         shape_3d = (eval_x_count, num_y_points, num_z_points)
-        sigma_a = np.zeros(shape_3d)
-        sigma_b = np.zeros(shape_3d)
-        tau_s = np.zeros(shape_3d)
-        sigma_vm = np.zeros(shape_3d)
-        sigma_1 = np.zeros(shape_3d)
-        sigma_2 = np.zeros(shape_3d)
-        
-        # Cache section profiles to avoid redundant mask/Q calculations
-        profile_cache = {}
 
-        for i, x in enumerate(x_positions):
-            # Resolve section for this x
-            elem_idx = self.mesh.find_element_at_x(x)
-            if elem_idx == -1:
-                if x <= x_positions[0]: elem_idx = 0
-                else: elem_idx = self.mesh.num_elements - 1
+        has_multiple_sections = any(elem.section is not None for elem in self.mesh.elements)
 
-            elem = self.mesh.elements[elem_idx]
-            sec = elem.section or self.section
+        if not has_multiple_sections:
+            # Full Vectorization for single-section beams
+            try:
+                mask, t_yz, Q_yz = self.section.get_stress_profile(Y, Z)
+            except AttributeError:
+                mask = np.ones_like(Y, dtype=bool)
+                t_yz = np.full_like(Y, (self.section.z_right or 10) - (self.section.z_left or -10))
+                Q_yz = (t_yz) / 2.0 * ((self.section.y_top or 10)**2 - Y**2)
 
-            # Get stress profile (mask, t, Q) - cache by section ID
-            sec_id = id(sec)
-            if sec_id not in profile_cache:
-                try:
-                    mask, t_yz, Q_yz = sec.get_stress_profile(Y, Z)
-                except AttributeError:
-                    mask = np.ones_like(Y, dtype=bool)
-                    t_yz = np.full_like(Y, (sec.z_right or 10) - (sec.z_left or -10))
-                    Q_yz = (t_yz) / 2.0 * ((sec.y_top or 10)**2 - Y**2)
-                profile_cache[sec_id] = (mask, t_yz, Q_yz)
+            A, Iy = self.section.A, self.section.Iy
 
-            mask, t_yz, Q_yz = profile_cache[sec_id]
+            # Expand forces to 3D
+            N_3d = N_x[:, np.newaxis, np.newaxis]
+            V_3d = V_x[:, np.newaxis, np.newaxis]
+            M_3d = M_x[:, np.newaxis, np.newaxis]
 
-            # Section properties
-            A, Iy = sec.A, sec.Iy
+            sigma_a = np.broadcast_to(N_3d / A, shape_3d).copy()
+            sigma_b = -M_3d * Y[np.newaxis, :, :] / Iy
 
-            # Axial stress
-            sigma_a_x = np.full_like(Y, N_x[i] / A)
-
-            # Bending stress
-            sigma_b_x = -M_x[i] * Y / Iy
-
-            # Shear stress
-            tau_s_x = np.zeros_like(Y)
             valid_t = t_yz > 1e-9
-            tau_s_x[valid_t] = V_x[i] * Q_yz[valid_t] / (Iy * t_yz[valid_t])
+            shear_base = np.zeros_like(Y)
+            shear_base[valid_t] = Q_yz[valid_t] / (Iy * t_yz[valid_t])
+            tau_s = V_3d * shear_base[np.newaxis, :, :]
 
-            # Principal and von Mises
-            sig_x = sigma_a_x + sigma_b_x
-            avg_sig = sig_x / 2.0
-            R = np.sqrt(avg_sig**2 + tau_s_x**2)
+            sigma_x = sigma_a + sigma_b
+            avg_sig = sigma_x / 2.0
+            R = np.sqrt(avg_sig**2 + tau_s**2)
+            sigma_1, sigma_2 = avg_sig + R, avg_sig - R
+            sigma_vm = np.sqrt(sigma_x**2 + 3 * tau_s**2)
 
-            s1 = avg_sig + R
-            s2 = avg_sig - R
-            svm = np.sqrt(sig_x**2 + 3 * tau_s_x**2)
+            # Global Masking
+            inv_mask = ~np.broadcast_to(mask[np.newaxis, :, :], shape_3d)
+            sigma_a[inv_mask] = sigma_b[inv_mask] = tau_s[inv_mask] = 0.0
+            sigma_1[inv_mask] = sigma_2[inv_mask] = sigma_vm[inv_mask] = 0.0
 
-            # Masking
-            sig_x[~mask] = 0.0
-            sigma_a_x[~mask] = 0.0
-            sigma_b_x[~mask] = 0.0
-            tau_s_x[~mask] = 0.0
-            s1[~mask] = 0.0
-            s2[~mask] = 0.0
-            svm[~mask] = 0.0
+        else:
+            # Multi-section beams
+            sigma_a = np.zeros(shape_3d)
+            sigma_b = np.zeros(shape_3d)
+            tau_s = np.zeros(shape_3d)
+            sigma_vm = np.zeros(shape_3d)
+            sigma_1 = np.zeros(shape_3d)
+            sigma_2 = np.zeros(shape_3d)
 
-            # Store
-            sigma_a[i] = sigma_a_x
-            sigma_b[i] = sigma_b_x
-            tau_s[i] = tau_s_x
-            sigma_1[i] = s1
-            sigma_2[i] = s2
-            sigma_vm[i] = svm
+            profile_cache = {}
+
+            for i, x in enumerate(x_positions):
+                elem_idx = self.mesh.find_element_at_x(x)
+                if elem_idx == -1:
+                    elem_idx = 0 if x <= x_positions[0] else self.mesh.num_elements - 1
+
+                elem = self.mesh.elements[elem_idx]
+                sec = elem.section or self.section
+
+                sec_id = id(sec)
+                if sec_id not in profile_cache:
+                    try:
+                        mask, t_yz, Q_yz = sec.get_stress_profile(Y, Z)
+                    except AttributeError:
+                        mask = np.ones_like(Y, dtype=bool)
+                        t_yz = np.full_like(Y, (sec.z_right or 10) - (sec.z_left or -10))
+                        Q_yz = (t_yz) / 2.0 * ((sec.y_top or 10)**2 - Y**2)
+                    profile_cache[sec_id] = (mask, t_yz, Q_yz)
+
+                mask, t_yz, Q_yz = profile_cache[sec_id]
+                A, Iy = sec.A, sec.Iy
+
+                sigma_a_x = np.full_like(Y, N_x[i] / A)
+                sigma_b_x = -M_x[i] * Y / Iy
+
+                tau_s_x = np.zeros_like(Y)
+                valid_t = t_yz > 1e-9
+                tau_s_x[valid_t] = V_x[i] * Q_yz[valid_t] / (Iy * t_yz[valid_t])
+
+                sig_x = sigma_a_x + sigma_b_x
+                avg_sig = sig_x / 2.0
+                R = np.sqrt(avg_sig**2 + tau_s_x**2)
+
+                sigma_a[i], sigma_b[i], tau_s[i] = sigma_a_x, sigma_b_x, tau_s_x
+                sigma_1[i], sigma_2[i] = avg_sig + R, avg_sig - R
+                sigma_vm[i] = np.sqrt(sig_x**2 + 3 * tau_s_x**2)
+
+                # Element Masking
+                m_3d = mask # (ny, nz)
+                sigma_a[i][~m_3d] = sigma_b[i][~m_3d] = tau_s[i][~m_3d] = 0.0
+                sigma_1[i][~m_3d] = sigma_2[i][~m_3d] = sigma_vm[i][~m_3d] = 0.0
 
         res = {
             'x': x_positions,

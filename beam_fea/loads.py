@@ -531,8 +531,6 @@ class LoadCombination:
         return f"Load Combination: {self.name}\n  {case_summary}"
 
 
-# Convenience functions removed as per user request to favor intentional "load_case.point_load()" style.
-
 if __name__ == "__main__":
     # Demonstration
     print("\n" + "="*70)

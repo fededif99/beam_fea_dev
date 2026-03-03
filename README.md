@@ -4,12 +4,12 @@
 
 **Capabilities:**
 
-- **Static analysis** — solves K·u = F with a sparse direct solver; supports point forces/moments, uniform and trapezoidal distributed loads (N/mm), and load combinations with scalar factors
+- **Static analysis** — solves $K \cdot u = F$ with a sparse direct solver; supports point forces/moments, uniform and trapezoidal distributed loads (N/mm), and load combinations with scalar factors
 - **Modal analysis** — extracts natural frequencies (Hz) and mode shapes via the generalised eigenvalue problem, using the ARPACK Lanczos algorithm; comprehensive reporting with natural frequency tables and mode shape plots
-- **Internal force recovery** — shear force V(x) and bending moment M(x) computed analytically from element shape functions, not post-processed
-- **Element types** — Euler-Bernoulli (slender, L/h > 10) and Timoshenko (shear-deformable, L/h < 10) via a single `element_type` argument
-- **Cross-sections** — rectangular, circular, hollow, I-beam, T-beam, C-channel, box, L-angle; centroid tracking and parallel-axis offset
-- **Material library** — 20+ pre-defined materials (structural steels, Al/Ti alloys, composites) plus user-defined entries
+- **Internal force recovery** — shear force $V(x)$ and bending moment $M(x)$ recovered using statically consistent superposition of homogeneous and particular solutions, ensuring accuracy even on coarse meshes
+- **Element types** — Euler-Bernoulli (slender, $L/h > 10$) and Timoshenko (shear-deformable, $L/h < 10$) via a single `element_type` argument; Timoshenko elements include full **rotational inertia** in consistent mass matrices
+- **Cross-sections** — rectangular, circular, hollow, I-beam, T-beam, C-channel, box, L-angle; support for **per-element cross-section overrides**, centroid tracking, and parallel-axis offset
+- **Material library** — 20+ pre-defined materials (structural steels, Al/Ti alloys, composites); support for **per-element material overrides** for composite or stepped beams
 - **Mesh utilities** — uniform, graded, multi-span, and curved (arc) mesh generation; uniform refinement
 - **Boundary conditions** — fixed, pinned, roller, elastic spring, and prescribed (non-zero) displacement constraints
 - **Reporting** — Professional Markdown reports with PNG plots (deformation, SFD, BMD, Mode Shapes, Stress) saved to a `<report_name>_images/` folder
@@ -266,7 +266,7 @@ The `.properties()` method returns a `SectionProperties` object containing:
 Manages nodes and elements.
 
 - **`add_node(x, y, z=0)`**: Adds a node, returns ID.
-- **`add_element(n1, n2)`**: Connects two nodes, returns ID.
+- **`add_element(n1, n2, material=None, section=None)`**: Connects two nodes, returns ID. Supports optional material and section overrides.
 
 #### `MeshGenerator` Class
 

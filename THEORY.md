@@ -68,7 +68,9 @@ The system uses a 2D beam element with **3 Degrees of Freedom (DOFs)** per node,
 ### 2.2 Local Stiffness & Mass Matrices
 
 - **Stiffness ($k_{local}$)**: Uses exact formulation for both EB and Timoshenko elements.
-- **Mass ($m_{local}$)**: Implements the **Consistent Mass Matrix**. This captures the inertia of the beam volume far more accurately than "Lumped Mass" methods, which is critical for predicting high-order vibration modes in rotating machinery.
+- **Mass ($m_{local}$)**: Implements the **Consistent Mass Matrix**. This captures the inertia of the beam volume far more accurately than "Lumped Mass" methods.
+  - **Euler-Bernoulli**: Standard 420-denominator matrix.
+  - **Timoshenko**: High-fidelity formulation including both translational inertia and **rotational inertia** (effect of cross-section depth), adjusted by the shear flexibility parameter $\Phi$.
 
 ---
 
@@ -88,7 +90,17 @@ The package treats supports as **Kinematic Constraints**:
 
 ---
 
-## 4. Numerical Solvers
+## 4. Post-Processing & Result Recovery
+
+### 4.1 Statically Consistent Force Recovery
+
+For elements with distributed loads, simple interpolation of nodal displacements (homogeneous solution) is insufficient. The package implements **Internal Force Recovery** by superimposing:
+1.  **Homogeneous Solution**: Internal forces derived from the element's nodal displacement vector $u$ ($F_h = k_{local} \cdot u$).
+2.  **Particular Solution**: The contribution of intra-element distributed loads, derived via analytical integration of the load profile along the element.
+
+This ensures that shear force $V(x)$ and bending moment $M(x)$ diagrams are accurate even with a single element per span.
+
+### 4.2 Numerical Solvers
 
 - **Statics**: LU-decomposition utilizing sparse CSR matrices (`spsolve`).
 - **Dynamics**: Lanczos algorithm (`eigsh`) to extract the fundamental natural frequencies and mode shapes, avoiding the expensive computation of high-frequency noise.
