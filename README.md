@@ -266,7 +266,7 @@ The `.properties()` method returns a `SectionProperties` object containing:
 Manages nodes and elements.
 
 - **`add_node(x, y, z=0)`**: Adds a node, returns ID.
-- **`add_element(n1, n2, material=None, section=None)`**: Connects two nodes, returns ID. Supports optional material and section overrides.
+- **`add_element(n1, n2)`**: Connects two nodes, returns ID. Material and section assignments are managed via the `PropertySet` collector.
 
 #### `MeshGenerator` Class
 

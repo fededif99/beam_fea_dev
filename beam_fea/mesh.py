@@ -50,16 +50,10 @@ class Element:
         First node ID
     node2 : int
         Second node ID
-    material : Material, optional
-        Material override for this element
-    section : SectionProperties, optional
-        Section override for this element
     """
     id: int
     node1: int
     node2: int
-    material: Optional[object] = None # Avoid circular import
-    section: Optional[object] = None
     
     def length(self, nodes: List[Node]) -> float:
         """
@@ -122,8 +116,7 @@ class Mesh:
         
         return node_id
     
-    def add_element(self, node1: int, node2: int,
-                    material=None, section=None) -> int:
+    def add_element(self, node1: int, node2: int) -> int:
         """
         Add an element to the mesh.
         
@@ -131,10 +124,6 @@ class Mesh:
         -----------
         node1, node2 : int
             Node IDs
-        material : Material, optional
-            Material for this element
-        section : SectionProperties, optional
-            Section properties for this element
             
         Returns:
         --------
@@ -147,8 +136,7 @@ class Mesh:
             raise ValueError(f"Invalid node2 ID: {node2}. Must be between 0 and {self.num_nodes-1}")
         if node1 == node2:
             raise ValueError(f"Cannot create element with same node at both ends: {node1}")
-        element = Element(id=self._element_counter, node1=node1, node2=node2,
-                         material=material, section=section)
+        element = Element(id=self._element_counter, node1=node1, node2=node2)
         self.elements.append(element)
         element_id = self._element_counter
         self._element_counter += 1

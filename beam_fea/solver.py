@@ -10,6 +10,7 @@ from typing import Optional, Union, Tuple
 from .mesh import Mesh, MeshGenerator
 from .materials import Material, get_material
 from .cross_sections import CrossSection, SectionProperties
+from .properties import PropertySet
 from .element_matrices import EulerBernoulliElement, TimoshenkoElement
 from .boundary_conditions import BoundaryConditionSet
 from .loads import LoadCase
@@ -25,8 +26,8 @@ class BeamSolver:
     Coordinates meshing, assembly, solution, and post-processing.
     """
     
-    def __init__(self, mesh: Mesh, material: Material, 
-                 section: SectionProperties, element_type: str = 'euler'):
+    def __init__(self, mesh: Mesh, material: Union[Material, PropertySet],
+                 section: Optional[SectionProperties] = None, element_type: str = 'euler'):
         """
         Initialize beam solver.
         
@@ -34,18 +35,26 @@ class BeamSolver:
         -----------
         mesh : Mesh
             Finite element mesh
-        material : Material
-            Material properties
-        section : SectionProperties
-            Cross-section properties
+        material : Material or PropertySet
+            Material properties or a unified PropertySet collector.
+        section : SectionProperties, optional
+            Cross-section properties. Required if material is a Material object.
         element_type : str
             'euler' or 'timoshenko'
         """
         self.mesh = mesh
-        self.material = material
-        self.section = section
         self.element_type = element_type.lower()
         
+        # Unified Property Management
+        if isinstance(material, PropertySet):
+            self.properties = material
+        else:
+            self.properties = PropertySet(default_material=material, default_section=section)
+
+        # Legacy pointers for reporting compatibility
+        self.material = self.properties.default_material
+        self.section = self.properties.default_section
+
         # System matrices
         self.K_global = None
         self.M_global = None
@@ -147,9 +156,9 @@ class BeamSolver:
             p1, p2 = coords[elem.node1], coords[elem.node2]
             L = np.sqrt(np.sum((p2 - p1)**2))
 
-            # Determine properties for this element
-            mat = elem.material or self.material
-            sec = elem.section or self.section
+            # Determine properties for this element via collector
+            mat = self.properties.get_material(elem.id)
+            sec = self.properties.get_section(elem.id)
 
             element = ElementClass(
                 E=mat.E,
@@ -191,9 +200,9 @@ class BeamSolver:
             p1, p2 = coords[elem.node1], coords[elem.node2]
             L = np.sqrt(np.sum((p2 - p1)**2))
 
-            # Determine properties for this element
-            mat = elem.material or self.material
-            sec = elem.section or self.section
+            # Determine properties for this element via collector
+            mat = self.properties.get_material(elem.id)
+            sec = self.properties.get_section(elem.id)
 
             element = ElementClass(
                 E=mat.E,
@@ -456,9 +465,9 @@ class BeamSolver:
                 u_local = self.displacements[dof_indices]
                 
                 # Instantiate the correct element type expert
-                # Support multiple materials/sections
-                mat = elem.material or self.material
-                sec = elem.section or self.section
+                # Support multiple materials/sections via collector
+                mat = self.properties.get_material(elem.id)
+                sec = self.properties.get_section(elem.id)
                 E, G, I, A, rho = mat.E, mat.G, sec.Iy, sec.A, mat.rho
                 
                 if self.element_type == 'euler':
@@ -531,16 +540,16 @@ class BeamSolver:
         
         # 2. Build 2D grid for the cross-section
         # Use union of all bounding boxes to accommodate multiple sections
-        y_min_global, y_max_global = self.section.y_bottom, self.section.y_top
-        z_min_global, z_max_global = self.section.z_left, self.section.z_right
-
-        for elem in self.mesh.elements:
-            if elem.section:
-                y_min_global = min(y_min_global, elem.section.y_bottom)
-                y_max_global = max(y_max_global, elem.section.y_top)
-                z_min_global = min(z_min_global, elem.section.z_left)
-                z_max_global = max(z_max_global, elem.section.z_right)
+        y_min_global, y_max_global = self.properties.default_section.y_bottom, self.properties.default_section.y_top
+        z_min_global, z_max_global = self.properties.default_section.z_left, self.properties.default_section.z_right
         
+        # Check overrides for bounding box expansions
+        for sec in self.properties.section_overrides.values():
+            y_min_global = min(y_min_global, sec.y_bottom)
+            y_max_global = max(y_max_global, sec.y_top)
+            z_min_global = min(z_min_global, sec.z_left)
+            z_max_global = max(z_max_global, sec.z_right)
+
         # Fallback for simple properties
         if y_min_global is None:
             r = np.sqrt(self.section.Iy / self.section.A)
@@ -557,18 +566,19 @@ class BeamSolver:
         eval_x_count = len(x_positions)
         shape_3d = (eval_x_count, num_y_points, num_z_points)
 
-        has_multiple_sections = any(elem.section is not None for elem in self.mesh.elements)
+        has_multiple_sections = self.properties.has_multiple_sections(self.mesh.num_elements)
 
         if not has_multiple_sections:
             # Full Vectorization for single-section beams
+            sec = self.properties.default_section
             try:
-                mask, t_yz, Q_yz = self.section.get_stress_profile(Y, Z)
+                mask, t_yz, Q_yz = sec.get_stress_profile(Y, Z)
             except AttributeError:
                 mask = np.ones_like(Y, dtype=bool)
-                t_yz = np.full_like(Y, (self.section.z_right or 10) - (self.section.z_left or -10))
-                Q_yz = (t_yz) / 2.0 * ((self.section.y_top or 10)**2 - Y**2)
+                t_yz = np.full_like(Y, (sec.z_right or 10) - (sec.z_left or -10))
+                Q_yz = (t_yz) / 2.0 * ((sec.y_top or 10)**2 - Y**2)
 
-            A, Iy = self.section.A, self.section.Iy
+            A, Iy = sec.A, sec.Iy
 
             # Expand forces to 3D
             N_3d = N_x[:, np.newaxis, np.newaxis]
@@ -611,7 +621,7 @@ class BeamSolver:
                     elem_idx = 0 if x <= x_positions[0] else self.mesh.num_elements - 1
 
                 elem = self.mesh.elements[elem_idx]
-                sec = elem.section or self.section
+                sec = self.properties.get_section(elem.id)
 
                 sec_id = id(sec)
                 if sec_id not in profile_cache:

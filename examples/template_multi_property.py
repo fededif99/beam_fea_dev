@@ -17,7 +17,8 @@ import os
 import numpy as np
 from beam_fea import (
     BeamSolver, MeshGenerator, get_material,
-    LoadCase, BoundaryConditionSet, rectangular, circular
+    LoadCase, BoundaryConditionSet, rectangular, circular,
+    PropertySet
 )
 
 def main():
@@ -32,21 +33,19 @@ def main():
     sec_large = rectangular(width=100.0, height=200.0)
     sec_small = rectangular(width=100.0, height=100.0)
 
+    # Use PropertySet collector
+    props = PropertySet(default_material=steel, default_section=sec_large)
+
+    # Element 1 (1000-2000mm): Aluminum + Small Section
+    props.assign_material(aluminum, elements=1)
+    props.assign_section(sec_small, elements=1)
+
     # 2. MESH GENERATION
     # We use a very coarse mesh (only 2 elements) to demonstrate intra-element recovery
     length = 2000.0
     mesh = MeshGenerator.beam_mesh_1d(length, num_elements=2)
 
-    # 3. ASSIGN PER-ELEMENT OVERRIDES
-    # Element 0 (0-1000mm): Steel + Large Section
-    mesh.elements[0].material = steel
-    mesh.elements[0].section = sec_large
-
-    # Element 1 (1000-2000mm): Aluminum + Small Section
-    mesh.elements[1].material = aluminum
-    mesh.elements[1].section = sec_small
-
-    # 4. LOADS & BOUNDARY CONDITIONS
+    # 3. LOADS & BOUNDARY CONDITIONS
     # Simply supported beam
     bc = BoundaryConditionSet("Simply Supported")
     bc.pinned_support(node=0)
@@ -56,9 +55,9 @@ def main():
     lc = LoadCase("Uniform Load")
     lc.uniform_load(x_start=0, x_end=2000, wy=-10.0) # 10 N/mm downward
 
-    # 5. SOLVE
-    # Solver requires default properties, though elements are overridden here
-    solver = BeamSolver(mesh, steel, sec_large)
+    # 4. SOLVE
+    # Solver accepts PropertySet for unified management
+    solver = BeamSolver(mesh, props)
     solver.solve_static(lc, bc)
 
     # 6. RESULTS
