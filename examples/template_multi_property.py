@@ -22,7 +22,6 @@ from beam_fea import (
 )
 
 def main():
-    print(f"[*] Running {os.path.basename(__file__)}...")
 
     # 1. DEFINE PROPERTIES
     # Materials
@@ -72,9 +71,6 @@ def main():
     report_path = os.path.join(os.path.dirname(__file__), "multi_property_report.md")
     solver.generate_report(report_path)
 
-    print(f"[SUCCESS] Multi-property analysis complete.")
-    print(f"  Max Deflection: {solver.get_max_deflection()[0]:.4f} mm")
-    print(f"  Report saved to: {report_path}")
 
 if __name__ == "__main__":
     main()

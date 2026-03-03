@@ -27,7 +27,6 @@ from beam_fea import (
 )
 
 def run_example():
-    print(f"[*] Running {os.path.basename(__file__)}...")
     
     # 1. Define Parameters
     L = 2000.0  # mm (2 m)
@@ -61,7 +60,6 @@ def run_example():
     lc.point_load(node=20, fy=P)
     
     # 4. Solve
-    print("  Solving...")
     solver.solve_static(lc, bc)
     
     # 5. Verification (Calculation only, results in report)
@@ -81,7 +79,6 @@ def run_example():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     report_path = os.path.join(base_dir, "ex01_report.md")
     solver.generate_report(report_path)
-    print(f"[SUCCESS] Report generated: {report_path}")
     
     return error
 
