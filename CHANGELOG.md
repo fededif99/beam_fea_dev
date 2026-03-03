@@ -2,6 +2,16 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.0.0] - 2026-03-02
+
+- **Feature**: Implemented **per-element material and cross-section overrides**, enabling analysis of non-prismatic, stepped, and composite beam structures
+- **Feature**: Added `examples/template_multi_property.py` demonstrating advanced modeling with element-level property overrides
+- **Theory**: Upgraded internal force recovery to use **statically consistent superposition** (homogeneous + particular solutions), ensuring perfectly accurate shear and moment diagrams for distributed loads even on coarse meshes
+- **Theory**: Implemented full **consistent mass matrix for Timoshenko beam elements**, including rotational inertia and shear deformation effects ($\Phi$)
+- **Optimization**: Introduced **dual-path stress engine** in `calculate_stresses` with full NumPy vectorization for uniform beams and cached resolution for multi-section models
+- **Docs**: Comprehensive audit and refinement of all docstrings and comments for clarity, relevance, and professional tone
+- **Docs**: Updated `THEORY.md` and `README.md` with detailed explanations of the new theoretical implementations and API enhancements
+
 ## [v1.9.0] - 2026-03-01
 
 - **Feature**: Refactored `BeamReportGenerator` to support dynamic, combined reporting of both static and modal analysis results in a single document
