@@ -6,7 +6,7 @@
 
 - **Static analysis** — solves K·u = F with a sparse direct solver; supports point forces/moments, uniform and trapezoidal distributed loads (N/mm), and load combinations with scalar factors
 - **Modal analysis** — extracts natural frequencies (Hz) and mode shapes via the generalised eigenvalue problem, using the ARPACK Lanczos algorithm; comprehensive reporting with natural frequency tables and mode shape plots
-- **Internal force recovery** — shear force V(x) and bending moment M(x) computed analytically from element shape functions, not post-processed
+- **Internal force recovery** — statically consistent shear force V(x) and bending moment M(x) computed analytically, correctly accounting for particular solutions under distributed loads
 - **Element types** — Euler-Bernoulli (slender, L/h > 10) and Timoshenko (shear-deformable, L/h < 10) via a single `element_type` argument
 - **Cross-sections** — rectangular, circular, hollow, I-beam, T-beam, C-channel, box, L-angle; centroid tracking and parallel-axis offset
 - **Material library** — 20+ pre-defined materials (structural steels, Al/Ti alloys, composites) plus user-defined entries
@@ -266,7 +266,7 @@ The `.properties()` method returns a `SectionProperties` object containing:
 Manages nodes and elements.
 
 - **`add_node(x, y, z=0)`**: Adds a node, returns ID.
-- **`add_element(n1, n2)`**: Connects two nodes, returns ID.
+- **`add_element(n1, n2, material=None, section=None)`**: Connects two nodes, returns ID. Supports per-element material and cross-section property overrides.
 
 #### `MeshGenerator` Class
 

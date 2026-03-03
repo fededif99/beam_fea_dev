@@ -2,6 +2,14 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v1.10.0] - 2026-03-03
+
+- **Feature**: Implemented STATICALLY CONSISTENT internal force recovery for Euler-Bernoulli and Timoshenko elements, properly accounting for particular solutions under distributed loads
+- **Feature**: Accurate consistent mass matrix for Timoshenko beams including rotational inertia and shear effects
+- **Feature**: Added support for per-element material and cross-section property overrides in `Mesh.add_element()`
+- **Feature**: Enhanced `BeamSolver.calculate_stresses()` and `calculate_internal_forces()` to dynamically resolve heterogeneous element properties
+- **Fix**: Resolved 3D stress field masking bug that caused over-prediction in beams with varying depths
+
 ## [v1.9.0] - 2026-03-01
 
 - **Feature**: Refactored `BeamReportGenerator` to support dynamic, combined reporting of both static and modal analysis results in a single document
