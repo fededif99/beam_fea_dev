@@ -2,13 +2,15 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
-## [v1.10.0] - 2026-03-03
+## [v2.0.0] - 2026-03-03
 
-- **Feature**: Implemented STATICALLY CONSISTENT internal force recovery for Euler-Bernoulli and Timoshenko elements, properly accounting for particular solutions under distributed loads
-- **Feature**: Accurate consistent mass matrix for Timoshenko beams including rotational inertia and shear effects
-- **Feature**: Added support for per-element material and cross-section property overrides in `Mesh.add_element()`
-- **Feature**: Enhanced `BeamSolver.calculate_stresses()` and `calculate_internal_forces()` to dynamically resolve heterogeneous element properties
-- **Fix**: Resolved 3D stress field masking bug that caused over-prediction in beams with varying depths
+- **Architecture**: Introduced `PropertySet` collector for decoupled management of materials and cross-sections, enabling advanced multi-property modeling
+- **Feature**: Added `examples/template_multi_property.py` demonstrating element-level property overrides
+- **Theory**: Upgraded internal force recovery to use **statically consistent superposition** (homogeneous + particular solutions), ensuring perfect accuracy for distributed loads
+- **Theory**: implemented full **consistent mass matrix for Timoshenko beam elements**, including rotational inertia and shear deformation effects
+- **Optimization**: Introduced **dual-path stress engine** with full NumPy vectorization for uniform beams and cached resolution for heterogeneous models
+- **Fix**: Resolved 3D stress field masking bug that caused over-prediction in beams with varying depths (re-applied fix to v2.0.0 architecture)
+- **Docs**: Global audit and refinement of all docstrings, comments, and manuals (README.md, THEORY.md) for professional clarity
 
 ## [v1.9.0] - 2026-03-01
 

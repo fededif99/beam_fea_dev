@@ -40,7 +40,8 @@ def run_example():
     props = hollow_circular(outer_diameter=80, thickness=5)
     
     # 2. Create Model
-    num_elems = 30
+    # Coarse mesh (5 elements) demonstrating high-accuracy force recovery
+    num_elems = 5
     mesh = MeshGenerator.beam_mesh_1d(L, num_elems)
     solver = BeamSolver(mesh, titanium, props)
     
@@ -61,8 +62,8 @@ def run_example():
     solver.get_max_deflection()
     
     # 7. Extract 3D Stress Field
-    # Analyzing stresses at 31 points along length (including nodes and center)
-    solver.calculate_stresses(num_x_points=31, num_y_points=20, num_z_points=20)
+    # High-resolution stress recovery (50 points) from 5-element mesh
+    solver.calculate_stresses(num_x_points=50, num_y_points=20, num_z_points=20)
     
     # 8. Generate Report
     base_dir = os.path.dirname(os.path.abspath(__file__))

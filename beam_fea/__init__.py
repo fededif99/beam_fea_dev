@@ -54,7 +54,6 @@ if os.environ.get('GITHUB_ACTIONS') == 'true' or os.environ.get('DISPLAY') is No
 
 
 # Core modules
-# Core modules
 from .materials import Material, get_material, MATERIAL_LIBRARY
 from .cross_sections import (
     SectionProperties,
@@ -63,6 +62,7 @@ from .cross_sections import (
     rectangular, circular, i_beam, box, t_beam, c_channel, hollow_circular, l_section
 )
 from .mesh import Mesh, Node, Element, MeshGenerator, MeshRefinement
+from .properties import PropertySet
 from .element_matrices import EulerBernoulliElement, TimoshenkoElement
 from .boundary_conditions import (
     BoundaryConditionSet,
@@ -95,6 +95,9 @@ __all__ = [
     # Mesh
     'Mesh', 'Node', 'Element', 'MeshGenerator', 'MeshRefinement',
     
+    # Properties
+    'PropertySet',
+
     # Elements
     'EulerBernoulliElement', 'TimoshenkoElement',
     
