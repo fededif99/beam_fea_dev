@@ -54,7 +54,6 @@ if os.environ.get('GITHUB_ACTIONS') == 'true' or os.environ.get('DISPLAY') is No
 
 
 # Core modules
-# Core modules
 from .materials import Material, get_material, MATERIAL_LIBRARY
 from .cross_sections import (
     SectionProperties,

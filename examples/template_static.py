@@ -13,9 +13,6 @@ Workflow:
 """
 
 import os
-import numpy as np
-
-
 from beam_fea import (
     BeamSolver, MeshGenerator, get_material, 
     LoadCase, BoundaryConditionSet, rectangular
@@ -23,18 +20,14 @@ from beam_fea import (
 
 def main():
     # 1. MATERIAL & SECTION
-    # Material (Steel from database)
     material = get_material('steel_a36')
-    
-    # Defining a rectangular section: width=100mm, height=200mm
     section = rectangular(width=100.0, height=200.0)
 
     # 2. MESH GENERATION
-    # Create a 2000mm beam with 20 elements
     length = 750
     num_elements = 50
     mesh = MeshGenerator.beam_mesh_1d(length, num_elements)
-    import os
+
     print(f"[*] Running {os.path.basename(__file__)}...")
 
     # 3. LOADS

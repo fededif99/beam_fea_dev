@@ -19,16 +19,14 @@ from beam_fea import (
 )
 
 def main():
-    # Material (Aluminum from database)
+    # 1. MATERIAL & SECTION
     material = get_material('aluminum_6061')
-    
-    # Defining a circular section: diameter=50mm
     section = circular(diameter=50.0)
 
     # 2. MESH GENERATION
-    # Create a 1000mm beam with 50 elements (Higher density for better modal accuracy)
     length = 1000.0
     mesh = MeshGenerator.beam_mesh_1d(length, num_elements=50)
+
     import os
     print(f"[*] Running {os.path.basename(__file__)}...")
 
