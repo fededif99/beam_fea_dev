@@ -585,9 +585,17 @@ class BeamSolver:
                 try:
                     mask, t_yz, Q_yz = sec.get_stress_profile(Y, Z)
                 except AttributeError:
-                    mask = np.ones_like(Y, dtype=bool)
-                    t_yz = np.full_like(Y, (sec.z_right or 10) - (sec.z_left or -10))
-                    Q_yz = (t_yz) / 2.0 * ((sec.y_top or 10)**2 - Y**2)
+                    # Fallback for simple properties: use bounding box mask
+                    y_top = sec.y_top if sec.y_top is not None else np.sqrt(sec.A)/2
+                    y_bot = sec.y_bottom if sec.y_bottom is not None else -np.sqrt(sec.A)/2
+                    z_r = sec.z_right if sec.z_right is not None else (sec.Iz/sec.A)**0.5 if sec.Iz else np.sqrt(sec.A)/2
+                    z_l = sec.z_left if sec.z_left is not None else -(sec.Iz/sec.A)**0.5 if sec.Iz else -np.sqrt(sec.A)/2
+                    
+                    mask = (Y <= y_top) & (Y >= y_bot) & (Z <= z_r) & (Z >= z_l)
+                    t_yz = np.full_like(Y, z_r - z_l)
+                    Q_yz = (t_yz) / 2.0 * (y_top**2 - Y**2)
+                    Q_yz[~mask] = 0.0
+                    t_yz[~mask] = 0.0
                 profile_cache[sec_id] = (mask, t_yz, Q_yz)
 
             mask, t_yz, Q_yz = profile_cache[sec_id]
