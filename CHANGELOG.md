@@ -2,6 +2,13 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.1.1] - 2026-03-03
+
+- **Audit**: Completed comprehensive codebase audit and status update (see `STATUS_UPDATE.md`)
+- **Fix**: Resolved `NameError: name 'List' is not defined` in `solver.py`
+- **Fix**: Removed redundant stress calculation logic in `solver.py` to improve performance
+- **Verification**: Completed `test_declarative_properties.py` by adding missing assertion for validation failure
+
 ## [v2.1.0] - 2026-03-03
 
 - **API**: Refactored `PropertySet` into a unified **Collector** model (similar to `LoadCase`), supporting both single-assignment and multi-assignment workflows via `.add()`

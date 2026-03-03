@@ -20,8 +20,9 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.1.0 *(2026-03-03)*
+### Latest Version: v2.1.1 *(2026-03-03)*
 
+- **Audit**: Comprehensive codebase audit and health check
 - **API**: Unified `PropertySet` collector for seamless multi-property modeling and validation
 - **Validation**: Mandatory element coverage checks to ensure physical model consistency
 - **Theory**: Statically consistent force recovery and high-fidelity Timoshenko dynamics

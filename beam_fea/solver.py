@@ -6,7 +6,7 @@ Main FEA solver that coordinates all modules.
 
 import numpy as np
 import warnings
-from typing import Optional, Union, Tuple
+from typing import Optional, Union, Tuple, List
 from .mesh import Mesh, MeshGenerator
 from .materials import Material, get_material
 from .cross_sections import CrossSection, SectionProperties
@@ -592,13 +592,6 @@ class BeamSolver:
         if not has_multiple_sections:
             # Full Vectorization for single-section beams
             sec = self.properties.default_section
-            try:
-                mask, t_yz, Q_yz = sec.get_stress_profile(Y, Z)
-            except AttributeError:
-                mask = np.ones_like(Y, dtype=bool)
-                t_yz = np.full_like(Y, (sec.z_right or 10) - (sec.z_left or -10))
-                Q_yz = (t_yz) / 2.0 * ((sec.y_top or 10)**2 - Y**2)
-
             try:
                 mask, t_yz, Q_yz = sec.get_stress_profile(Y, Z)
             except AttributeError:
