@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 from beam_fea import BeamSolver, MeshGenerator, BoundaryConditionSet, LoadCase, rectangular
 from beam_fea.composites import Ply, Laminate
+from beam_fea.element_matrices import AnisotropicBeamElement
 
 def test_bend_extension_coupling():
     """
@@ -75,3 +76,79 @@ def test_symmetric_no_coupling():
     tip_u = displ[3*10]
 
     assert abs(tip_u) < 1e-12
+
+
+def test_anisotropic_element_timoshenko_softening():
+    """
+    Verify that providing GA_s (Timoshenko shear) makes AnisotropicBeamElement
+    softer (higher transverse flexibility) than the EB-only case (GA_s=None).
+    For a short beam this should produce a meaningful difference.
+    """
+    EA = 5e6   # N
+    ES = 0.0   # no coupling, isolate bending
+    EI = 1e8   # N*mm^2
+    L  = 50.0  # mm (short: L/h small => shear matters)
+    GA_s = 2e4  # N — shear stiffness
+    rho_total = 1.6e-3
+
+    elem_eb = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=None)
+    elem_ts = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
+
+    K_eb = elem_eb.stiffness_matrix()
+    K_ts = elem_ts.stiffness_matrix()
+
+    # Timoshenko transverse stiffness K[1,1] < EB (softer)
+    assert K_ts[1, 1] < K_eb[1, 1]
+
+    # Both must be symmetric
+    assert np.allclose(K_eb, K_eb.T, atol=1e-10)
+    assert np.allclose(K_ts, K_ts.T, atol=1e-10)
+
+
+def test_anisotropic_udl_force_recovery():
+    """
+    For a simply-supported symmetric composite beam under UDL, the
+    internal force recovery must give:
+      - Mid-span moment  ≈ q*L^2/8  (analytical)
+      - End shear        ≈ q*L/2
+    This test specifically validates the distributed load particular solution
+    that was missing in the original implementation.
+    """
+    ply = Ply(E1=150000, E2=10000, nu12=0.3, G12=5000, thickness=0.5)
+    lam = Laminate("SS_UDL")
+    lam.add_stack(ply, [0, 90, 90, 0])  # symmetric => B=0
+
+    L = 1000.0
+    w = 20.0
+    q = -2.0  # N/mm (downward UDL)
+
+    mesh = MeshGenerator.beam_mesh_1d(length=L, num_elements=20)
+    section = rectangular(width=w, height=lam.total_thickness)
+    solver = BeamSolver(mesh, lam, section)
+
+    bc = BoundaryConditionSet()
+    bc.pinned_support(0)
+    bc.roller_support(20)
+
+    load = LoadCase()
+    load.uniform_load(x_start=0, x_end=L, wy=q)
+
+    solver.solve_static(load, bc)
+
+    forces = solver.calculate_internal_forces(num_points=201)
+
+    # Analytical values — bottom-tension positive convention:
+    # Downward UDL (q<0) produces sagging at midspan => bottom in tension => M_mid > 0
+    # M_mid = q * L^2 / 8  =>  (-2) * 1000000 / 8 = -250000 => but bottom-tension =>  +250000
+    M_mid_analytical = -q * L**2 / 8   # positive (bottom-tension)
+    # Left-end reaction force = +q_magnitude * L/2 = -q * L / 2
+    V_end_analytical  = -q * L / 2     # positive (upward reaction = upward shear at left face)
+
+    # Mid-span moment
+    idx_mid = len(forces['positions']) // 2
+    M_mid = forces['bending_moments'][idx_mid]
+    assert M_mid == pytest.approx(M_mid_analytical, rel=0.02)
+
+    # Left-end shear
+    V_end = forces['shear_forces'][0]
+    assert V_end == pytest.approx(V_end_analytical, rel=0.02)

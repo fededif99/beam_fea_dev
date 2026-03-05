@@ -2,6 +2,13 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.2.1] - 2026-03-05
+
+- **Physics**: Corrected effective axial modulus ($E_x$) extraction to use full compliance matrix inversion, ensuring accuracy for unbalanced and off-axis laminates
+- **Theory**: Upgraded `AnisotropicBeamElement` to Timoshenko formulation, incorporating shear deformation via the $\phi$ flexibility parameter
+- **Theory**: Implemented distributed load particular solutions in `AnisotropicBeamElement.interpolate_internal_forces` for statically consistent shear and moment recovery under UDLs
+- **Docs**: Expanded `THEORY.md` with a comprehensive section on Classical Laminate Theory and composite beam mathematical formulations
+
 ## [v2.2.0] - 2026-03-05
 
 - **Feature**: Full Anisotropic (Composite) Beam Support

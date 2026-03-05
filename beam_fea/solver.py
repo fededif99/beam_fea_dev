@@ -11,7 +11,7 @@ from .mesh import Mesh, MeshGenerator
 from .materials import Material, get_material
 from .cross_sections import CrossSection, SectionProperties
 from .properties import PropertySet
-from .element_matrices import EulerBernoulliElement, TimoshenkoElement
+from .element_matrices import EulerBernoulliElement, TimoshenkoElement, SHEAR_CORRECTION_FACTOR
 from .boundary_conditions import BoundaryConditionSet
 from .loads import LoadCase
 from .static_analysis import StaticAnalysis
@@ -184,7 +184,10 @@ class BeamSolver:
 
                 EA, ES, EI = mat.get_sectional_stiffness(width)
                 rho_total = mat.rho * width * mat.total_thickness
-                element = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total)
+                # Timoshenko shear stiffness: κ · Gxy · (width × thickness)
+                props = mat.get_effective_properties()
+                GA_s = SHEAR_CORRECTION_FACTOR * props['Gxy'] * (width * mat.total_thickness)
+                element = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
             else:
                 element = ElementClass(
                     E=mat.E,
@@ -240,7 +243,10 @@ class BeamSolver:
 
                 EA, ES, EI = mat.get_sectional_stiffness(width)
                 rho_total = mat.rho * width * mat.total_thickness
-                element = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total)
+                # Timoshenko shear stiffness: κ · Gxy · (width × thickness)
+                props = mat.get_effective_properties()
+                GA_s = SHEAR_CORRECTION_FACTOR * props['Gxy'] * (width * mat.total_thickness)
+                element = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
             else:
                 element = ElementClass(
                     E=mat.E,
@@ -515,7 +521,10 @@ class BeamSolver:
                     if hasattr(sec, 'diameter'): width = sec.diameter
                     EA, ES, EI = mat.get_sectional_stiffness(width)
                     rho_total = mat.rho * width * mat.total_thickness
-                    element_expert = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total)
+                    # Timoshenko shear stiffness: κ · Gxy · (width × thickness)
+                    props = mat.get_effective_properties()
+                    GA_s = SHEAR_CORRECTION_FACTOR * props['Gxy'] * (width * mat.total_thickness)
+                    element_expert = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
                 else:
                     E, G, I, A, rho = mat.E, mat.G, sec.Iy, sec.A, mat.rho
                     if self.element_type == 'euler':

@@ -424,137 +424,202 @@ class TimoshenkoElement(BeamElementMatrices):
 
 class AnisotropicBeamElement(BeamElementMatrices):
     """
-    Beam element for anisotropic (composite) materials.
-    Explicitly couples axial and bending degrees of freedom via sectional stiffnesses.
+    Timoshenko-based beam element for anisotropic (composite) materials.
+
+    Captures axial-bending coupling via width-integrated CLT sectional stiffnesses
+    (EA = A11·b, ES = B11·b, EI = D11·b). The bending sub-matrix uses the
+    Timoshenko formulation (phi-correction) to account for transverse shear
+    deformation, which is important for composite sandwich or thick-section beams.
+
+    Constitutive relations (per Reddy 2003 §5.2; Kollár & Springer 2003 §4.1)::
+
+        N = EA·ε₀ + ES·κ
+        M = ES·ε₀ + EI·κ
+
+    where ε₀ = u' (axial strain) and κ = v'' (curvature).
 
     DOFs: [u1, v1, theta1, u2, v2, theta2]
     """
 
-    def __init__(self, EA: float, ES: float, EI: float, L: float, rho_total: float):
+    def __init__(self, EA: float, ES: float, EI: float, L: float, rho_total: float,
+                 GA_s: float = None, kappa: float = SHEAR_CORRECTION_FACTOR):
         """
         Initialize with width-integrated stiffnesses.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         EA : float
-            Axial stiffness (N) - width integrated
+            Axial stiffness (N) — width-integrated A11·b
         ES : float
-            Coupling stiffness (N*mm) - width integrated (often from CLT B11)
+            Bend-extension coupling stiffness (N·mm) — width-integrated B11·b
         EI : float
-            Bending stiffness (N*mm^2) - width integrated
+            Bending stiffness (N·mm²) — width-integrated D11·b
         L : float
             Element length (mm)
         rho_total : float
-            Linear density (kg/mm) - mass per unit length
+            Linear mass density (kg/mm) — mass per unit length
+        GA_s : float, optional
+            Effective shear stiffness (N) — κ·G·A_s for the cross section.
+            If None, the bending sub-matrix degenerates to Euler-Bernoulli
+            (phi → 0, i.e. no shear deformation).
+        kappa : float
+            Shear correction factor (used only if GA_s is None). Default 5/6.
         """
-        # Note: Calling super() with dummies as we use EA, ES, EI directly
         super().__init__(E=1.0, G=1.0, I=1.0, A=1.0, L=L, rho=rho_total)
         self.EA = EA
         self.ES = ES
         self.EI = EI
-        self.rho_total = rho_total # Linear density
+        self.rho_total = rho_total
+        # GA_s: effective shear stiffness for Timoshenko correction.
+        # If not provided, set phi=0 (falls back to Euler-Bernoulli bending).
+        self.GA_s = GA_s  # may be None → phi=0
+
+    def _phi(self) -> float:
+        """Timoshenko shear-flexibility parameter φ = 12EI / (GA_s · L²)."""
+        if self.GA_s is None or self.GA_s == 0.0:
+            return 0.0
+        return 12.0 * self.EI / (self.GA_s * self.L ** 2)
 
     def stiffness_matrix(self) -> np.ndarray:
         """
-        Calculate coupled stiffness matrix.
+        Coupled Timoshenko stiffness matrix for anisotropic beam element.
+
+        The full 6×6 matrix is assembled from three contributions:
+
+        1. **Axial sub-matrix** (DOFs u1, u2)::
+
+               EA/L * [[1, -1], [-1, 1]]
+
+        2. **Timoshenko bending sub-matrix** (DOFs v1, θ1, v2, θ2):
+           Standard Timoshenko form with shear-flexibility φ = 12EI/(GA_s·L²).
+           Setting GA_s = None gives φ = 0 → classical Euler-Bernoulli result.
+
+        3. **Coupling sub-matrix** (u1/u2 coupled to θ1/θ2):
+           Derived from the ES energy term via::
+
+               ∫₀ᴸ u′ v″ dx = (u₂−u₁)/L · (θ₂−θ₁)
+
+           giving kernel ES/L on the (u, θ) cross-terms.
         """
         EA, ES, EI, L = self.EA, self.ES, self.EI, self.L
+        phi = self._phi()
+        fac = 1.0 / (1.0 + phi)
 
         K = np.zeros((6, 6))
 
-        # 1. Axial part (u1, u2)
-        k_axial = (EA / L) * np.array([[1, -1], [-1, 1]])
+        # --- 1. Axial sub-matrix ---
+        k_axial = (EA / L) * np.array([[1.0, -1.0], [-1.0, 1.0]])
         K[np.ix_([0, 3], [0, 3])] += k_axial
 
-        # 2. Bending part (v1, t1, v2, t2)
-        k_bending = (EI / L**3) * np.array([
-            [12,   6*L,   -12,   6*L],
-            [6*L,  4*L**2, -6*L,  2*L**2],
-            [-12,  -6*L,   12,   -6*L],
-            [6*L,  2*L**2, -6*L,  4*L**2]
+        # --- 2. Timoshenko bending sub-matrix ---
+        # DOF order within bending block: [v1, θ1, v2, θ2] → indices [1, 2, 4, 5]
+        k11 =  12.0 * EI * fac / L**3
+        k12 =   6.0 * EI * fac / L**2
+        k22 = (4.0 + phi) * EI * fac / L
+        k24 = (2.0 - phi) * EI * fac / L
+
+        k_bend = np.array([
+            [ k11,  k12, -k11,  k12],
+            [ k12,  k22, -k12,  k24],
+            [-k11, -k12,  k11, -k12],
+            [ k12,  k24, -k12,  k22],
         ])
-        K[np.ix_([1, 2, 4, 5], [1, 2, 4, 5])] += k_bending
+        K[np.ix_([1, 2, 4, 5], [1, 2, 4, 5])] += k_bend
 
-        # 3. Coupling part (u vs v, t) - Derived from sectional B term
-        # Integral of B * u' * v'' over L
-        # For linear u and cubic v:
-        # u' = (u2-u1)/L
-        # v'' = 1/L^2 * [(12xi-6)v1 + L(6xi-4)theta1 + (6-12xi)v2 + L(6xi-2)theta2]
-        # Integral(u' * v'') from 0 to L is 0 for Hermite shape functions
-        # WAIT: The above integral is indeed 0 if integrated over full L for constant B.
-        # This is a known property: constant B coupling disappears for pure nodal loads in 1D beam.
-        # HOWEVER, the constitutive relation is:
-        # N = EA u' + ES v''
-        # M = ES u' + EI v''
-        # The energy functional is U = 1/2 Integral [ EA(u')^2 + 2 ES u' v'' + EI(v'')^2 ] dx
-
-        # Re-evaluating Integral (u' * v'') dx:
-        # u' = constant = (u2 - u1) / L
-        # v'' = curvature. Integral(v'') dx = v'(L) - v'(0) = theta2 - theta1
-        # So Integral(u' * v'') dx = (u2 - u1)/L * (theta2 - theta1)
-
+        # --- 3. Coupling sub-matrix (axial ↔ rotation) ---
+        # Energy: U_coup = ES ∫ u′ v″ dx = ES · (u₂−u₁)/L · (θ₂−θ₁)
+        # K_coup = ∂²U_coup/∂qᵢ∂qⱼ
+        # Non-zero entries at (u1,θ1), (u1,θ2), (u2,θ1), (u2,θ2)
         k_coupling = (ES / L) * np.array([
-            [0,  0,  1,  0,  0, -1], # Row u1
-            [0,  0,  0,  0,  0,  0], # Row v1 (no direct u coupling in standard local form)
-            [1,  0,  0, -1,  0,  0], # Row t1
-            [0,  0, -1,  0,  0,  1], # Row u2
-            [0,  0,  0,  0,  0,  0], # Row v2
-            [-1, 0,  0,  1,  0,  0]  # Row t2
+            [ 0,  0,  1,  0,  0, -1],  # u1
+            [ 0,  0,  0,  0,  0,  0],  # v1
+            [ 1,  0,  0, -1,  0,  0],  # θ1
+            [ 0,  0, -1,  0,  0,  1],  # u2
+            [ 0,  0,  0,  0,  0,  0],  # v2
+            [-1,  0,  0,  1,  0,  0],  # θ2
         ])
-
-        # Check symmetry: k_coupling is symmetric
         K += k_coupling
 
         return K
 
     def mass_matrix(self, consistent: bool = True) -> np.ndarray:
-        """Mass matrix based on linear density."""
+        """Consistent or lumped mass matrix based on linear mass density."""
         m, L = self.rho_total, self.L
 
         if not consistent:
-            return np.diag([m*L/2, m*L/2, 0, m*L/2, m*L/2, 0])
+            return np.diag([m*L/2, m*L/2, 0.0, m*L/2, m*L/2, 0.0])
 
-        # Consistent mass (translational only, ignoring rotational inertia for simplicity)
         M = (m * L / 420) * np.array([
-            [ 140,      0,         0,   70,      0,         0 ],
-            [   0,    156,    22*L,     0,     54,   -13*L ],
-            [   0,   22*L,  4*L**2,     0,   13*L, -3*L**2 ],
-            [  70,      0,         0,  140,      0,         0 ],
-            [   0,     54,    13*L,     0,    156,   -22*L ],
-            [   0, -13*L, -3*L**2,     0, -22*L,  4*L**2 ]
+            [ 140,     0,       0,     70,     0,       0],
+            [   0,   156,   22*L,      0,    54,  -13*L],
+            [   0,  22*L, 4*L**2,      0,  13*L, -3*L**2],
+            [  70,     0,       0,    140,     0,       0],
+            [   0,    54,   13*L,      0,   156,  -22*L],
+            [   0, -13*L, -3*L**2,     0, -22*L, 4*L**2],
         ])
         return M
 
     def interpolate_internal_forces(self, u_local: np.ndarray, xi: float,
                                    dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[float, float, float]:
-        """Anisotropic force recovery."""
-        EA, ES, EI, L = self.EA, self.ES, self.EI, self.L
+        """
+        Statically-consistent internal force recovery for the anisotropic element.
 
-        u1, v1, t1, u2, v2, t2 = u_local
+        Uses the same superposition approach as TimoshenkoElement:
 
-        # Strains
-        eps_axial = (u2 - u1) / L
-        # Curvature kappa = d2v/dx2
-        d2N = np.array([
-            (6 - 12*xi) / L**2,
-            (4 - 6*xi) / L,
-            (-6 + 12*xi) / L**2,
-            (2 - 6*xi) / L
-        ])
-        kappa = d2N @ np.array([v1, t1, v2, t2])
+        1. Compute equivalent nodal loads ``f_eq`` for the distributed load.
+        2. Recover boundary forces at node 1: ``f_total = K·u - f_eq``.
+        3. Integrate the distributed load algebraically to get V(ξ) and M(ξ).
 
-        # constitutive
-        N_h = EA * eps_axial + ES * kappa
-        M_h = -(ES * eps_axial + EI * kappa) # M is bottom-tension positive
+        The coupled constitutive law is honoured:
 
-        # For shear, we need dM/dx
-        d3N = np.array([-12/L**3, -6/L**2, 12/L**3, -6/L**2])
-        d_kappa = d3N @ np.array([v1, t1, v2, t2])
-        V_h = -(ES * 0 + EI * d_kappa) # d(eps_axial)/dx is 0 for linear u
+            N = EA·ε₀ + ES·κ
+            M = ES·ε₀ + EI·κ   (bottom-tension positive)
 
-        # [Simplified] ignoring distributed load particular solution for now
-        # (could be added similarly to EB element)
-        return N_h, V_h, M_h
+        Parameters
+        ----------
+        u_local : np.ndarray
+            Local displacement vector [u1, v1, θ1, u2, v2, θ2].
+        xi : float
+            Normalised position along element in [0, 1].
+        dist_load : tuple
+            (wy1, wy2, wx1, wx2) — linearly varying distributed loads (N/mm).
+
+        Returns
+        -------
+        (axial_force, shear_force, bending_moment) : Tuple[float, float, float]
+        """
+        L = self.L
+        wy1, wy2, wx1, wx2 = dist_load
+
+        # --- Equivalent nodal loads for linear distributed load ---
+        f_eq = np.zeros(6)
+        f_eq[1] = (L / 20) * (7*wy1 + 3*wy2)
+        f_eq[2] = (L**2 / 60) * (3*wy1 + 2*wy2)
+        f_eq[4] = (L / 20) * (3*wy1 + 7*wy2)
+        f_eq[5] = -(L**2 / 60) * (2*wy1 + 3*wy2)
+        f_eq[0] = (L / 6) * (2*wx1 + wx2)
+        f_eq[3] = (L / 6) * (wx1 + 2*wx2)
+
+        # Boundary forces at start of element
+        f_total = self.stiffness_matrix() @ u_local - f_eq
+        N1, V1, M1 = f_total[0], f_total[1], f_total[2]
+
+        # --- Axial force N(ξ) ---
+        # N(ξ) = −N1 − ∫₀^{ξL} wx ds
+        int_wx = L * (wx1 * (xi - 0.5*xi**2) + wx2 * (0.5*xi**2))
+        axial_force = -N1 - int_wx
+
+        # --- Shear force V(ξ) ---
+        # V(ξ) = V1 + ∫₀^{ξL} wy ds
+        int_wy = L * (wy1 * (xi - 0.5*xi**2) + wy2 * (0.5*xi**2))
+        shear_force = V1 + int_wy
+
+        # --- Bending moment M(ξ) (bottom-tension positive) ---
+        # M(ξ) = −M1 + V1·(ξL) + ∫₀^{ξL} wy·(ξL − s) ds
+        int_wy_dist = L**2 * (wy1 * (0.5*xi**2 - xi**3/6) + wy2 * (xi**3/6))
+        bending_moment = -M1 + V1 * (xi * L) + int_wy_dist
+
+        return axial_force, shear_force, bending_moment
 
 
 def calculate_shear_correction_factor(section_type: str) -> float:

@@ -20,8 +20,11 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.2.0 *(2026-03-05)*
+### Latest Version: v2.2.1 *(2026-03-05)*
 
+- **Physics Verification**: Corrected $E_x$ extraction to use compliance matrix inversion, ensuring accuracy for unbalanced laminates.
+- **Timoshenko Anisotropy**: Upgraded `AnisotropicBeamElement` to include Timoshenko shear deformation.
+- **Consistent Force Recovery**: Implemented distributed load particular solutions for precise internal force diagrams in composite beams.
 - **Audit**: Comprehensive codebase audit and health check
 - **Anisotropy**: Full support for **Anisotropic (Composite) Beam Elements** with bend-extension coupling ($B$ matrix)
 - **API**: Unified `PropertySet` collector for seamless multi-property modeling and validation
@@ -41,12 +44,13 @@
 3. [Detailed API Reference](#-detailed-api-reference)
    - 3.1 [Materials](#31-materials-beam_feamaterials)
    - 3.2 [Cross-Sections](#32-cross-sections-beam_feacross_sections)
-   - 3.3 [Mesh Generation](#33-mesh-generation-beam_feamesh)
-   - 3.4 [Loads](#34-loads-beam_fealoads)
-   - 3.5 [Boundary Conditions](#35-boundary-conditions-beam_feaboundary_conditions)
-   - 3.6 [Solver & Analysis](#36-solver--analysis-beam_feasolver)
-   - 3.7 [Visualization](#37-visualization-beam_feavisualizer--beam_feaplot_style)
-   - 3.8 [Report Generation](#38-report-generation-beam_feareport_generator)
+   - 3.3 [Composites & Laminates](#33-composites--laminates-beam_feacomposites)
+   - 3.4 [Mesh Generation](#34-mesh-generation-beam_feamesh)
+   - 3.5 [Loads](#35-loads-beam_fealoads)
+   - 3.6 [Boundary Conditions](#36-boundary-conditions-beam_feaboundary_conditions)
+   - 3.7 [Solver & Analysis](#37-solver--analysis-beam_feasolver)
+   - 3.8 [Visualization](#38-visualization-beam_feavisualizer--beam_feaplot_style)
+   - 3.9 [Report Generation](#39-report-generation-beam_feareport_generator)
 4. [Validation & Theory](#-validation--theory)
 
 ---
@@ -262,7 +266,54 @@ The `.properties()` method returns a `SectionProperties` object containing:
 
 ---
 
-### 3.3 Mesh Generation (`beam_fea.mesh`)
+### 3.3 Composites & Laminates (`beam_fea.composites`)
+
+Advanced material modeling using Classical Laminate Theory (CLT) for composite structures.
+
+#### `Ply` Class
+
+Defines an orthotropic composite lamina.
+
+```python
+from beam_fea.composites import Ply
+
+carbon_ply = Ply(
+    name="T300_Epoxy",
+    E1=135000,   # Longitudinal Modulus (MPa)
+    E2=10000,    # Transverse Modulus (MPa)
+    nu12=0.3,    # Poisson's ratio
+    G12=5000,    # Shear Modulus (MPa)
+    thickness=0.125, # mm
+    rho=1.6e-6   # kg/mm³
+)
+```
+
+#### `Laminate` Class
+
+Assembles plies into a stack-up and computes the [ABD] matrix and effective engineering properties.
+
+```python
+from beam_fea.composites import Laminate
+
+lam = Laminate("Wing_Spar_Flange")
+# Add plies from bottom to top; angle is in degrees
+lam.add_stack(carbon_ply, [0, 45, -45, 90, 90, -45, 45, 0])
+
+# View effective properties
+props = lam.get_effective_properties()
+print(props['Ex'], props['Eb'])
+```
+
+**Using Laminates in the Solver:**
+To run an analysis, pass the `Laminate` directly to the `BeamSolver` as the material. The solver will automatically detect it and use the highly advanced `AnisotropicBeamElement` to capture bend-extension coupling (e.g., stretching when bent) for asymmetric layups, incorporating Timoshenko shear flexibility.
+
+```python
+solver = BeamSolver(mesh, material=lam, section=rectangular(width=25, height=lam.total_thickness))
+```
+
+---
+
+### 3.4 Mesh Generation (`beam_fea.mesh`)
 
 #### `Mesh` Class
 
@@ -314,7 +365,7 @@ Static utilities for rapid meshing.
 
 ---
 
-### 3.4 Loads (`beam_fea.loads`)
+### 3.5 Loads (`beam_fea.loads`)
 
 #### Understanding the Load Structure
 
@@ -383,7 +434,7 @@ combo.load_case(engine_mass, factor=1.0)
 
 ---
 
-### 3.5 Boundary Conditions (`beam_fea.boundary_conditions`)
+### 3.6 Boundary Conditions (`beam_fea.boundary_conditions`)
 
 #### Understanding Boundary Conditions
 
@@ -425,7 +476,7 @@ bc2.prescribed_displacement(10, dy=-5)  # 5mm prescribed downward deflection at 
 
 ---
 
-### 3.6 Solver & Analysis (`beam_fea.solver`)
+### 3.7 Solver & Analysis (`beam_fea.solver`)
 
 #### `BeamSolver` Class
 
@@ -450,7 +501,7 @@ solver = BeamSolver(mesh, material, section, element_type='euler')
 
 ---
 
-### 3.7 Visualization (`beam_fea.visualizer` & `beam_fea.plot_style`)
+### 3.8 Visualization (`beam_fea.visualizer` & `beam_fea.plot_style`)
 
 Professional visualization suite for structural results, powered by a centralized `PlotStyle` engine.
 
@@ -476,7 +527,7 @@ DEFAULT_STYLE.colour_primary = '#FF0000' # Change beam lines to red
 
 ---
 
-### 3.8 Report Generation (`beam_fea.report_generator`)
+### 3.9 Report Generation (`beam_fea.report_generator`)
 
 Generates comprehensive engineering reports in Markdown format, which can be easily converted to PDF or HTML.
 

@@ -166,42 +166,59 @@ class Laminate:
 
     def get_effective_properties(self) -> dict:
         """
-        Calculate equivalent isotropic properties for 1D beam analysis.
+        Calculate equivalent engineering properties for 1D beam analysis.
 
-        Ex = (A11*A22 - A12^2) / (A22 * t)
-        Eb = 12 / (D_inv[0,0] * t^3)
+        All moduli are derived from the full compliance matrix to correctly
+        account for extension-shear coupling (A16, A26 terms) present in
+        off-axis and unbalanced laminates.
+
+        Per MIT OCW 16.20 and Reddy (2003):
+          Ex   = 1 / (a11 * t)      where [a] = [A]^{-1}
+          Ey   = 1 / (a22 * t)
+          Gxy  = 1 / (a66 * t)
+          nu_xy = -a12 / a11
+
+          Eb   = 12 / (d11_abd * t^3)  where d11_abd = [ABD]^{-1}[3,3]
+                 Using the full ABD inverse correctly captures B-D coupling
+                 for asymmetric laminates.
+
+        Note: For purely symmetric+balanced laminates (A16=A26=0, B=0),
+        these results reduce to the simpler closed-form expressions.
         """
         if self.total_thickness == 0:
             return {}
 
         t = self.total_thickness
 
-        # Equivalent Axial Modulus (Ex)
-        # Using the A matrix (in-plane)
-        Ex = (self.A[0,0]*self.A[1,1] - self.A[0,1]**2) / (self.A[1,1] * t)
+        # Compliance matrix [a] = [A]^{-1}
+        # This is the correct general approach for all laminate types.
+        try:
+            A_inv = np.linalg.inv(self.A)
+        except np.linalg.LinAlgError:
+            A_inv = np.linalg.pinv(self.A)
 
-        # Equivalent Bending Modulus (Eb)
-        # We need the inverse of the ABD matrix to get accurate bending properties
-        # for asymmetric laminates, but for symmetric D_inv[0,0] is 1/D[0,0]
+        Ex   = 1.0 / (A_inv[0, 0] * t)
+        Ey   = 1.0 / (A_inv[1, 1] * t)
+        Gxy  = 1.0 / (A_inv[2, 2] * t)
+        nu_xy = -A_inv[0, 1] / A_inv[0, 0]
+
+        # Equivalent Bending Modulus (Eb) via full ABD inverse
+        # For asymmetric laminates, using D[0,0] only would be wrong because
+        # the B matrix couples bending and extension, modifying effective Eb.
         try:
             ABD_inv = np.linalg.inv(self.ABD)
             d11 = ABD_inv[3, 3]
             Eb = 12.0 / (d11 * t**3)
         except np.linalg.LinAlgError:
-            # Fallback for simple D-only approximation if inversion fails
-            Eb = 12.0 * self.D[0,0] / t**3
+            # Fallback: D-only approximation (valid for symmetric laminates only)
+            Eb = 12.0 * self.D[0, 0] / t**3
 
-        # Equivalent Shear Modulus (Gxy)
-        Gxy = self.A[2,2] / t
-
-        # Average Density
+        # Average density (volume-weighted)
         avg_rho = sum(p.rho * p.thickness for p, a in self.plies) / t if t > 0 else 0
-
-        # Effective Poisson's Ratio
-        nu_xy = self.A[0,1] / self.A[1,1] if self.A[1,1] != 0 else 0
 
         return {
             'Ex': Ex,
+            'Ey': Ey,
             'Eb': Eb,
             'Gxy': Gxy,
             'nu_xy': nu_xy,
@@ -234,20 +251,39 @@ class Laminate:
 
     def get_sectional_stiffness(self, width: float) -> Tuple[float, float, float]:
         """
-        Calculate width-integrated sectional stiffness values for 1D beam.
+        Calculate width-integrated sectional stiffness values for the
+        anisotropic 1D beam element.
 
-        Returns:
-        --------
+        The smeared-stiffness approach multiplies the CLT force-resultant
+        matrices (N/mm, N, N·mm per unit width) by the beam width `b`:
+
+            EA = A11 * b   (axial stiffness, N)
+            ES = B11 * b   (bend-extension coupling stiffness, N·mm)
+            EI = D11 * b   (bending stiffness, N·mm²)
+
+        Reference: Kollár & Springer (2003) §4.1; Jones (1999) Ch. 7.
+
+        Limitation
+        ----------
+        Only the [0,0] (11) component of each sub-matrix is used. This is
+        exact for laminates where all plies are at 0° or 90° (A16=A26=0,
+        D16=D26=0). For off-axis laminates (e.g. ±45°), the bending-twisting
+        coupling terms D16 and D26 are neglected, which introduces a
+        conservative error in EI. A full-width integration over the complete
+        [D] matrix would be required for accurate EI in those cases.
+
+        Parameters
+        ----------
+        width : float
+            Beam cross-section width (mm).
+
+        Returns
+        -------
         (EA, ES, EI) : Tuple[float, float, float]
-            EA: Axial stiffness (N)
-            ES: Coupling stiffness (N*mm) - from B11
-            EI: Bending stiffness (N*mm^2) - from D11
         """
-        # Integrated over width b
-        EA = self.A[0,0] * width
-        ES = self.B[0,0] * width
-        EI = self.D[0,0] * width
-
+        EA = self.A[0, 0] * width
+        ES = self.B[0, 0] * width
+        EI = self.D[0, 0] * width
         return EA, ES, EI
 
     def __str__(self):

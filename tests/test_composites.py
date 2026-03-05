@@ -37,16 +37,50 @@ def test_symmetric_laminate_coupling():
 def test_effective_properties_export():
     ply = Ply(E1=150000, E2=10000, nu12=0.3, G12=5000, thickness=0.125, rho=1.6e-6)
     lam = Laminate("Test")
-    lam.add_stack(ply, [0, 0, 0, 0]) # Pure 0 degree
+    lam.add_stack(ply, [0, 0, 0, 0])  # Pure 0 degree
 
     props = lam.get_effective_properties()
     # For all 0 deg, Ex should be close to E1
     assert props['Ex'] == pytest.approx(150000, rel=1e-2)
     assert props['Eb'] == pytest.approx(150000, rel=1e-2)
+    # Ey should be close to E2 for all-0 laminate
+    assert props['Ey'] == pytest.approx(10060, rel=1e-2)
 
     mat = lam.to_material()
     assert mat.E == pytest.approx(150000, rel=1e-2)
     assert mat.rho == 1.6e-6
+
+
+def test_effective_ex_compliance_vs_naive():
+    """
+    Verify that Ex uses the compliance-matrix formula 1/(a11*t).
+    For off-axis laminates, this differs from the naive (A11*A22-A12^2)/(A22*t).
+    A [+15/-15] balanced-but-off-axis laminate has A16=A26=0 so both should match;
+    an unbalanced [15/15] laminate has A16 != 0 and they should differ.
+    """
+    ply = Ply(E1=150000, E2=10000, nu12=0.3, G12=5000, thickness=0.25)
+
+    # Balanced [+15/-15]: both methods agree
+    lam_bal = Laminate("balanced")
+    lam_bal.add_stack(ply, [15, -15])
+    props_bal = lam_bal.get_effective_properties()
+    # Naive formula for balanced
+    A = lam_bal.A
+    naive_Ex = (A[0,0]*A[1,1] - A[0,1]**2) / (A[1,1] * lam_bal.total_thickness)
+    assert props_bal['Ex'] == pytest.approx(naive_Ex, rel=1e-3)
+
+    # Unbalanced [15/15]: compliance approach is correct; naive is wrong
+    lam_unbal = Laminate("unbalanced")
+    lam_unbal.add_stack(ply, [15, 15])
+    props_unbal = lam_unbal.get_effective_properties()
+    A_u = lam_unbal.A
+    naive_Ex_u = (A_u[0,0]*A_u[1,1] - A_u[0,1]**2) / (A_u[1,1] * lam_unbal.total_thickness)
+    # Compliance-based Ex and naive Ex should differ for unbalanced laminate
+    assert abs(props_unbal['Ex'] - naive_Ex_u) / props_unbal['Ex'] > 0.001
+    # But compliance-based Ex must equal 1/(a11*t)
+    A_inv = np.linalg.inv(A_u)
+    correct_Ex = 1.0 / (A_inv[0, 0] * lam_unbal.total_thickness)
+    assert props_unbal['Ex'] == pytest.approx(correct_Ex, rel=1e-9)
 
 if __name__ == "__main__":
     # Quick manual run

@@ -95,8 +95,9 @@ The package treats supports as **Kinematic Constraints**:
 ### 4.1 Statically Consistent Force Recovery
 
 For elements with distributed loads, simple interpolation of nodal displacements (homogeneous solution) is insufficient. The package implements **Internal Force Recovery** by superimposing:
-1.  **Homogeneous Solution**: Internal forces derived from the element's nodal displacement vector $u$ ($F_h = k_{local} \cdot u$).
-2.  **Particular Solution**: The contribution of intra-element distributed loads, derived via analytical integration of the load profile along the element.
+
+1. **Homogeneous Solution**: Internal forces derived from the element's nodal displacement vector $u$ ($F_h = k_{local} \cdot u$).
+2. **Particular Solution**: The contribution of intra-element distributed loads, derived via analytical integration of the load profile along the element.
 
 This ensures that shear force $V(x)$ and bending moment $M(x)$ diagrams are accurate even with a single element per span.
 
@@ -113,3 +114,72 @@ Verified against industry-standard benchmarks:
 
 1. **Roark's Formulas for Stress and Strain**: Analytical deflection of aerospace-grade sections.
 2. **Timoshenko, Vibration Problems in Engineering**: Exact solutions for shaft critical speeds.
+
+---
+
+## 3. Classical Laminate Theory (CLT) & Composite Beams
+
+The package supports composite beams modelled via **Classical Laminate Theory** (CLT), following Jones (1999) and Reddy (2003).
+
+### 3.1 Ply-Level Reduced Stiffness
+
+For an orthotropic ply in plane stress, the reduced stiffness matrix $[Q]$ is (Jones §2.4):
+
+$$Q_{11} = \frac{E_1}{1 - \nu_{12}\nu_{21}}, \quad Q_{22} = \frac{E_2}{1 - \nu_{12}\nu_{21}}, \quad Q_{12} = \frac{\nu_{12} E_2}{1-\nu_{12}\nu_{21}}, \quad Q_{66} = G_{12}$$
+
+where $\nu_{21} = \nu_{12} E_2 / E_1$. For a ply at angle $\theta$ the transformed matrix $[\bar{Q}]$ is computed via standard trigonometric transformation (Jones §2.9).
+
+### 3.2 ABD Matrix (Jones §4.2)
+
+For a laminate with $n$ plies spanning $z \in [-t/2, t/2]$:
+
+$$A_{ij} = \sum_k \bar{Q}_{ij}^{(k)}(z_k - z_{k-1})$$
+$$B_{ij} = \frac{1}{2}\sum_k \bar{Q}_{ij}^{(k)}(z_k^2 - z_{k-1}^2)$$
+$$D_{ij} = \frac{1}{3}\sum_k \bar{Q}_{ij}^{(k)}(z_k^3 - z_{k-1}^3)$$
+
+- $[A]$: extensional stiffness (N/mm)
+- $[B]$: bend-extension coupling stiffness (N) — zero for symmetric laminates
+- $[D]$: bending stiffness (N·mm)
+
+The constitutive relation is: $\{N, M\} = [ABD]\{\varepsilon^0, \kappa\}$.
+
+### 3.3 Effective Engineering Properties (MIT OCW 16.20)
+
+All effective moduli are derived from the **compliance matrix** $[a] = [A]^{-1}$ to correctly handle off-axis and unbalanced laminates:
+
+$$E_x = \frac{1}{a_{11} t}, \quad E_y = \frac{1}{a_{22} t}, \quad G_{xy} = \frac{1}{a_{66} t}, \quad \nu_{xy} = -\frac{a_{12}}{a_{11}}$$
+
+> **Note**: The simplified formula $E_x = (A_{11}A_{22} - A_{12}^2)/(A_{22}\cdot t)$ is only valid for symmetric+balanced laminates where $A_{16} = A_{26} = 0$.
+
+The effective bending modulus uses the **full ABD inverse**:
+
+$$E_b = \frac{12}{[ABD]^{-1}_{[3,3]} \cdot t^3}$$
+
+This captures B-D coupling for asymmetric laminates.
+
+### 3.4 Smeared-Stiffness Beam Model (Kollár & Springer §4.1)
+
+CLT sectional stiffnesses (per unit width) are integrated over the beam width $b$ to yield 1D stiffness parameters:
+
+$$EA = A_{11} \cdot b, \quad ES = B_{11} \cdot b, \quad EI = D_{11} \cdot b$$
+
+These feed a Timoshenko-based `AnisotropicBeamElement` with coupled constitutive law:
+
+$$N = EA\varepsilon_0 + ES\kappa, \quad M = ES\varepsilon_0 + EI\kappa$$
+
+where $\varepsilon_0 = u'$ (axial strain), $\kappa = v''$ (curvature). The coupling term $ES$ (from $B_{11}$) is non-zero only for **asymmetric laminates**.
+
+### 3.5 Anisotropic Stiffness Matrix
+
+The element stiffness matrix has three contributions:
+
+1. **Axial sub-matrix**: $\frac{EA}{L}\begin{bmatrix}1&-1\\-1&1\end{bmatrix}$
+2. **Timoshenko bending sub-matrix** (DOFs $v_1,\theta_1,v_2,\theta_2$): standard $\phi$-corrected form with shear flexibility $\phi = 12EI/(GA_s L^2)$ where $GA_s = \kappa G_{xy} A_{cs}$
+3. **Coupling kernel** from energy $U_{\text{coup}} = ES\int u'v''\,dx = \frac{ES}{L}(u_2-u_1)(\theta_2-\theta_1)$
+
+### 3.6 References
+
+1. R. M. Jones, *Mechanics of Composite Materials*, 2nd ed., 1999.
+2. J. N. Reddy, *Mechanics of Laminated Composite Plates and Shells*, 2003.
+3. L. P. Kollár & G. S. Springer, *Mechanics of Composite Structural Elements*, 2003.
+4. MIT OCW 16.20 Structural Mechanics — CLT lecture notes.
