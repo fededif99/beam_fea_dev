@@ -2,6 +2,14 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.2.0] - 2026-03-05
+
+- **Feature**: Full Anisotropic (Composite) Beam Support
+- **Element**: Introduced `AnisotropicBeamElement` with coupled axial-bending constitutive matrices
+- **Coupling**: Captures bend-extension coupling effects ($B$ matrix) in asymmetric laminates
+- **API**: Updated `BeamSolver` to automatically utilize anisotropic elements for `Laminate` materials
+- **Verification**: New example `examples/ex06_anisotropic_coupling.py` demonstrating coupling effects
+
 ## [v2.1.3] - 2026-03-05
 
 - **Fix**: Resolved `flake8` CI failure by correctly handling `Material` type hints in `composites.py`

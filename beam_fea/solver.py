@@ -162,6 +162,9 @@ class BeamSolver:
         num_dofs = self.mesh.num_dofs
         K_rows, K_cols, K_data = [], [], []
 
+        from .element_matrices import AnisotropicBeamElement
+        from .composites import Laminate
+
         ElementClass = EulerBernoulliElement if self.element_type == 'euler' else TimoshenkoElement
         coords = self.mesh.get_node_coords()
 
@@ -173,14 +176,24 @@ class BeamSolver:
             mat = self.properties.get_material(elem.id)
             sec = self.properties.get_section(elem.id)
 
-            element = ElementClass(
-                E=mat.E,
-                G=mat.G,
-                I=sec.Iy,
-                A=sec.A,
-                L=L,
-                rho=mat.rho
-            )
+            # Check for anisotropy (Laminate override)
+            if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
+                # Detect width from section (standardized sections have 'width')
+                width = getattr(sec, 'width', 1.0)
+                if hasattr(sec, 'diameter'): width = sec.diameter
+
+                EA, ES, EI = mat.get_sectional_stiffness(width)
+                rho_total = mat.rho * width * mat.total_thickness
+                element = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total)
+            else:
+                element = ElementClass(
+                    E=mat.E,
+                    G=mat.G,
+                    I=sec.Iy,
+                    A=sec.A,
+                    L=L,
+                    rho=mat.rho
+                )
 
             k_local = element.stiffness_matrix()
 
@@ -206,6 +219,9 @@ class BeamSolver:
         num_dofs = self.mesh.num_dofs
         M_rows, M_cols, M_data = [], [], []
 
+        from .element_matrices import AnisotropicBeamElement
+        from .composites import Laminate
+
         ElementClass = EulerBernoulliElement if self.element_type == 'euler' else TimoshenkoElement
         coords = self.mesh.get_node_coords()
 
@@ -217,14 +233,23 @@ class BeamSolver:
             mat = self.properties.get_material(elem.id)
             sec = self.properties.get_section(elem.id)
 
-            element = ElementClass(
-                E=mat.E,
-                G=mat.G,
-                I=sec.Iy,
-                A=sec.A,
-                L=L,
-                rho=mat.rho
-            )
+            # Check for anisotropy
+            if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
+                width = getattr(sec, 'width', 1.0)
+                if hasattr(sec, 'diameter'): width = sec.diameter
+
+                EA, ES, EI = mat.get_sectional_stiffness(width)
+                rho_total = mat.rho * width * mat.total_thickness
+                element = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total)
+            else:
+                element = ElementClass(
+                    E=mat.E,
+                    G=mat.G,
+                    I=sec.Iy,
+                    A=sec.A,
+                    L=L,
+                    rho=mat.rho
+                )
 
             m_local = element.mass_matrix()
 
@@ -437,6 +462,9 @@ class BeamSolver:
         x1, L, u_local = 0.0, 1.0, None
         element_expert = None
 
+        from .element_matrices import AnisotropicBeamElement
+        from .composites import Laminate
+
         for i, x in enumerate(positions):
             # Find element containing point x
             found_idx = -1
@@ -481,12 +509,19 @@ class BeamSolver:
                 # Support multiple materials/sections via collector
                 mat = self.properties.get_material(elem.id)
                 sec = self.properties.get_section(elem.id)
-                E, G, I, A, rho = mat.E, mat.G, sec.Iy, sec.A, mat.rho
                 
-                if self.element_type == 'euler':
-                    element_expert = EulerBernoulliElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
+                if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
+                    width = getattr(sec, 'width', 1.0)
+                    if hasattr(sec, 'diameter'): width = sec.diameter
+                    EA, ES, EI = mat.get_sectional_stiffness(width)
+                    rho_total = mat.rho * width * mat.total_thickness
+                    element_expert = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total)
                 else:
-                    element_expert = TimoshenkoElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
+                    E, G, I, A, rho = mat.E, mat.G, sec.Iy, sec.A, mat.rho
+                    if self.element_type == 'euler':
+                        element_expert = EulerBernoulliElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
+                    else:
+                        element_expert = TimoshenkoElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
             
             # Local position xi [0, 1] - Uses cached L and x1
             xi = np.clip((x - x1) / L, 0, 1) if L > 0 else 0

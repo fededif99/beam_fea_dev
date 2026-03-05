@@ -156,6 +156,14 @@ class Laminate:
             [self.B, self.D]
         ])
 
+    @property
+    def rho(self) -> float:
+        """Average density of the laminate."""
+        if not self.plies: return 0.0
+        t = sum(p.thickness for p, a in self.plies)
+        if t == 0: return 0.0
+        return sum(p.rho * p.thickness for p, a in self.plies) / t
+
     def get_effective_properties(self) -> dict:
         """
         Calculate equivalent isotropic properties for 1D beam analysis.
@@ -223,6 +231,24 @@ class Laminate:
             nu=props['nu_xy'],
             rho=props['rho']
         )
+
+    def get_sectional_stiffness(self, width: float) -> Tuple[float, float, float]:
+        """
+        Calculate width-integrated sectional stiffness values for 1D beam.
+
+        Returns:
+        --------
+        (EA, ES, EI) : Tuple[float, float, float]
+            EA: Axial stiffness (N)
+            ES: Coupling stiffness (N*mm) - from B11
+            EI: Bending stiffness (N*mm^2) - from D11
+        """
+        # Integrated over width b
+        EA = self.A[0,0] * width
+        ES = self.B[0,0] * width
+        EI = self.D[0,0] * width
+
+        return EA, ES, EI
 
     def __str__(self):
         res = f"Laminate: {self.name}\n"
