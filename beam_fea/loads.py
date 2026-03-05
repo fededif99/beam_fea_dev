@@ -411,6 +411,10 @@ class LoadCase:
         self.name = name
         self.loads: List[Load] = []
     
+    def add(self, load: Load):
+        """Add a load object."""
+        self.loads.append(load)
+
     def point_load(self, node: Optional[int] = None, x: Optional[float] = None, 
                    fx: float = 0, fy: float = 0, mz: float = 0):
         """Add a point load to this load case."""

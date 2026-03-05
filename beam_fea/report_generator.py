@@ -868,17 +868,26 @@ class BeamReportGenerator:
         plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
         plt.close()
     
-    def plot_cross_section(self, output_path: str, dpi: int = 150):
+    def plot_cross_sections(self, output_path: str, dpi: int = 150):
         """
-        Plot cross-section using BeamVisualizer.
+        Plot unique cross-sections using BeamVisualizer.
         """
         from .visualizer import BeamVisualizer
         viz = BeamVisualizer(self.mesh)
-        viz.plot_section_properties(
-            self.section,
-            output_path=output_path,
-            dpi=dpi
-        )
+        if self.solver.properties.has_multiple_sections(self.mesh.num_elements):
+            viz.plot_multiple_sections(self.solver.properties, output_path=output_path, dpi=dpi)
+        else:
+            viz.plot_section_properties(self.section, output_path=output_path, dpi=dpi)
+
+    def plot_laminate_stackup(self, output_path: str, dpi: int = 150):
+        """
+        Plot laminate stack-up if the material is a laminate.
+        """
+        from .composites import Laminate
+        from .visualizer import BeamVisualizer
+        if hasattr(self.material, '_is_laminate') or isinstance(self.material, Laminate):
+            viz = BeamVisualizer(self.mesh)
+            viz.plot_laminate_stackup(self.material, output_path=output_path, dpi=dpi)
     
     def generate_report(self, output_path: str, deformation_scale: Union[float, str] = 'auto'):
         """
@@ -905,6 +914,10 @@ class BeamReportGenerator:
         md_content += self._generate_executive_summary(has_static, has_modal)
         md_content += self._generate_model_setup(images_dir, images_rel_path)
         
+        # Cross-section visualization (Enhanced)
+        self.plot_cross_sections(str(images_dir / "cross_sections.png"))
+        self.plot_laminate_stackup(str(images_dir / "laminate_stackup.png"))
+
         if has_static:
             md_content += self._generate_static_results(images_dir, images_rel_path, deformation_scale)
             
@@ -1048,7 +1061,9 @@ class BeamReportGenerator:
 **Detailed Loads:**
 {load_details_str}
 
-### Cross-Section Properties
+### Cross-Section Geometry
+
+![Cross Sections]({images_rel_path}/cross_sections.png)
 
 | Property | Value | Units |
 |----------|-------|-------|
@@ -1058,6 +1073,8 @@ class BeamReportGenerator:
 | Moment of Inertia (Iz) | {self.section.Iz:.2e} | mm⁴ |
 
 {mat_props_md.strip()}
+
+{self._generate_laminate_section(images_rel_path)}
 
 ---
 """
@@ -1150,6 +1167,20 @@ class BeamReportGenerator:
         max_shear_val, shear_x, shear_y, shear_z = get_max_stress_info(self.stresses['shear'])
         max_axial_val, axial_x, axial_y, axial_z = get_max_stress_info(self.stresses['axial'])
 
+        # Ply-by-ply stress summary for report
+        ply_stress_table = ""
+        from .composites import Laminate
+        if (hasattr(self.material, '_is_laminate') or isinstance(self.material, Laminate)) and hasattr(self.solver, 'laminate_results'):
+            ply_stress_table = "\n### Ply-by-Ply Maximum Stresses\n\n| Ply | Name | Angle | Max $\\sigma_x$ [MPa] |\n|---|---|---|---|\n"
+            # Get peak for each ply across all stations
+            # For simplicity, we look at element 0's results
+            if 0 in self.solver.laminate_results:
+                ply_data = self.solver.laminate_results[0]['ply_data']
+                for ply in ply_data:
+                    # peak_sigma_x is per station
+                    peak_val = np.max(ply['peak_sigma_x'])
+                    ply_stress_table += f"| {ply['index']+1} | {ply['name']} | {ply['angle']}° | {peak_val:.2f} |\n"
+
         return rf"""
 ## 3. Static Analysis Results
 
@@ -1187,6 +1218,8 @@ Shear Force (V) and Bending Moment (M) distributions:
 | Shear (Max)      | {max_shear_val:.2f} | ({shear_x:.1f}, {shear_y:.1f}, {shear_z:.1f}) | MPa |
 | Axial (Max)      | {max_axial_val:.2f} | ({axial_x:.1f}, {axial_y:.1f}, {axial_z:.1f}) | MPa |
 
+{ply_stress_table}
+
 ---
 """
 
@@ -1223,6 +1256,20 @@ Shear Force (V) and Bending Moment (M) distributions:
             results_md += f"#### Mode {mode_idx} ({freq:.2f} Hz)\n\n![Mode {mode_idx}]({images_rel_path}/{img})\n\n"
 
         return results_md + "---\n"
+
+    def _generate_laminate_section(self, images_rel_path):
+        """Generate additional section for laminate details."""
+        from .composites import Laminate
+        if not (hasattr(self.material, '_is_laminate') or isinstance(self.material, Laminate)):
+            return ""
+
+        return rf"""
+### Composite Laminate Details
+
+![Laminate Stackup]({images_rel_path}/laminate_stackup.png)
+
+The following stack-up defines the laminate properties and fiber orientations.
+"""
 
     def _generate_footer(self):
         """Generate report footer."""

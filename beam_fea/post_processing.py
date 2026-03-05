@@ -232,8 +232,10 @@ class StressEngine:
             points_by_element[eid].append(i)
 
         profile_cache = {}
+        from .composites import Laminate
 
         for eid, indices in points_by_element.items():
+            mat = solver.properties.get_material(eid)
             sec = solver.properties.get_section(eid)
             sec_id = id(sec)
 
@@ -241,6 +243,87 @@ class StressEngine:
                 profile_cache[sec_id] = StressEngine._get_section_profile(sec, Y, Z)
 
             mask, t_yz, Q_yz = profile_cache[sec_id]
+
+            # --- Special Handling for Laminates (Ply-by-Ply) ---
+            if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
+                lam = mat
+                t_lam = lam.total_thickness
+
+                # Laminate mid-plane strains and curvatures for these stations
+                # For 1D beam: eps_x = eps_x_0 + z * kappa_x
+                # u_local = [u1, v1, th1, u2, v2, th2]
+                # Actually we have global forces N, V, M.
+                # Midplane resultants per unit width: n = N/width, m = M/width
+                width = getattr(sec, 'width', getattr(sec, 'diameter', 1.0))
+
+                N_sub = N_x[indices] / width
+                M_sub = M_x[indices] / width
+
+                # Solve [ABD][eps0; kappa] = [n; m]
+                # [n_x, n_y, n_xy, m_x, m_y, m_xy]^T
+                # In 1D beam, we assume n_y=n_xy=m_y=m_xy = 0
+                load_vectors = np.zeros((len(indices), 6))
+                load_vectors[:, 0] = N_sub
+                load_vectors[:, 3] = M_sub
+
+                try:
+                    ABD_inv = np.linalg.inv(lam.ABD)
+                    strains_mid = (ABD_inv @ load_vectors.T).T # (n_stations, 6)
+                except np.linalg.LinAlgError:
+                    strains_mid = np.zeros((len(indices), 6))
+
+                # For each ply, calculate stress at its top, bottom and mid
+                ply_stresses = []
+                z_ply = -t_lam / 2.0
+                for i, (ply, angle) in enumerate(lam.plies):
+                    Qbar = ply.transformed_reduced_stiffness(angle)
+
+                    # Heights within the ply (top and bottom relative to midplane)
+                    z_bot = z_ply
+                    z_top = z_ply + ply.thickness
+                    z_mid = z_ply + ply.thickness / 2.0
+
+                    # Strains at these heights: eps = eps0 + z * kappa
+                    # eps0 = strains_mid[:, 0:3], kappa = strains_mid[:, 3:6]
+                    eps_bot = strains_mid[:, 0:3] + z_bot * strains_mid[:, 3:6]
+                    eps_top = strains_mid[:, 0:3] + z_top * strains_mid[:, 3:6]
+
+                    # Ply stresses: sig = Qbar * eps
+                    sig_bot = (Qbar @ eps_bot.T).T # (n_stations, 3)
+                    sig_top = (Qbar @ eps_top.T).T # (n_stations, 3)
+
+                    ply_stresses.append({
+                        'index': i,
+                        'name': ply.name,
+                        'angle': angle,
+                        'z_range': (z_bot, z_top),
+                        'sigma_x': (sig_bot[:, 0] + sig_top[:, 0]) / 2.0, # Average for the station's 3D field
+                        'peak_sigma_x': np.maximum(np.abs(sig_bot[:, 0]), np.abs(sig_top[:, 0])),
+                        'sigma_bot': sig_bot,
+                        'sigma_top': sig_top
+                    })
+                    z_ply += ply.thickness
+
+                # Map ply stresses back to Y, Z grid for standard results
+                # In our 1D beam model, Y is the thickness direction for laminates.
+                for idx_in_sub, global_idx in enumerate(indices):
+                    for ply_info in ply_stresses:
+                        z_b, z_t = ply_info['z_range']
+                        # mask_ply identifies points in the grid that belong to this ply
+                        mask_ply = mask & (Y >= z_b) & (Y <= z_t)
+                        sigma_a[global_idx, mask_ply] = ply_info['sigma_x'][idx_in_sub]
+                        # We use von_mises slot for peak ply stress for now
+                        sigma_vm[global_idx, mask_ply] = ply_info['peak_sigma_x'][idx_in_sub]
+
+                # Store ply-by-ply data in a separate attribute for querying
+                if not hasattr(solver, 'laminate_results'):
+                    solver.laminate_results = {}
+                solver.laminate_results[eid] = {
+                    'ply_data': ply_stresses,
+                    'strains_mid': strains_mid,
+                    'x_positions': x_positions[indices]
+                }
+                continue # Skip standard isotropic calculation
             A, Iy = sec.A, sec.Iy
 
             # Forces for these stations
@@ -305,6 +388,32 @@ class StressEngine:
             z_min = min(z_min, sec.z_left); z_max = max(z_max, sec.z_right)
 
         return y_min, y_max, z_min, z_max
+
+    @staticmethod
+    def get_ply_stresses(solver, element_id: int, x_station_idx: int = 0):
+        """
+        Query detailed ply-by-ply stresses for a specific element and station.
+        """
+        if not hasattr(solver, 'laminate_results') or element_id not in solver.laminate_results:
+            return None
+
+        res = solver.laminate_results[element_id]
+        ply_data = res['ply_data']
+
+        station_stresses = []
+        for ply in ply_data:
+            station_stresses.append({
+                'ply_index': ply['index'],
+                'ply_name': ply['name'],
+                'angle': ply['angle'],
+                'sigma_x_bot': ply['sigma_bot'][x_station_idx, 0],
+                'sigma_x_top': ply['sigma_top'][x_station_idx, 0],
+                'sigma_y_bot': ply['sigma_bot'][x_station_idx, 1],
+                'sigma_y_top': ply['sigma_top'][x_station_idx, 1],
+                'tau_xy_bot': ply['sigma_bot'][x_station_idx, 2],
+                'tau_xy_top': ply['sigma_top'][x_station_idx, 2],
+            })
+        return station_stresses
 
     @staticmethod
     def _get_section_profile(sec, Y, Z):

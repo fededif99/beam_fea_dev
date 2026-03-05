@@ -20,8 +20,13 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.3.0 *(2026-03-05)*
+### Latest Version: v2.4.0 *(2026-03-05)*
 
+- **Explicit Geometry**: Replaced bounding boxes with Matplotlib patches for exact cross-section visualization.
+- **Composite Stack-ups**: New `plot_laminate_stackup` featuring vertical ply stacks and polar orientation rosettes.
+- **Multi-Section Plots**: Automatic subplot generation for beams with varying cross-sections.
+- **Ply-by-Ply Stresses**: High-fidelity stress recovery calculating $\sigma_x, \sigma_y, \tau_{xy}$ for every ply in a laminate.
+- **Reporting**: Reports now include explicit geometry plots, laminate stack-ups, and ply-stress summaries.
 - **Strategy Pattern**: Decoupled "FEA Interpolation" from "High-Fidelity Recovery" for internal force handling.
 - **Optimization**: Achieve $O(M)$ performance scaling for station evaluations via vectorized grouping.
 - **Post-Processing Module**: Centralized calculation engines in `beam_fea/post_processing.py`.

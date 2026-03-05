@@ -2,6 +2,16 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.4.0] - 2026-03-05
+
+- **Visualization**: Overhauled cross-section plotting to draw explicit geometry using Matplotlib patches instead of bounding boxes for all standard sections.
+- **Visualization**: Implemented `plot_laminate_stackup` featuring Abaqus-inspired vertical ply stacks and HyperMesh-inspired polar orientation rosettes.
+- **Visualization**: Added support for subplots in `plot_multiple_sections` to visualize models with varying cross-sections.
+- **Analysis**: Implemented high-fidelity **Ply-by-Ply Stress Recovery** for composite laminates, calculating $\sigma_x, \sigma_y, \tau_{xy}$ for every layer.
+- **API**: Enhanced `BoundaryConditionSet` and `LoadCase` with `.add()` methods for better object-oriented model building.
+- **Reporting**: Upgraded `BeamReportGenerator` to include enhanced cross-section geometry, laminate stack-up diagrams, and ply-by-ply maximum stress tables.
+- **Refactor**: Updated `SectionProperties` and `CrossSection` classes to maintain persistent naming and parent-child relationships for improved visualization.
+
 ## [v2.3.0] - 2026-03-05
 
 - **Architecture**: Implemented the **Strategy Pattern** for internal force handling, separating pure FEA approximation (`NodalInterpolationStrategy`) from high-fidelity engineering results (`ConsistentRecoveryStrategy`).

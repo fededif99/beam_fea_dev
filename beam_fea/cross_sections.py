@@ -53,6 +53,8 @@ class SectionProperties:
         Distance from centroid to right fiber (mm)
     name : str
         Descriptive name of the cross-section
+    parent_section : CrossSection, optional
+        The source CrossSection object that generated these properties.
     """
     
     A: float
@@ -70,6 +72,7 @@ class SectionProperties:
     z_left: float = None
     z_right: float = None
     name: str = "Custom Profile"
+    parent_section: Optional['CrossSection'] = None
     
     def __post_init__(self):
         """Calculate derived properties if not provided."""
@@ -146,7 +149,7 @@ class CrossSection(ABC):
 class RectangularSection(CrossSection):
     """Rectangular cross-section."""
     
-    def __init__(self, width: float, height: float):
+    def __init__(self, width: float, height: float, name: str = None):
         """
         Initialize rectangular section.
         """
@@ -156,6 +159,7 @@ class RectangularSection(CrossSection):
             raise ValueError(f"Height must be positive, got {height}")
         self.width = width
         self.height = height
+        self.name = name or f"Rectangular ({width}w × {height}h)"
     
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
@@ -173,7 +177,8 @@ class RectangularSection(CrossSection):
             y_centroid=0.0, z_centroid=0.0,  # Center is reference
             y_top=h/2, y_bottom=-h/2,
             z_left=-b/2, z_right=b/2,
-            name=f"Rectangular ({self.width}w × {self.height}h)"
+            name=f"Rectangular ({self.width}w × {self.height}h)",
+            parent_section=self
         )
     
     def __str__(self):
@@ -192,7 +197,7 @@ class RectangularSection(CrossSection):
 class CircularSection(CrossSection):
     """Solid circular cross-section."""
     
-    def __init__(self, diameter: float):
+    def __init__(self, diameter: float, name: str = None):
         """
         Initialize circular section.
         
@@ -204,6 +209,7 @@ class CircularSection(CrossSection):
         if diameter <= 0:
             raise ValueError(f"Diameter must be positive, got {diameter}")
         self.diameter = diameter
+        self.name = name or f"Circular (∅{diameter})"
     
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
@@ -220,7 +226,8 @@ class CircularSection(CrossSection):
             y_centroid=0.0, z_centroid=0.0,
             y_top=r, y_bottom=-r,
             z_left=-r, z_right=r,
-            name=f"Circular (∅{self.diameter})"
+            name=f"Circular (∅{self.diameter})",
+            parent_section=self
         )
     
     def __str__(self):
@@ -240,7 +247,7 @@ class CircularSection(CrossSection):
 class HollowCircularSection(CrossSection):
     """Hollow circular cross-section (pipe/tube)."""
     
-    def __init__(self, outer_diameter: float, thickness: float):
+    def __init__(self, outer_diameter: float, thickness: float, name: str = None):
         """
         Initialize hollow circular section.
         
@@ -260,6 +267,7 @@ class HollowCircularSection(CrossSection):
         self.outer_diameter = outer_diameter
         self.thickness = thickness
         self.inner_diameter = outer_diameter - 2 * thickness
+        self.name = name or f"Hollow Circular (∅{outer_diameter} × {thickness}t)"
     
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
@@ -278,7 +286,8 @@ class HollowCircularSection(CrossSection):
             y_centroid=0.0, z_centroid=0.0,
             y_top=ro, y_bottom=-ro,
             z_left=-ro, z_right=ro,
-            name=f"Hollow Circular (∅{self.outer_diameter} × {self.thickness}t)"
+            name=f"Hollow Circular (∅{self.outer_diameter} × {self.thickness}t)",
+            parent_section=self
         )
     
     def __str__(self):
@@ -315,7 +324,7 @@ class IBeamSection(CrossSection):
     """I-beam (wide flange) cross-section."""
     
     def __init__(self, flange_width: float, total_height: float,
-                 web_thickness: float, flange_thickness: float):
+                 web_thickness: float, flange_thickness: float, name: str = None):
         """
         Initialize I-beam section.
         
@@ -346,6 +355,7 @@ class IBeamSection(CrossSection):
         self.total_height = total_height
         self.web_thickness = web_thickness
         self.flange_thickness = flange_thickness
+        self.name = name or f"I-Beam (d={total_height}, bf={flange_width}, tw={web_thickness}, tf={flange_thickness})"
     
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
@@ -379,7 +389,8 @@ class IBeamSection(CrossSection):
             y_centroid=0.0, z_centroid=0.0,
             y_top=d/2, y_bottom=-d/2,
             z_left=-bf/2, z_right=bf/2,
-            name=f"I-Beam (d={self.total_height}, bf={self.flange_width}, tw={self.web_thickness}, tf={self.flange_thickness})"
+            name=f"I-Beam (d={self.total_height}, bf={self.flange_width}, tw={self.web_thickness}, tf={self.flange_thickness})",
+            parent_section=self
         )
     
     def __str__(self):
@@ -419,7 +430,7 @@ class TBeamSection(CrossSection):
     """T-beam cross-section."""
     
     def __init__(self, flange_width: float, flange_thickness: float,
-                 web_height: float, web_thickness: float):
+                 web_height: float, web_thickness: float, name: str = None):
         """
         Initialize T-beam section.
         
@@ -439,6 +450,7 @@ class TBeamSection(CrossSection):
         self.web_height = web_height
         self.web_thickness = web_thickness
         self.total_height = flange_thickness + web_height
+        self.name = name or f"T-Beam (bf={flange_width}, tf={flange_thickness}, hw={web_height}, tw={web_thickness})"
     
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
@@ -474,7 +486,8 @@ class TBeamSection(CrossSection):
             y_centroid=y_bar, z_centroid=0.0,
             y_top=y_top_val, y_bottom=-y_bottom_val,
             z_left=-bf/2, z_right=bf/2,
-            name=f"T-Beam (bf={self.flange_width}, tf={self.flange_thickness}, hw={self.web_height}, tw={self.web_thickness})"
+            name=f"T-Beam (bf={self.flange_width}, tf={self.flange_thickness}, hw={self.web_height}, tw={self.web_thickness})",
+            parent_section=self
         )
     
     def __str__(self):
@@ -524,7 +537,7 @@ class TBeamSection(CrossSection):
 class BoxSection(CrossSection):
     """Rectangular hollow section (box section)."""
     
-    def __init__(self, width: float, height: float, thickness: float):
+    def __init__(self, width: float, height: float, thickness: float, name: str = None):
         """
         Initialize box section.
         
@@ -550,6 +563,7 @@ class BoxSection(CrossSection):
         self.width = width
         self.height = height
         self.thickness = thickness
+        self.name = name or f"Box Section ({width}w × {height}h × {thickness}t)"
     
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
@@ -584,7 +598,8 @@ class BoxSection(CrossSection):
             y_centroid=0.0, z_centroid=0.0,
             y_top=H/2.0, y_bottom=-H/2.0,
             z_left=-B/2.0, z_right=B/2.0,
-            name=f"Box Section ({self.width}w × {self.height}h × {self.thickness}t)"
+            name=f"Box Section ({self.width}w × {self.height}h × {self.thickness}t)",
+            parent_section=self
         )
     
     def __str__(self):
@@ -626,7 +641,7 @@ class CChannelSection(CrossSection):
     """C-channel cross-section."""
     
     def __init__(self, height: float, flange_width: float,
-                 web_thickness: float, flange_thickness: float):
+                 web_thickness: float, flange_thickness: float, name: str = None):
         """
         Initialize C-channel section.
         
@@ -645,6 +660,7 @@ class CChannelSection(CrossSection):
         self.flange_width = flange_width
         self.web_thickness = web_thickness
         self.flange_thickness = flange_thickness
+        self.name = name or f"C-Channel (d={height}, bf={flange_width}, tw={web_thickness}, tf={flange_thickness})"
     
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
@@ -678,7 +694,8 @@ class CChannelSection(CrossSection):
             y_centroid=0.0, z_centroid=x_bar,
             y_top=h/2, y_bottom=-h/2,
             z_left=-x_bar, z_right=bf-x_bar,
-            name=f"C-Channel (d={self.height}, bf={self.flange_width}, tw={self.web_thickness}, tf={self.flange_thickness})"
+            name=f"C-Channel (d={self.height}, bf={self.flange_width}, tw={self.web_thickness}, tf={self.flange_thickness})",
+            parent_section=self
         )
     
     def __str__(self):
@@ -724,7 +741,7 @@ class LSection(CrossSection):
     """
     
     def __init__(self, leg_length_vertical: float, leg_length_horizontal: float,
-                 thickness: float):
+                 thickness: float, name: str = None):
         """
         Initialize L-section (angle).
         
@@ -751,6 +768,10 @@ class LSection(CrossSection):
         self.leg_length_vertical = leg_length_vertical
         self.leg_length_horizontal = leg_length_horizontal
         self.thickness = thickness
+
+        is_equal = leg_length_vertical == leg_length_horizontal
+        type_str = "Equal" if is_equal else "Unequal"
+        self.name = name or f"L-Section {type_str} ({leg_length_vertical} × {leg_length_horizontal} × {thickness}t)"
     
     def properties(self) -> SectionProperties:
         """Calculate section properties about centroidal axes."""
@@ -801,7 +822,8 @@ class LSection(CrossSection):
             y_centroid=y_bar, z_centroid=x_bar,
             y_top=h-y_bar, y_bottom=-y_bar,
             z_left=-x_bar, z_right=b-x_bar,
-            name=desc
+            name=desc,
+            parent_section=self
         )
     
     def __str__(self):

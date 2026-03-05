@@ -262,6 +262,13 @@ class BoundaryConditionSet:
         self.conditions: List[BoundaryCondition] = []
         self.spring_supports: List[SpringSupport] = []
     
+    def add(self, condition: BoundaryCondition):
+        """Add a boundary condition object."""
+        if isinstance(condition, SpringSupport):
+            self.spring_supports.append(condition)
+        else:
+            self.conditions.append(condition)
+
     def fixed_support(self, node: int):
         """Add fixed support."""
         self.conditions.append(FixedSupport(node=node))
