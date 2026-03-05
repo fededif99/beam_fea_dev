@@ -61,7 +61,9 @@ def test_validation_incomplete_coverage():
     
     # Assign only elements 0-4
     ps = PropertySet(material=steel, section=sec, elements=range(5))
-    
+    with pytest.raises(ValueError, match="Property Assignment Incomplete"):
+        BeamSolver(mesh, ps)
+
 def test_legacy_compatibility():
     # Test that passing material/section directly still works
     mesh = MeshGenerator.beam_mesh_1d(length=100, num_elements=5)

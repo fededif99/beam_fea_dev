@@ -2,6 +2,34 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.2.0] - 2026-03-05
+
+- **Feature**: Full Anisotropic (Composite) Beam Support
+- **Element**: Introduced `AnisotropicBeamElement` with coupled axial-bending constitutive matrices
+- **Coupling**: Captures bend-extension coupling effects ($B$ matrix) in asymmetric laminates
+- **API**: Updated `BeamSolver` to automatically utilize anisotropic elements for `Laminate` materials
+- **Verification**: New example `examples/ex06_anisotropic_coupling.py` demonstrating coupling effects
+
+## [v2.1.3] - 2026-03-05
+
+- **Fix**: Resolved `flake8` CI failure by correctly handling `Material` type hints in `composites.py`
+- **Feature**: Exported `Ply` and `Laminate` at the package level for improved API accessibility
+
+## [v2.1.2] - 2026-03-05
+
+- **Feature**: Integrated Classical Laminate Theory (CLT) via new `composites.py` module
+- **Feature**: Support for ABD matrix calculation and effective property extraction (Ex, Eb) for composite beams
+- **Example**: Added `examples/ex05_composite_beam.py` demonstrating composite spar flange analysis
+- **Fix**: Resolved crash in `report_generator.py` when material properties are missing
+
+## [v2.1.1] - 2026-03-03
+
+- **Audit**: Completed comprehensive codebase audit and status update (see `STATUS_UPDATE.md`)
+- **Feature**: Integrated Classical Laminate Theory (CLT) via new `composites.py` module, supporting ABD matrix calculation and effective property extraction
+- **Fix**: Resolved `NameError: name 'List' is not defined` in `solver.py`
+- **Fix**: Removed redundant stress calculation logic in `solver.py` to improve performance
+- **Verification**: Completed `test_declarative_properties.py` by adding missing assertion for validation failure
+
 ## [v2.1.0] - 2026-03-03
 
 - **API**: Refactored `PropertySet` into a unified **Collector** model (similar to `LoadCase`), supporting both single-assignment and multi-assignment workflows via `.add()`

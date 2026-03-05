@@ -952,10 +952,10 @@ class BeamReportGenerator:
                 self.stresses = self.solver.calculate_stresses(num_x_points=100, num_y_points=20, num_z_points=10)
             
             max_vm = np.max(self.stresses['von_mises'])
-            yield_strength = getattr(self.material, 'yield_strength', 0.0)
+            yield_strength = getattr(self.material, 'yield_strength', None) or 0.0
             
             summary += f"- **Static Results**: Peak deflection of {max_deflection:.4f} mm at x = {max_deflection_pos:.1f} mm.\n"
-            if yield_strength:
+            if yield_strength > 0:
                 mos = (yield_strength / max_vm) - 1.0 if max_vm > 0 else float('inf')
                 status = "PASS" if mos >= 0 else "FAIL"
                 summary += f"- **Structural Integrity**: {status} (Margin of Safety: {mos:.2f}).\n"
@@ -1037,7 +1037,7 @@ class BeamReportGenerator:
 | Young's Modulus (E) | {self.material.E:,.0f} | MPa |
 | Density (ρ) | {self.material.rho:.2e} | kg/mm³ |
 | Poisson's Ratio (ν) | {self.material.nu:.3f} | - |
-| Yield Strength | {self.material.yield_strength:,.1f} | MPa |
+| Yield Strength | {f"{self.material.yield_strength:,.1f}" if self.material.yield_strength is not None else "N/A"} | MPa |
 
 ---
 """

@@ -20,9 +20,12 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.1.0 *(2026-03-03)*
+### Latest Version: v2.2.0 *(2026-03-05)*
 
+- **Audit**: Comprehensive codebase audit and health check
+- **Anisotropy**: Full support for **Anisotropic (Composite) Beam Elements** with bend-extension coupling ($B$ matrix)
 - **API**: Unified `PropertySet` collector for seamless multi-property modeling and validation
+- **Feature**: Classical Laminate Theory (CLT) support for composite materials and ABD matrix extraction
 - **Validation**: Mandatory element coverage checks to ensure physical model consistency
 - **Theory**: Statically consistent force recovery and high-fidelity Timoshenko dynamics
 
