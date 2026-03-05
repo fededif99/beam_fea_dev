@@ -94,6 +94,10 @@ class BeamSolver:
         # State for reporting
         self.last_load_case = None
         self.last_bc_set = None
+
+        # Post-processing settings
+        self.recovery_strategy = 'consistent'
+        self.results = None
     
     def _validate_model(self, bc_set: BoundaryConditionSet = None):
         """
@@ -369,385 +373,38 @@ class BeamSolver:
             'moment': {'value': res['bending_moments'][m_idx], 'x': pos[m_idx]}
         }
 
-    def calculate_internal_forces(self, num_points: int = None) -> dict:
+    def calculate_internal_forces(self, num_points: int = None, strategy: str = None) -> dict:
         """
-        Calculate shear force and bending moment distributions along the beam.
+        Calculate internal force distributions using the specified strategy.
+        """
+        from .post_processing import InternalForceEngine
         
-        Parameters:
-        -----------
-        num_points : int, optional
-            Number of points for interpolation along beam length. 
-            Defaults to self.mesh.num_nodes if None.
-            
-        Returns:
-        --------
-        results : dict
-            Dictionary containing 'positions', 'shear_forces', and 'bending_moments'.
-        """
-        if self.displacements is None:
-            raise ValueError("Must run solve_static() first")
-            
+        strat = strategy or self.recovery_strategy
+        
         # Check cache
-        if self._cached_forces is not None and self._cached_forces_params == num_points:
+        cache_key = (num_points, strat)
+        if self._cached_forces is not None and self._cached_forces_params == cache_key:
             return self._cached_forces
 
-        coords = self.mesh.get_node_coords()
-        x_min, x_max = np.min(coords[:, 0]), np.max(coords[:, 0])
-        
-        # Create evaluation points
-        if num_points is None:
-            # Physics-aligned: use the exact nodal coordinates by default
-            positions = np.sort(coords[:, 0])
-            eval_count = len(positions)
-        else:
-            # Interpolated: use a uniform grid for smooth plotting
-            positions = np.linspace(x_min, x_max, num_points)
-            eval_count = num_points
-            
-        axial_forces = np.zeros(eval_count)
-        shear_forces = np.zeros(eval_count)
-        bending_moments = np.zeros(eval_count)
-        
-        # Determine evaluation points per element to avoid redundant element instantiation
-        from .element_matrices import EulerBernoulliElement, TimoshenkoElement
-        
-        # Pre-calculate distributed loads per element
-        element_dist_loads = {}
-        if self.last_load_case:
-            from .loads import (UniformDistributedLoad, TrapezoidalDistributedLoad,
-                               TriangularDistributedLoad)
-            for load in self.last_load_case.loads:
-                # Transverse (wy) and Axial (wx)
-                wy1 = wy2 = wx1 = wx2 = 0.0
-
-                if isinstance(load, UniformDistributedLoad):
-                    wy1 = wy2 = load.wy
-                    wx1 = wx2 = load.wx
-                elif isinstance(load, TrapezoidalDistributedLoad):
-                    wy1, wy2 = load.wy1, load.wy2
-                    wx1, wx2 = load.wx1, load.wx2
-                elif isinstance(load, TriangularDistributedLoad):
-                    if load.peak_loc == 'start':
-                        wy1, wy2 = load.w_peak, 0.0
-                    else:
-                        wy1, wy2 = 0.0, load.w_peak
-                else:
-                    continue # Not a distributed load
-
-                # Identify elements affected
-                if load.element is not None:
-                    elems = [load.element] if isinstance(load.element, int) else load.element
-                    for eid in elems:
-                        curr = element_dist_loads.get(eid, (0, 0, 0, 0))
-                        element_dist_loads[eid] = (curr[0] + wy1, curr[1] + wy2, curr[2] + wx1, curr[3] + wx2)
-                elif load.x_start is not None and load.x_end is not None:
-                    x_s, x_e = min(load.x_start, load.x_end), max(load.x_start, load.x_end)
-                    for eid, elem in enumerate(self.mesh.elements):
-                        p1, p2 = coords[elem.node1], coords[elem.node2]
-                        e_min, e_max = min(p1[0], p2[0]), max(p1[0], p2[0])
-
-                        # Intersection
-                        i_min, i_max = max(e_min, x_s), min(e_max, x_e)
-                        if i_max > i_min:
-                            # For simplicity, if coordinate-based distributed load is used,
-                            # we interpolate the intensities at element ends
-                            def get_w(x, w1, w2, xs, xe):
-                                if abs(xe - xs) < 1e-9: return w1
-                                return w1 + (w2 - w1) * (x - xs) / (xe - xs)
-
-                            wya = get_w(p1[0], wy1, wy2, load.x_start, load.x_end)
-                            wyb = get_w(p2[0], wy1, wy2, load.x_start, load.x_end)
-                            wxa = get_w(p1[0], wx1, wx2, load.x_start, load.x_end)
-                            wxb = get_w(p2[0], wx1, wx2, load.x_start, load.x_end)
-
-                            curr = element_dist_loads.get(eid, (0, 0, 0, 0))
-                            element_dist_loads[eid] = (curr[0] + wya, curr[1] + wyb, curr[2] + wxa, curr[3] + wxb)
-
-        # Re-instantiate expert and cache element properties only if element changes
-        current_elem_idx = -1
-        x1, L, u_local = 0.0, 1.0, None
-        element_expert = None
-
-        from .element_matrices import AnisotropicBeamElement
-        from .composites import Laminate
-
-        for i, x in enumerate(positions):
-            # Find element containing point x
-            found_idx = -1
-            
-            # 1. Try current element (spatial coherence) - Most efficient for evaluation loops
-            if current_elem_idx != -1:
-                if L > 0 and x1 <= x <= x1 + L:
-                    found_idx = current_elem_idx
-            
-            # 2. Delegate to Mesh for optimized/indexed search
-            if found_idx == -1:
-                found_idx = self.mesh.find_element_at_x(x)
-            
-            # Fallback for numerical precision at ends
-            if found_idx == -1:
-                if x <= x_min:
-                    found_idx = 0
-                elif x >= x_max:
-                    found_idx = self.mesh.num_elements - 1
-            
-            if found_idx == -1:
-                continue
-            
-            # Update cache and expert only if element truly changes
-            if found_idx != current_elem_idx:
-                current_elem_idx = found_idx
-                elem = self.mesh.elements[current_elem_idx]
-                
-                # Cache boundary and length
-                p1, p2 = coords[elem.node1], coords[elem.node2]
-                x1 = p1[0]
-                L = np.sqrt(np.sum((p2 - p1)**2))
-                
-                # Local element displacements
-                dof_indices = [
-                    3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
-                    3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2
-                ]
-                u_local = self.displacements[dof_indices]
-                
-                # Instantiate the correct element type expert
-                # Support multiple materials/sections via collector
-                mat = self.properties.get_material(elem.id)
-                sec = self.properties.get_section(elem.id)
-                
-                if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
-                    width = getattr(sec, 'width', 1.0)
-                    if hasattr(sec, 'diameter'): width = sec.diameter
-                    EA, ES, EI = mat.get_sectional_stiffness(width)
-                    rho_total = mat.rho * width * mat.total_thickness
-                    # Timoshenko shear stiffness: κ · Gxy · (width × thickness)
-                    props = mat.get_effective_properties()
-                    GA_s = SHEAR_CORRECTION_FACTOR * props['Gxy'] * (width * mat.total_thickness)
-                    element_expert = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
-                else:
-                    E, G, I, A, rho = mat.E, mat.G, sec.Iy, sec.A, mat.rho
-                    if self.element_type == 'euler':
-                        element_expert = EulerBernoulliElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
-                    else:
-                        element_expert = TimoshenkoElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
-            
-            # Local position xi [0, 1] - Uses cached L and x1
-            xi = np.clip((x - x1) / L, 0, 1) if L > 0 else 0
-            
-            # Pass distributed load for this element
-            d_load = element_dist_loads.get(current_elem_idx, (0.0, 0.0, 0.0, 0.0))
-            N, V, M = element_expert.interpolate_internal_forces(u_local, xi, dist_load=d_load)
-            axial_forces[i] = N
-            shear_forces[i] = V
-            bending_moments[i] = M
-            
-        res = {
-            'positions': positions,
-            'axial_forces': axial_forces,
-            'shear_forces': shear_forces,
-            'bending_moments': bending_moments
-        }
+        res = InternalForceEngine.calculate(self, num_points, strat)
         
         # Update cache
         self._cached_forces = res
-        self._cached_forces_params = num_points
+        self._cached_forces_params = cache_key
         
         return res
         
     def calculate_stresses(self, num_x_points: int = None, num_y_points: int = 20, num_z_points: int = 20) -> dict:
         """
         Calculate detailed 3D stress field over the beam's length and cross-section.
-        
-        Parameters:
-        -----------
-        num_x_points : int, optional
-            Number of points along the beam length. Defaults to self.mesh.num_nodes if None.
-        num_y_points : int
-            Number of grid points in the cross-section y-direction (depth).
-        num_z_points : int
-            Number of grid points in the cross-section z-direction (width).
-            
-        Returns:
-        --------
-        dict
-            Dictionary containing evaluation grids and 3D stress arrays:
-            'x': 1D array of positions
-            'y': 2D grid of y coordinates
-            'z': 2D grid of z coordinates
-            'mask': 2D boolean mask of the cross section shape
-            'axial': 3D array of axial stresses
-            'bending': 3D array of bending stresses
-            'shear': 3D array of transverse shear stresses
-            'von_mises': 3D array of von Mises equivalent stresses
         """
-        # 1. Check cache
-        params = (num_x_points, num_y_points, num_z_points)
+        from .post_processing import StressEngine
+
+        params = (num_x_points, num_y_points, num_z_points, self.recovery_strategy)
         if self._cached_stresses is not None and self._cached_stresses_params == params:
             return self._cached_stresses
 
-        from .static_analysis import StressAnalysis
-        
-        # 2. Get internal forces along the beam
-        forces = self.calculate_internal_forces(num_x_points)
-        x_positions = forces['positions']
-        N_x = forces['axial_forces']
-        V_x = forces['shear_forces']
-        M_x = forces['bending_moments']
-        
-        # 2. Build 2D grid for the cross-section
-        # Use union of all bounding boxes to accommodate multiple sections
-        y_min_global, y_max_global = self.properties.default_section.y_bottom, self.properties.default_section.y_top
-        z_min_global, z_max_global = self.properties.default_section.z_left, self.properties.default_section.z_right
-        
-        # Check all unique sections for bounding box expansions
-        processed_ids = set()
-        unique_secs = []
-        for i in range(self.mesh.num_elements):
-            sec = self.properties.get_section(i)
-            if id(sec) not in processed_ids:
-                processed_ids.add(id(sec))
-                unique_secs.append(sec)
-            
-        for sec in unique_secs:
-            y_min_global = min(y_min_global, sec.y_bottom)
-            y_max_global = max(y_max_global, sec.y_top)
-            z_min_global = min(z_min_global, sec.z_left)
-            z_max_global = max(z_max_global, sec.z_right)
-
-        # Fallback for simple properties
-        if y_min_global is None:
-            r = np.sqrt(self.section.Iy / self.section.A)
-            y_min_global, y_max_global = -2*r, 2*r
-        if z_min_global is None:
-            r = np.sqrt(self.section.Iz / self.section.A) if self.section.Iz else np.sqrt(self.section.Iy / self.section.A)
-            z_min_global, z_max_global = -2*r, 2*r
-            
-        y_coords = np.linspace(y_min_global, y_max_global, num_y_points)
-        z_coords = np.linspace(z_min_global, z_max_global, num_z_points)
-        Y, Z = np.meshgrid(y_coords, z_coords, indexing='ij')
-        
-        # 3. Calculate stresses (Vectorized if single section, else loop)
-        eval_x_count = len(x_positions)
-        shape_3d = (eval_x_count, num_y_points, num_z_points)
-
-        has_multiple_sections = self.properties.has_multiple_sections(self.mesh.num_elements)
-
-        if not has_multiple_sections:
-            # Full Vectorization for single-section beams
-            sec = self.properties.default_section
-            try:
-                mask, t_yz, Q_yz = sec.get_stress_profile(Y, Z)
-            except AttributeError:
-                # Fallback for simple properties: use bounding box mask
-                y_top = sec.y_top if sec.y_top is not None else np.sqrt(sec.A)/2
-                y_bot = sec.y_bottom if sec.y_bottom is not None else -np.sqrt(sec.A)/2
-                z_r = sec.z_right if sec.z_right is not None else (sec.Iz/sec.A)**0.5 if sec.Iz else np.sqrt(sec.A)/2
-                z_l = sec.z_left if sec.z_left is not None else -(sec.Iz/sec.A)**0.5 if sec.Iz else -np.sqrt(sec.A)/2
-                
-                mask = (Y <= y_top) & (Y >= y_bot) & (Z <= z_r) & (Z >= z_l)
-                t_yz = np.full_like(Y, z_r - z_l)
-                Q_yz = (t_yz) / 2.0 * (y_top**2 - Y**2)
-                Q_yz[~mask] = 0.0
-                t_yz[~mask] = 0.0
-            A, Iy = sec.A, sec.Iy
-
-            # Expand forces to 3D
-            N_3d = N_x[:, np.newaxis, np.newaxis]
-            V_3d = V_x[:, np.newaxis, np.newaxis]
-            M_3d = M_x[:, np.newaxis, np.newaxis]
-
-            sigma_a = np.broadcast_to(N_3d / A, shape_3d).copy()
-            sigma_b = -M_3d * Y[np.newaxis, :, :] / Iy
-
-            valid_t = t_yz > 1e-9
-            shear_base = np.zeros_like(Y)
-            shear_base[valid_t] = Q_yz[valid_t] / (Iy * t_yz[valid_t])
-            tau_s = V_3d * shear_base[np.newaxis, :, :]
-
-            sigma_x = sigma_a + sigma_b
-            avg_sig = sigma_x / 2.0
-            R = np.sqrt(avg_sig**2 + tau_s**2)
-            sigma_1, sigma_2 = avg_sig + R, avg_sig - R
-            sigma_vm = np.sqrt(sigma_x**2 + 3 * tau_s**2)
-
-            # Global Masking
-            inv_mask = ~np.broadcast_to(mask[np.newaxis, :, :], shape_3d)
-            sigma_a[inv_mask] = sigma_b[inv_mask] = tau_s[inv_mask] = 0.0
-            sigma_1[inv_mask] = sigma_2[inv_mask] = sigma_vm[inv_mask] = 0.0
-
-        else:
-            # Multi-section beams
-            sigma_a = np.zeros(shape_3d)
-            sigma_b = np.zeros(shape_3d)
-            tau_s = np.zeros(shape_3d)
-            sigma_vm = np.zeros(shape_3d)
-            sigma_1 = np.zeros(shape_3d)
-            sigma_2 = np.zeros(shape_3d)
-
-            profile_cache = {}
-
-            for i, x in enumerate(x_positions):
-                elem_idx = self.mesh.find_element_at_x(x)
-                if elem_idx == -1:
-                    elem_idx = 0 if x <= x_positions[0] else self.mesh.num_elements - 1
-
-                elem = self.mesh.elements[elem_idx]
-                sec = self.properties.get_section(elem.id)
-
-                sec_id = id(sec)
-                if sec_id not in profile_cache:
-                    try:
-                        mask, t_yz, Q_yz = sec.get_stress_profile(Y, Z)
-                    except AttributeError:
-                        # Fallback for simple properties: use bounding box mask
-                        y_top = sec.y_top if sec.y_top is not None else np.sqrt(sec.A)/2
-                        y_bot = sec.y_bottom if sec.y_bottom is not None else -np.sqrt(sec.A)/2
-                        z_r = sec.z_right if sec.z_right is not None else (sec.Iz/sec.A)**0.5 if sec.Iz else np.sqrt(sec.A)/2
-                        z_l = sec.z_left if sec.z_left is not None else -(sec.Iz/sec.A)**0.5 if sec.Iz else -np.sqrt(sec.A)/2
-                        
-                        mask = (Y <= y_top) & (Y >= y_bot) & (Z <= z_r) & (Z >= z_l)
-                        t_yz = np.full_like(Y, z_r - z_l)
-                        Q_yz = (t_yz) / 2.0 * (y_top**2 - Y**2)
-                        Q_yz[~mask] = 0.0
-                        t_yz[~mask] = 0.0
-                    profile_cache[sec_id] = (mask, t_yz, Q_yz)
-
-                mask, t_yz, Q_yz = profile_cache[sec_id]
-                A, Iy = sec.A, sec.Iy
-
-                sigma_a_x = np.full_like(Y, N_x[i] / A)
-                sigma_b_x = -M_x[i] * Y / Iy
-
-                tau_s_x = np.zeros_like(Y)
-                valid_t = t_yz > 1e-9
-                tau_s_x[valid_t] = V_x[i] * Q_yz[valid_t] / (Iy * t_yz[valid_t])
-
-                sig_x = sigma_a_x + sigma_b_x
-                avg_sig = sig_x / 2.0
-                R = np.sqrt(avg_sig**2 + tau_s_x**2)
-
-                sigma_a[i], sigma_b[i], tau_s[i] = sigma_a_x, sigma_b_x, tau_s_x
-                sigma_1[i], sigma_2[i] = avg_sig + R, avg_sig - R
-                sigma_vm[i] = np.sqrt(sig_x**2 + 3 * tau_s_x**2)
-
-                # Element Masking
-                m_3d = mask # (ny, nz)
-                sigma_a[i][~m_3d] = sigma_b[i][~m_3d] = tau_s[i][~m_3d] = 0.0
-                sigma_1[i][~m_3d] = sigma_2[i][~m_3d] = sigma_vm[i][~m_3d] = 0.0
-
-        res = {
-            'x': x_positions,
-            'y': Y,
-            'z': Z,
-            'mask': mask,
-            'axial': sigma_a,
-            'bending': sigma_b,
-            'shear': tau_s,
-            'sigma_1': sigma_1,
-            'sigma_2': sigma_2,
-            'von_mises': sigma_vm
-        }
+        res = StressEngine.calculate(self, num_x_points, num_y_points, num_z_points)
         
         # Update cache
         self._cached_stresses = res

@@ -61,10 +61,22 @@ def main():
     solver = BeamSolver(mesh, props)
     solver.solve_static(lc, bc)
 
-    # 6. RESULTS
-    # Force recovery at high resolution (100 points) to see smooth diagrams
-    # despite having only 2 finite elements.
-    solver.calculate_internal_forces(num_points=100)
+    # 6. RESULTS & RECOVERY STRATEGIES
+    print("\nComparing internal force strategies (on a very coarse 2-element mesh):")
+
+    # 6.1. Standard Interpolation (FEA Approximation)
+    # This will show a step-wise shear and linear moment (approximating the curve)
+    res_std = solver.calculate_internal_forces(num_points=100, strategy='standard')
+    M_mid_std = res_std['bending_moments'][50]
+    print(f"  [Standard Interpolation] Mid-span Moment: {M_mid_std:.1f} N-mm")
+
+    # 6.2. Consistent Recovery (Analytical Fidelity)
+    # This will show a perfect parabolic moment even with just 2 elements
+    res_con = solver.calculate_internal_forces(num_points=100, strategy='consistent')
+    M_mid_con = res_con['bending_moments'][50]
+    print(f"  [Consistent Recovery   ] Mid-span Moment: {M_mid_con:.1f} N-mm (Exact)")
+
+    # Stresses automatically use the consistent recovery strategy for report accuracy
     solver.calculate_stresses(num_x_points=50)
 
     # 7. REPORT

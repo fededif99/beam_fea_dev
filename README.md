@@ -20,8 +20,12 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.2.1 *(2026-03-05)*
+### Latest Version: v2.3.0 *(2026-03-05)*
 
+- **Strategy Pattern**: Decoupled "FEA Interpolation" from "High-Fidelity Recovery" for internal force handling.
+- **Optimization**: Achieve $O(M)$ performance scaling for station evaluations via vectorized grouping.
+- **Post-Processing Module**: Centralized calculation engines in `beam_fea/post_processing.py`.
+- **API Control**: Users can now explicitly choose between standard and consistent recovery modes.
 - **Physics Verification**: Corrected $E_x$ extraction to use compliance matrix inversion, ensuring accuracy for unbalanced laminates.
 - **Timoshenko Anisotropy**: Upgraded `AnisotropicBeamElement` to include Timoshenko shear deformation.
 - **Consistent Force Recovery**: Implemented distributed load particular solutions for precise internal force diagrams in composite beams.

@@ -2,6 +2,15 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.3.0] - 2026-03-05
+
+- **Architecture**: Implemented the **Strategy Pattern** for internal force handling, separating pure FEA approximation (`NodalInterpolationStrategy`) from high-fidelity engineering results (`ConsistentRecoveryStrategy`).
+- **Optimization**: Vectorized the internal force and stress calculation engines in the new `post_processing.py` module, achieving $O(M)$ performance scaling (where $M$ is the number of evaluation points).
+- **Refactor**: Renamed `interpolate_internal_forces` to `recover_forces_consistent` and added `interpolate_forces_homogeneous` to element classes for technical clarity.
+- **Reporting**: Guaranteed high-fidelity diagrams in `BeamReportGenerator` by explicitly utilizing the consistent recovery strategy.
+- **Performance**: Optimized element evaluation loops by grouping points by element, significantly reducing redundant object instantiation.
+- **Cleanup**: Removed dead and commented-out code in `visualizer.py` and synchronized caching logic across the solver.
+
 ## [v2.2.2] - 2026-03-05
 
 - **Reporting**: Enhanced `BeamReportGenerator` to dynamically display longitudinal ($E_x$), transverse ($E_y$), bending ($E_b$), and shear ($G_{xy}$) moduli for composite laminates, providing better visibility into anisotropic behavior.
