@@ -24,6 +24,7 @@
 
 - **Audit**: Comprehensive codebase audit and health check
 - **API**: Unified `PropertySet` collector for seamless multi-property modeling and validation
+- **Feature**: Classical Laminate Theory (CLT) support for composite materials and ABD matrix extraction
 - **Validation**: Mandatory element coverage checks to ensure physical model consistency
 - **Theory**: Statically consistent force recovery and high-fidelity Timoshenko dynamics
 

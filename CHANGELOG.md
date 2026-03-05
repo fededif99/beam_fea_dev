@@ -5,6 +5,7 @@ All notable changes to the `beam_fea` project will be documented in this file.
 ## [v2.1.1] - 2026-03-03
 
 - **Audit**: Completed comprehensive codebase audit and status update (see `STATUS_UPDATE.md`)
+- **Feature**: Integrated Classical Laminate Theory (CLT) via new `composites.py` module, supporting ABD matrix calculation and effective property extraction
 - **Fix**: Resolved `NameError: name 'List' is not defined` in `solver.py`
 - **Fix**: Removed redundant stress calculation logic in `solver.py` to improve performance
 - **Verification**: Completed `test_declarative_properties.py` by adding missing assertion for validation failure
