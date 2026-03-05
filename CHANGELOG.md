@@ -2,6 +2,10 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.2.2] - 2026-03-05
+
+- **Reporting**: Enhanced `BeamReportGenerator` to dynamically display longitudinal ($E_x$), transverse ($E_y$), bending ($E_b$), and shear ($G_{xy}$) moduli for composite laminates, providing better visibility into anisotropic behavior.
+
 ## [v2.2.1] - 2026-03-05
 
 - **Physics**: Corrected effective axial modulus ($E_x$) extraction to use full compliance matrix inversion, ensuring accuracy for unbalanced and off-axis laminates

@@ -1006,6 +1006,33 @@ class BeamReportGenerator:
             if load_details_list:
                 load_details_str = "\n".join(load_details_list)
 
+        if hasattr(self.material, 'get_effective_properties'):
+            props = self.material.get_effective_properties()
+            mat_props_md = f"""### Material Properties (Composite Laminate)
+
+| Property | Value | Units |
+|----------|-------|-------|
+| Laminate | {self.material.name} | - |
+| Ex (Longitudinal) | {props['Ex']:,.0f} | MPa |
+| Ey (Transverse) | {props['Ey']:,.0f} | MPa |
+| Eb (Bending) | {props['Eb']:,.0f} | MPa |
+| Gxy (Shear) | {props['Gxy']:,.0f} | MPa |
+| Density (ρ) | {props['rho']:.2e} | kg/mm³ |
+| Poisson's Ratio (ν_xy) | {props['nu_xy']:.3f} | - |
+"""
+        else:
+            yield_str = f"{self.material.yield_strength:,.1f}" if getattr(self.material, 'yield_strength', None) is not None else "N/A"
+            mat_props_md = f"""### Material Properties
+
+| Property | Value | Units |
+|----------|-------|-------|
+| Material | {self.material.name} | - |
+| Young's Modulus (E) | {self.material.E:,.0f} | MPa |
+| Density (ρ) | {self.material.rho:.2e} | kg/mm³ |
+| Poisson's Ratio (ν) | {self.material.nu:.3f} | - |
+| Yield Strength | {yield_str} | MPa |
+"""
+
         return rf"""
 ## 2. Model Setup & Inputs
 
@@ -1029,15 +1056,7 @@ class BeamReportGenerator:
 | Moment of Inertia (Iy) | {self.section.Iy:.2e} | mm⁴ |
 | Moment of Inertia (Iz) | {self.section.Iz:.2e} | mm⁴ |
 
-### Material Properties
-
-| Property | Value | Units |
-|----------|-------|-------|
-| Material | {self.material.name} | - |
-| Young's Modulus (E) | {self.material.E:,.0f} | MPa |
-| Density (ρ) | {self.material.rho:.2e} | kg/mm³ |
-| Poisson's Ratio (ν) | {self.material.nu:.3f} | - |
-| Yield Strength | {f"{self.material.yield_strength:,.1f}" if self.material.yield_strength is not None else "N/A"} | MPa |
+{mat_props_md.strip()}
 
 ---
 """
