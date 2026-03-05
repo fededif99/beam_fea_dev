@@ -7,8 +7,11 @@ Provides tools to calculate ABD matrices from ply properties and stack-up.
 """
 
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, TYPE_CHECKING
 from dataclasses import dataclass
+
+if TYPE_CHECKING:
+    from .materials import Material
 
 
 @dataclass

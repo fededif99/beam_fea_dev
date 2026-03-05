@@ -63,6 +63,7 @@ from .cross_sections import (
 )
 from .mesh import Mesh, Node, Element, MeshGenerator, MeshRefinement
 from .properties import PropertySet
+from .composites import Ply, Laminate
 from .element_matrices import EulerBernoulliElement, TimoshenkoElement
 from .boundary_conditions import (
     BoundaryConditionSet,
@@ -97,6 +98,9 @@ __all__ = [
     
     # Properties
     'PropertySet',
+
+    # Composites
+    'Ply', 'Laminate',
 
     # Elements
     'EulerBernoulliElement', 'TimoshenkoElement',

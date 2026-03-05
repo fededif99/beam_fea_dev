@@ -2,6 +2,18 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.1.3] - 2026-03-05
+
+- **Fix**: Resolved `flake8` CI failure by correctly handling `Material` type hints in `composites.py`
+- **Feature**: Exported `Ply` and `Laminate` at the package level for improved API accessibility
+
+## [v2.1.2] - 2026-03-05
+
+- **Feature**: Integrated Classical Laminate Theory (CLT) via new `composites.py` module
+- **Feature**: Support for ABD matrix calculation and effective property extraction (Ex, Eb) for composite beams
+- **Example**: Added `examples/ex05_composite_beam.py` demonstrating composite spar flange analysis
+- **Fix**: Resolved crash in `report_generator.py` when material properties are missing
+
 ## [v2.1.1] - 2026-03-03
 
 - **Audit**: Completed comprehensive codebase audit and status update (see `STATUS_UPDATE.md`)

@@ -20,7 +20,7 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.1.1 *(2026-03-03)*
+### Latest Version: v2.1.3 *(2026-03-05)*
 
 - **Audit**: Comprehensive codebase audit and health check
 - **API**: Unified `PropertySet` collector for seamless multi-property modeling and validation
