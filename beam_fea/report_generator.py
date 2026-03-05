@@ -74,9 +74,10 @@ class BeamReportGenerator:
         
     def calculate_internal_forces(self, num_points: int = 100):
         """
-        Calculate shear force and bending moment along the beam using centralized solver logic.
+        Calculate internal forces using consistent recovery for reporting.
         """
-        results = self.solver.calculate_internal_forces(num_points)
+        # Ensure we use high-fidelity recovery for the report diagrams
+        results = self.solver.calculate_internal_forces(num_points, strategy='consistent')
         self.positions = results['positions']
         self.shear_forces = results['shear_forces']
         self.bending_moments = results['bending_moments']
