@@ -300,9 +300,23 @@ class StressEngine:
                     eps_bot = strains_mid[:, 0:3] + z_bot * strains_mid[:, 3:6]
                     eps_top = strains_mid[:, 0:3] + z_top * strains_mid[:, 3:6]
 
-                    # Ply stresses: sig = Qbar * eps
+                    # Stresses at these heights: sig = Qbar * eps
                     sig_bot = (Qbar @ eps_bot.T).T # (n_stations, 3)
                     sig_top = (Qbar @ eps_top.T).T # (n_stations, 3)
+
+                    # Principal and Von Mises Calculation for each station
+                    # sigma_x = sig[:, 0], sigma_y = sig[:, 1], tau_xy = sig[:, 2]
+                    def calc_vm_principal(sig):
+                        avg = (sig[:, 0] + sig[:, 1]) / 2.0
+                        r = np.sqrt(((sig[:, 0] - sig[:, 1]) / 2.0)**2 + sig[:, 2]**2)
+                        s1 = avg + r
+                        s2 = avg - r
+                        # 2D plane stress VM: sqrt(s1^2 + s2^2 - s1*s2) or sqrt(sx^2 + sy^2 - sx*sy + 3*txy^2)
+                        vm = np.sqrt(sig[:, 0]**2 + sig[:, 1]**2 - sig[:, 0]*sig[:, 1] + 3*sig[:, 2]**2)
+                        return vm, s1, s2
+
+                    vm_bot, s1_bot, s2_bot = calc_vm_principal(sig_bot)
+                    vm_top, s1_top, s2_top = calc_vm_principal(sig_top)
 
                     ply_stresses.append({
                         'index': i,
@@ -311,6 +325,9 @@ class StressEngine:
                         'z_range': (z_bot, z_top),
                         'sigma_x': (sig_bot[:, 0] + sig_top[:, 0]) / 2.0, # Average for the station's 3D field
                         'peak_sigma_x': np.maximum(np.abs(sig_bot[:, 0]), np.abs(sig_top[:, 0])),
+                        'peak_tau_xy': np.maximum(np.abs(sig_bot[:, 2]), np.abs(sig_top[:, 2])),
+                        'peak_von_mises': np.maximum(vm_bot, vm_top),
+                        'peak_sigma_1': np.maximum(s1_bot, s1_top),
                         'sigma_bot': sig_bot,
                         'sigma_top': sig_top
                     })

@@ -1171,15 +1171,38 @@ class BeamReportGenerator:
         ply_stress_table = ""
         from .composites import Laminate
         if (hasattr(self.material, '_is_laminate') or isinstance(self.material, Laminate)) and hasattr(self.solver, 'laminate_results'):
-            ply_stress_table = "\n### Ply-by-Ply Maximum Stresses\n\n| Ply | Name | Angle | Max $\\sigma_x$ [MPa] |\n|---|---|---|---|\n"
-            # Get peak for each ply across all stations
-            # For simplicity, we look at element 0's results
-            if 0 in self.solver.laminate_results:
-                ply_data = self.solver.laminate_results[0]['ply_data']
-                for ply in ply_data:
-                    # peak_sigma_x is per station
-                    peak_val = np.max(ply['peak_sigma_x'])
-                    ply_stress_table += f"| {ply['index']+1} | {ply['name']} | {ply['angle']}° | {peak_val:.2f} |\n"
+            ply_stress_table = "\n### Ply-by-Ply Maximum Stresses\n\n| Ply | Name | Angle | Max $\\sigma_x$ | Max $\\tau_{xy}$ | Max Von Mises | Max $\\sigma_1$ |\n|---|---|---|---|---|---|---|\n"
+            
+            # Aggregate peaks for each ply across ALL elements and ALL stations
+            # ply_id -> {index, name, angle, peak_sx, peak_txy, peak_vm, peak_s1}
+            master_ply_data = {}
+            
+            for eid, results in self.solver.laminate_results.items():
+                for ply in results['ply_data']:
+                    pid = ply['index']
+                    if pid not in master_ply_data:
+                        master_ply_data[pid] = {
+                            'index': ply['index'],
+                            'name': ply['name'],
+                            'angle': ply['angle'],
+                            'peak_sx': 0.0,
+                            'peak_txy': 0.0,
+                            'peak_vm': 0.0,
+                            'peak_s1': 0.0
+                        }
+                    
+                    # Update peaks
+                    master_ply_data[pid]['peak_sx'] = max(master_ply_data[pid]['peak_sx'], np.max(ply['peak_sigma_x']))
+                    master_ply_data[pid]['peak_txy'] = max(master_ply_data[pid]['peak_txy'], np.max(ply.get('peak_tau_xy', 0.0)))
+                    master_ply_data[pid]['peak_vm'] = max(master_ply_data[pid]['peak_vm'], np.max(ply.get('peak_von_mises', 0.0)))
+                    master_ply_data[pid]['peak_s1'] = max(master_ply_data[pid]['peak_s1'], np.max(ply.get('peak_sigma_1', 0.0)))
+
+            # Build table rows (sorted by ply index)
+            for pid in sorted(master_ply_data.keys()):
+                d = master_ply_data[pid]
+                ply_stress_table += f"| {d['index']+1} | {d['name']} | {d['angle']}° | {d['peak_sx']:.2f} | {d['peak_txy']:.2f} | {d['peak_vm']:.2f} | {d['peak_s1']:.2f} |\n"
+            
+            ply_stress_table += "\n*Note: All stress values reported in MPa. Values represent the absolute peak across all elements and ply boundaries (top/bottom).*"
 
         return rf"""
 ## 3. Static Analysis Results

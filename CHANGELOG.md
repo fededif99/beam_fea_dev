@@ -2,6 +2,13 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.4.11] - 2026-03-07
+
+- **Reporting**: Significantly enhanced ply-by-ply stress reporting.
+- **Reporting**: Added columns for Maximum Shear ($\tau_{xy}$), Von Mises, and Maximum Principal ($\sigma_1$) stresses for each ply.
+- **Reporting**: Updated report logic to aggregate absolute peak stresses across all elements and stations for each ply, providing a true worst-case summary.
+- **Post-Processing**: Updated `StressEngine` to calculate 2D plane stress Von Mises and Principal stresses at ply boundaries.
+
 ## [v2.4.10] - 2026-03-07
 
 - **Visualization**: Tightened the layout of `plot_laminate_stackup` by moving the Technical Data summary box closer to the orientation rosette.
