@@ -413,7 +413,8 @@ class BeamSolver:
         return res
 
     
-    def generate_report(self, output_path: str, deformation_scale: Union[float, str] = 'auto'):
+    def generate_report(self, output_path: str, deformation_scale: Union[float, str] = 'auto',
+                        failure_criterion: str = 'tsai_wu'):
         """
         Generate a professional markdown report of the analysis.
         Images are saved to a ``<report_name>_images/`` folder alongside the report.
@@ -424,6 +425,9 @@ class BeamSolver:
             Path to save the report (e.g., 'report.md')
         deformation_scale : float or 'auto', optional
             Scale factor for deformed shape plots. Default is 'auto'.
+        failure_criterion : str, optional
+            Failure criterion for composite plies: 'max_stress', 'tsai_hill', or 'tsai_wu'.
+            Default is 'tsai_wu'.
         """
         if self.displacements is None and self.last_frequencies is None:
             raise ValueError("Must run solve_static() or solve_modal() before generating a report")
@@ -438,7 +442,8 @@ class BeamSolver:
             load_case=self.last_load_case,
             bc_set=self.last_bc_set,
             displacements=self.displacements,
-            reactions=self.reactions
+            reactions=self.reactions,
+            failure_criterion=failure_criterion
         )
         
         # Add modal results if available

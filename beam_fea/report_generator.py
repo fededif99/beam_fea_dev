@@ -30,7 +30,7 @@ class BeamReportGenerator:
     """
     
     def __init__(self, solver, mesh, material, section, load_case, bc_set,
-                 displacements, reactions):
+                 displacements, reactions, failure_criterion: str = 'tsai_wu'):
         """
         Initialize report generator.
         
@@ -61,6 +61,7 @@ class BeamReportGenerator:
         self.bc_set = bc_set
         self.displacements = displacements
         self.reactions = reactions
+        self.failure_criterion = failure_criterion
         
         # Modal Results
         self.frequencies = None
@@ -1171,38 +1172,39 @@ class BeamReportGenerator:
         ply_stress_table = ""
         from .composites import Laminate
         if (hasattr(self.material, '_is_laminate') or isinstance(self.material, Laminate)) and hasattr(self.solver, 'laminate_results'):
-            ply_stress_table = "\n### Ply-by-Ply Maximum Stresses\n\n| Ply | Name | Angle | Max $\\sigma_x$ | Max $\\tau_{xy}$ | Max Von Mises | Max $\\sigma_1$ |\n|---|---|---|---|---|---|---|\n"
+            crit_label = self.failure_criterion.replace('_', ' ').title()
+            ply_stress_table = f"\n### Ply-by-Ply Maximum Stresses\n\n| Ply | Name | Angle | Max $\\sigma_1$ | Max $\\sigma_2$ | Max $\\tau_{{12}}$ | Max $\\sigma_x$ | Max $\\tau_{{xy}}$ | {crit_label} Index |\n|---|---|---|---|---|---|---|---|---|\n"
             
             # Aggregate peaks for each ply across ALL elements and ALL stations
-            # ply_id -> {index, name, angle, peak_sx, peak_txy, peak_vm, peak_s1}
             master_ply_data = {}
             
+            fi_key = f'peak_fi_{self.failure_criterion}'
+            if self.failure_criterion == 'max_stress': fi_key = 'peak_fi_max'
+
             for eid, results in self.solver.laminate_results.items():
                 for ply in results['ply_data']:
                     pid = ply['index']
                     if pid not in master_ply_data:
                         master_ply_data[pid] = {
-                            'index': ply['index'],
-                            'name': ply['name'],
-                            'angle': ply['angle'],
-                            'peak_sx': 0.0,
-                            'peak_txy': 0.0,
-                            'peak_vm': 0.0,
-                            'peak_s1': 0.0
+                            'index': ply['index'], 'name': ply['name'], 'angle': ply['angle'],
+                            'peak_s1': 0.0, 'peak_s2': 0.0, 'peak_t12': 0.0,
+                            'peak_sx': 0.0, 'peak_txy': 0.0, 'peak_fi': 0.0
                         }
                     
-                    # Update peaks
-                    master_ply_data[pid]['peak_sx'] = max(master_ply_data[pid]['peak_sx'], np.max(ply['peak_sigma_x']))
-                    master_ply_data[pid]['peak_txy'] = max(master_ply_data[pid]['peak_txy'], np.max(ply.get('peak_tau_xy', 0.0)))
-                    master_ply_data[pid]['peak_vm'] = max(master_ply_data[pid]['peak_vm'], np.max(ply.get('peak_von_mises', 0.0)))
-                    master_ply_data[pid]['peak_s1'] = max(master_ply_data[pid]['peak_s1'], np.max(ply.get('peak_sigma_1', 0.0)))
+                    d = master_ply_data[pid]
+                    d['peak_s1'] = max(d['peak_s1'], np.max(ply['peak_sigma_1']))
+                    d['peak_s2'] = max(d['peak_s2'], np.max(ply.get('peak_sigma_2', 0.0)))
+                    d['peak_t12'] = max(d['peak_t12'], np.max(ply.get('peak_tau_12', 0.0)))
+                    d['peak_sx'] = max(d['peak_sx'], np.max(ply['peak_sigma_x']))
+                    d['peak_txy'] = max(d['peak_txy'], np.max(ply['peak_tau_xy']))
+                    d['peak_fi'] = max(d['peak_fi'], np.max(ply.get(fi_key, 0.0)))
 
             # Build table rows (sorted by ply index)
             for pid in sorted(master_ply_data.keys()):
                 d = master_ply_data[pid]
-                ply_stress_table += f"| {d['index']+1} | {d['name']} | {d['angle']}° | {d['peak_sx']:.2f} | {d['peak_txy']:.2f} | {d['peak_vm']:.2f} | {d['peak_s1']:.2f} |\n"
+                ply_stress_table += f"| {d['index']+1} | {d['name']} | {d['angle']}° | {d['peak_s1']:.2f} | {d['peak_s2']:.2f} | {d['peak_t12']:.2f} | {d['peak_sx']:.2f} | {d['peak_txy']:.2f} | {d['peak_fi']:.3f} |\n"
             
-            ply_stress_table += "\n*Note: All stress values reported in MPa. Values represent the absolute peak across all elements and ply boundaries (top/bottom).*"
+            ply_stress_table += f"\n*Note: All stress values reported in MPa. Failure index calculated using **{crit_label}** criterion. Values represent absolute peaks across all stations and ply thickness (Top/Mid/Bot).*"
 
         return rf"""
 ## 3. Static Analysis Results

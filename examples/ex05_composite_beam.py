@@ -18,7 +18,8 @@ def run_composite_analysis():
         nu12=0.3,    # Poisson's ratio
         G12=5000,    # Shear Modulus (MPa)
         thickness=0.125, # mm
-        rho=1.6e-6   # kg/mm^3
+        rho=1.6e-6,  # kg/mm^3
+        Xt=1500, Xc=1200, Yt=50, Yc=250, S=70 # MPa
     )
 
     # Aluminum Code (Isotropic properties entered as orthotropic)
@@ -29,7 +30,8 @@ def run_composite_analysis():
         nu12=0.33,   # Poisson's ratio
         G12=26691,   # G = E / (2*(1+nu))
         thickness=5.0,   # 5mm thick core
-        rho=2.7e-6   # kg/mm^3
+        rho=2.7e-6,  # kg/mm^3
+        Xt=310, Xc=310, Yt=310, Yc=310, S=190 # 6061-T6 approx
     )
 
     # 2. Create Laminate Stack-up: Sandwich Panel

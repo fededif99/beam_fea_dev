@@ -290,7 +290,7 @@ class StressEngine:
                 for i, (ply, angle) in enumerate(lam.plies):
                     Qbar = ply.transformed_reduced_stiffness(angle)
 
-                    # Heights within the ply (top and bottom relative to midplane)
+                    # Heights within the ply (top, mid, bottom relative to midplane)
                     z_bot = z_ply
                     z_top = z_ply + ply.thickness
                     z_mid = z_ply + ply.thickness / 2.0
@@ -298,38 +298,77 @@ class StressEngine:
                     # Strains at these heights: eps = eps0 + z * kappa
                     # eps0 = strains_mid[:, 0:3], kappa = strains_mid[:, 3:6]
                     eps_bot = strains_mid[:, 0:3] + z_bot * strains_mid[:, 3:6]
+                    eps_mid = strains_mid[:, 0:3] + z_mid * strains_mid[:, 3:6]
                     eps_top = strains_mid[:, 0:3] + z_top * strains_mid[:, 3:6]
 
-                    # Stresses at these heights: sig = Qbar * eps
+                    # Stresses at these heights: sig = Qbar * eps (Global laminate coordinates x, y, xy)
                     sig_bot = (Qbar @ eps_bot.T).T # (n_stations, 3)
+                    sig_mid = (Qbar @ eps_mid.T).T # (n_stations, 3)
                     sig_top = (Qbar @ eps_top.T).T # (n_stations, 3)
 
+                    # Axial vs Bending decomposition for sigma_x
+                    sig_a = (Qbar @ strains_mid[:, 0:3].T).T[:, 0]
+                    sig_b_bot = sig_bot[:, 0] - sig_a
+                    sig_b_top = sig_top[:, 0] - sig_a
+
+                    # Transform to local material coordinates (1, 2, 12)
+                    def to_local(sig, ang):
+                        theta = np.radians(ang)
+                        c, s = np.cos(theta), np.sin(theta)
+                        # sigma_1 = sx*c^2 + sy*s^2 + 2*txy*s*c
+                        s1 = sig[:, 0]*c**2 + sig[:, 1]*s**2 + 2*sig[:, 2]*s*c
+                        # sigma_2 = sx*s^2 + sy*c^2 - 2*txy*s*c
+                        s2 = sig[:, 0]*s**2 + sig[:, 1]*c**2 - 2*sig[:, 2]*s*c
+                        # tau_12 = (sy-sx)*s*c + txy*(c^2-s^2)
+                        s12 = (sig[:, 1] - sig[:, 0])*s*c + sig[:, 2]*(c**2 - s**2)
+                        return np.column_stack([s1, s2, s12])
+
+                    loc_bot = to_local(sig_bot, angle)
+                    loc_mid = to_local(sig_mid, angle)
+                    loc_top = to_local(sig_top, angle)
+
                     # Principal and Von Mises Calculation for each station
-                    # sigma_x = sig[:, 0], sigma_y = sig[:, 1], tau_xy = sig[:, 2]
                     def calc_vm_principal(sig):
                         avg = (sig[:, 0] + sig[:, 1]) / 2.0
                         r = np.sqrt(((sig[:, 0] - sig[:, 1]) / 2.0)**2 + sig[:, 2]**2)
-                        s1 = avg + r
-                        s2 = avg - r
-                        # 2D plane stress VM: sqrt(s1^2 + s2^2 - s1*s2) or sqrt(sx^2 + sy^2 - sx*sy + 3*txy^2)
+                        s1p = avg + r
+                        s2p = avg - r
                         vm = np.sqrt(sig[:, 0]**2 + sig[:, 1]**2 - sig[:, 0]*sig[:, 1] + 3*sig[:, 2]**2)
-                        return vm, s1, s2
+                        return vm, s1p, s2p
 
-                    vm_bot, s1_bot, s2_bot = calc_vm_principal(sig_bot)
-                    vm_top, s1_top, s2_top = calc_vm_principal(sig_top)
+                    vm_bot, s1p_bot, s2p_bot = calc_vm_principal(sig_bot)
+                    vm_mid, s1p_mid, s2p_mid = calc_vm_principal(sig_mid)
+                    vm_top, s1p_top, s2p_top = calc_vm_principal(sig_top)
+
+                    # Failure Indices
+                    fi_max_bot = np.array([ply.calculate_failure_index(s, 'max_stress') for s in loc_bot])
+                    fi_th_bot = np.array([ply.calculate_failure_index(s, 'tsai_hill') for s in loc_bot])
+                    fi_tw_bot = np.array([ply.calculate_failure_index(s, 'tsai_wu') for s in loc_bot])
+
+                    fi_max_top = np.array([ply.calculate_failure_index(s, 'max_stress') for s in loc_top])
+                    fi_th_top = np.array([ply.calculate_failure_index(s, 'tsai_hill') for s in loc_top])
+                    fi_tw_top = np.array([ply.calculate_failure_index(s, 'tsai_wu') for s in loc_top])
 
                     ply_stresses.append({
                         'index': i,
                         'name': ply.name,
                         'angle': angle,
                         'z_range': (z_bot, z_top),
-                        'sigma_x': (sig_bot[:, 0] + sig_top[:, 0]) / 2.0, # Average for the station's 3D field
+                        'sigma_x': (sig_bot[:, 0] + sig_top[:, 0]) / 2.0,
                         'peak_sigma_x': np.maximum(np.abs(sig_bot[:, 0]), np.abs(sig_top[:, 0])),
+                        'peak_sigma_1': np.maximum(np.abs(loc_bot[:, 0]), np.abs(loc_top[:, 0])),
+                        'peak_sigma_2': np.maximum(np.abs(loc_bot[:, 1]), np.abs(loc_top[:, 1])),
+                        'peak_tau_12': np.maximum(np.abs(loc_bot[:, 2]), np.abs(loc_top[:, 2])),
                         'peak_tau_xy': np.maximum(np.abs(sig_bot[:, 2]), np.abs(sig_top[:, 2])),
-                        'peak_von_mises': np.maximum(vm_bot, vm_top),
-                        'peak_sigma_1': np.maximum(s1_bot, s1_top),
-                        'sigma_bot': sig_bot,
-                        'sigma_top': sig_top
+                        'peak_von_mises': np.maximum(np.abs(vm_bot), np.abs(vm_top)),
+                        'peak_fi_max': np.maximum(fi_max_bot, fi_max_top),
+                        'peak_fi_tsai_hill': np.maximum(fi_th_bot, fi_th_top),
+                        'peak_fi_tsai_wu': np.maximum(fi_tw_bot, fi_tw_top),
+                        'sigma_bot': sig_bot, 'sigma_mid': sig_mid, 'sigma_top': sig_top,
+                        'local_bot': loc_bot, 'local_mid': loc_mid, 'local_top': loc_top,
+                        'axial_sigma_x': sig_a,
+                        'bending_sigma_x_bot': sig_b_bot,
+                        'bending_sigma_x_top': sig_b_top
                     })
                     z_ply += ply.thickness
 
@@ -435,12 +474,32 @@ class StressEngine:
                 'ply_index': ply['index'],
                 'ply_name': ply['name'],
                 'angle': ply['angle'],
+                # Global stresses
                 'sigma_x_bot': ply['sigma_bot'][x_station_idx, 0],
+                'sigma_x_mid': ply['sigma_mid'][x_station_idx, 0],
                 'sigma_x_top': ply['sigma_top'][x_station_idx, 0],
                 'sigma_y_bot': ply['sigma_bot'][x_station_idx, 1],
                 'sigma_y_top': ply['sigma_top'][x_station_idx, 1],
                 'tau_xy_bot': ply['sigma_bot'][x_station_idx, 2],
                 'tau_xy_top': ply['sigma_top'][x_station_idx, 2],
+                # Local material stresses
+                'sigma_1_bot': ply['local_bot'][x_station_idx, 0],
+                'sigma_1_mid': ply['local_mid'][x_station_idx, 0],
+                'sigma_1_top': ply['local_top'][x_station_idx, 0],
+                'sigma_2_bot': ply['local_bot'][x_station_idx, 1],
+                'sigma_2_mid': ply['local_mid'][x_station_idx, 1],
+                'sigma_2_top': ply['local_top'][x_station_idx, 1],
+                'tau_12_bot': ply['local_bot'][x_station_idx, 2],
+                'tau_12_mid': ply['local_mid'][x_station_idx, 2],
+                'tau_12_top': ply['local_top'][x_station_idx, 2],
+                # Components
+                'axial_x': ply['axial_sigma_x'][x_station_idx],
+                'bending_x_bot': ply['bending_sigma_x_bot'][x_station_idx],
+                'bending_x_top': ply['bending_sigma_x_top'][x_station_idx],
+                # Failure indices
+                'fi_max': ply['peak_fi_max'][x_station_idx],
+                'fi_tsai_hill': ply['peak_fi_tsai_hill'][x_station_idx],
+                'fi_tsai_wu': ply['peak_fi_tsai_wu'][x_station_idx]
             })
         return station_stresses
 

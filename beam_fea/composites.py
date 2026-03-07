@@ -33,6 +33,16 @@ class Ply:
         Ply thickness (mm)
     rho : float
         Density (kg/mm³)
+    Xt : float
+        Longitudinal tensile strength (MPa)
+    Xc : float
+        Longitudinal compressive strength (MPa)
+    Yt : float
+        Transverse tensile strength (MPa)
+    Yc : float
+        Transverse compressive strength (MPa)
+    S : float
+        In-plane shear strength (MPa)
     name : str
         Ply identifier
     """
@@ -42,6 +52,11 @@ class Ply:
     G12: float
     thickness: float
     rho: float = 0.0
+    Xt: float = 0.0
+    Xc: float = 0.0
+    Yt: float = 0.0
+    Yc: float = 0.0
+    S: float = 0.0
     name: str = "Generic Ply"
 
     def reduced_stiffness_matrix(self) -> np.ndarray:
@@ -94,6 +109,50 @@ class Ply:
             [Qb12, Qb22, Qb26],
             [Qb16, Qb26, Qb66]
         ])
+
+    def calculate_failure_index(self, sigma_local: np.ndarray, criterion: str = 'max_stress') -> float:
+        """
+        Calculate the failure index for the ply given local stresses.
+
+        Parameters:
+        -----------
+        sigma_local : np.ndarray
+            Stresses in material coordinates [sigma_1, sigma_2, tau_12].
+        criterion : str
+            Failure criterion: 'max_stress', 'tsai_hill', or 'tsai_wu'.
+
+        Returns:
+        --------
+        failure_index : float
+            Index > 1.0 indicates predicted failure.
+        """
+        s1, s2, s12 = sigma_local[0], sigma_local[1], sigma_local[2]
+
+        if criterion == 'max_stress':
+            f1 = s1 / self.Xt if s1 >= 0 else abs(s1) / self.Xc
+            f2 = s2 / self.Yt if s2 >= 0 else abs(s2) / self.Yc
+            f12 = abs(s12) / self.S
+            return max(f1, f2, f12) if all(v > 0 for v in [self.Xt, self.Xc, self.Yt, self.Yc, self.S]) else 0.0
+
+        elif criterion == 'tsai_hill':
+            X = self.Xt if s1 >= 0 else self.Xc
+            Y = self.Yt if s2 >= 0 else self.Yc
+            if any(v <= 0 for v in [X, Y, self.S]): return 0.0
+            return (s1/X)**2 - (s1*s2)/(X**2) + (s2/Y)**2 + (s12/self.S)**2
+
+        elif criterion == 'tsai_wu':
+            if any(v <= 0 for v in [self.Xt, self.Xc, self.Yt, self.Yc, self.S]): return 0.0
+            F1 = 1/self.Xt - 1/self.Xc
+            F11 = 1/(self.Xt * self.Xc)
+            F2 = 1/self.Yt - 1/self.Yc
+            F22 = 1/(self.Yt * self.Yc)
+            F66 = 1/(self.S**2)
+            # F12 is typically assumed as -0.5 * sqrt(F11 * F22)
+            F12 = -0.5 * np.sqrt(F11 * F22)
+
+            return F1*s1 + F11*s1**2 + F2*s2 + F22*s2**2 + F66*s12**2 + 2*F12*s1*s2
+
+        return 0.0
 
 
 class Laminate:

@@ -22,11 +22,11 @@
 
 ### Latest Version: v2.4.11 *(2026-03-07)*
 
+- **Ply-by-Ply Stresses**: High-fidelity stress recovery at multiple depths (Top, Mid, Bottom) per ply.
+- **Local Stress Analysis**: Transformation to material-axis coordinates ($\sigma_1, \sigma_2, \tau_{12}$) for all laminate plies.
+- **Failure Criteria**: Built-in support for **Maximum Stress**, **Tsai-Hill**, and **Tsai-Wu** criteria.
+- **Enhanced Reporting**: Reports now include detailed ply-by-ply stress tables with local stresses and selectable failure indices.
 - **Explicit Geometry**: Replaced bounding boxes with Matplotlib patches for exact cross-section visualization.
-- **Composite Stack-ups**: New `plot_laminate_stackup` featuring vertical ply stacks and polar orientation rosettes.
-- **Multi-Section Plots**: Automatic subplot generation for beams with varying cross-sections.
-- **Ply-by-Ply Stresses**: High-fidelity stress recovery calculating $\sigma_x, \sigma_y, \tau_{xy}$ for every ply in a laminate.
-- **Reporting**: Reports now include explicit geometry plots, laminate stack-ups, and ply-stress summaries.
 - **Strategy Pattern**: Decoupled "FEA Interpolation" from "High-Fidelity Recovery" for internal force handling.
 - **Optimization**: Achieve $O(M)$ performance scaling for station evaluations via vectorized grouping.
 - **Post-Processing Module**: Centralized calculation engines in `beam_fea/post_processing.py`.

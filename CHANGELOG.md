@@ -4,10 +4,12 @@ All notable changes to the `beam_fea` project will be documented in this file.
 
 ## [v2.4.11] - 2026-03-07
 
-- **Reporting**: Significantly enhanced ply-by-ply stress reporting.
-- **Reporting**: Added columns for Maximum Shear ($\tau_{xy}$), Von Mises, and Maximum Principal ($\sigma_1$) stresses for each ply.
-- **Reporting**: Updated report logic to aggregate absolute peak stresses across all elements and stations for each ply, providing a true worst-case summary.
-- **Post-Processing**: Updated `StressEngine` to calculate 2D plane stress Von Mises and Principal stresses at ply boundaries.
+- **Analysis**: Implemented high-fidelity **Ply-by-Ply Stress Recovery** at multiple depths (Top, Mid, Bottom) per ply.
+- **Analysis**: Added transformation of stresses to **Local Material Coordinates** ($\sigma_1, \sigma_2, \tau_{12}$) for all composite plies.
+- **Analysis**: Implemented multiple **Failure Criteria** for composites: Maximum Stress, Tsai-Hill, and Tsai-Wu.
+- **Analysis**: Added axial and bending decomposition for longitudinal stress ($\sigma_x$).
+- **Reporting**: Overhauled the ply stress summary table in Markdown reports to include local stresses and selectable failure indices.
+- **API**: Enhanced `BeamSolver.generate_report` to allow user selection of the failure criterion.
 
 ## [v2.4.10] - 2026-03-07
 
