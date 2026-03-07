@@ -20,7 +20,7 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.4.1 *(2026-03-07)*
+### Latest Version: v2.4.2 *(2026-03-07)*
 
 - **Explicit Geometry**: Replaced bounding boxes with Matplotlib patches for exact cross-section visualization.
 - **Composite Stack-ups**: New `plot_laminate_stackup` featuring vertical ply stacks and polar orientation rosettes.

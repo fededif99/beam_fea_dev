@@ -2,6 +2,12 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.4.2] - 2026-03-07
+
+- **Examples**: Updated `examples/ex05_composite_beam.py` to demonstrate composite sandwich panels (Aluminum core + CFRP skins).
+- **Examples**: Integrated multi-section `PropertySet` assignments into the composite beam example.
+- **Reporting**: Verified high-fidelity ply-by-ply stress tables and stack-up rosettes in generated reports.
+
 ## [v2.4.1] - 2026-03-07
 
 - **Docs**: Consolidated standard operating procedures into formal `.agents/workflows/agent_sop.md` conforming to commercial FEA architecture standards

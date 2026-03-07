@@ -9,7 +9,8 @@ from beam_fea.composites import Ply, Laminate
 import numpy as np
 
 def run_composite_analysis():
-    # 1. Define Ply Properties (Carbon/Epoxy UD)
+    # 1. Define Ply Properties 
+    # Carbon/Epoxy UD (Stiff, lightweight skins)
     carbon_ply = Ply(
         name="T300_Epoxy",
         E1=135000,   # Longitudinal Modulus (MPa)
@@ -20,10 +21,23 @@ def run_composite_analysis():
         rho=1.6e-6   # kg/mm^3
     )
 
-    # 2. Create Laminate Stack-up [0/45/-45/90]s
-    lam = Laminate("Wing_Spar_Flange")
-    # Add plies from bottom to top
-    lam.add_stack(carbon_ply, [0, 45, -45, 90, 90, -45, 45, 0])
+    # Aluminum Code (Isotropic properties entered as orthotropic)
+    aluminum_core = Ply(
+        name="Aluminum_Core",
+        E1=71000,    # Isotropic E
+        E2=71000,    # Isotropic E
+        nu12=0.33,   # Poisson's ratio
+        G12=26691,   # G = E / (2*(1+nu))
+        thickness=5.0,   # 5mm thick core
+        rho=2.7e-6   # kg/mm^3
+    )
+
+    # 2. Create Laminate Stack-up: Sandwich Panel
+    # [0/45/-45/90/Core/90/-45/45/0]
+    lam = Laminate("Sandwich_Panel")
+    lam.add_stack(carbon_ply, [0, 45, -45, 90])    # Bottom skin
+    lam.add_ply(aluminum_core, 0)                  # Core
+    lam.add_stack(carbon_ply, [90, -45, 45, 0])    # Top skin
 
     print("\n" + "="*50)
     print(f"Laminate Analysis: {lam.name}")
@@ -37,45 +51,79 @@ def run_composite_analysis():
     print(f"  Gxy (Shear):  {props['Gxy']:.1f} MPa")
     print(f"  Thickness:    {props['thickness']:.3f} mm")
 
-    # 3. Create FEA Model
-    # We'll model a 1-meter composite strip (width 25mm)
+    # 3. Create Multi-Property FEA Model
+    # A 1000mm beam. Ends are wider (100mm) for supports, middle is standard (50mm).
     L = 1000
-    w = 25
     h = props['thickness']
-
     mesh = MeshGenerator.beam_mesh_1d(length=L, num_elements=50)
 
-    # Convert Laminate to a Material for the solver
-    # We prefer 'bending' modulus for this transverse load case
-    composite_mat = lam.to_material(preference='bending')
-    section = rectangular(width=w, height=h)
+    # Define sections
+    sec_wide = rectangular(width=100, height=h)
+    sec_mid = rectangular(width=50, height=h)
 
-    solver = BeamSolver(mesh, composite_mat, section)
+    # Create PropertySet collector
+    from beam_fea import PropertySet
+    p_set = PropertySet()
+    
+    # Apply sandwich material everywhere
+    p_set.add(material=lam)
+    
+    # Apply sections
+    p_set.add(section=sec_mid) # Default everywhere
+    
+    # Override ends (First 10 and last 10 elements)
+    end_elements = list(range(10)) + list(range(40, 50))
+    p_set.add(section=sec_wide, elements=end_elements)
+
+    # Note: element_type='timoshenko' is highly recommended for thick sandwiches
+    solver = BeamSolver(mesh, p_set, element_type='timoshenko')
 
     # 4. Boundary Conditions & Loads (Simply Supported with UDL)
     bc = BoundaryConditionSet("Simply Supported")
     bc.pinned_support(0)
     bc.roller_support(50) # node at x=L
 
-    load = LoadCase("UDL")
-    load.uniform_load(x_start=0, x_end=L, wy=-1.0) # 1 N/mm
+    load = LoadCase("UDL Pressure")
+    load.uniform_load(x_start=0, x_end=L, wy=-2.0) # 2 N/mm downward
 
-    # 5. Solve
+    # 5. Solve Static
     solver.solve_static(load, bc)
 
-    # 6. Results
+    # 6. Results & Ply Stress Recovery
     max_def, _ = solver.get_max_deflection()
     print(f"\nFEA Results:")
     print(f"  Max Deflection: {abs(max_def):.4f} mm")
 
-    # Validation against analytical: v_max = 5wL^4 / (384EI)
-    I = (w * h**3) / 12
-    E = composite_mat.E
-    v_analytical = (5 * 1.0 * L**4) / (384 * E * I)
-    print(f"  Analytical:     {v_analytical:.4f} mm")
-    print(f"  Error:          {abs(abs(max_def) - v_analytical)/v_analytical*100:.4e}%")
+    # Trigger 3D stress field generation (required for ply recovery)
+    print("\nExtracting High-Fidelity Ply Stresses...")
+    # Calculate stresses (we don't need the returned grid matrices right now, it caches ply data internally)
+    solver.calculate_stresses(num_x_points=100, num_y_points=int(lam.total_thickness*2)) # Double points for fine resolution
+    
+    # We want to check the stress right in the middle where bending is maximum (Element 25, Station 0 which is left side of elem)
+    from beam_fea.post_processing import StressEngine
+    peak_element_id = 25 
+    
+    # get_ply_stresses returns a list of dictionaries for each ply at a specific station index
+    # We typically sample internal forces at 2 stations (start/end) per element if num_x_points matches element boundaries loosely, 
+    # but solver.calculate_stresses(100) on 50 elements means 2 points per element. Index 0 is the start of the element.
+    ply_stresses = StressEngine.get_ply_stresses(solver, element_id=peak_element_id, x_station_idx=0)
+    
+    if ply_stresses:
+        print(f"\nPly-by-Ply Stresses near Midspan (Element {peak_element_id}):")
+        print(f"{'Ply':<5} | {'Material':<15} | {'Angle':<5} | {'Sigma_x (Bottom)':<18} | {'Sigma_x (Top)':<18} | {'Tau_xy (Max)':<15}")
+        print("-" * 88)
+        for ply in ply_stresses:
+            bot_x = ply['sigma_x_bot']
+            top_x = ply['sigma_x_top']
+            # Find the peak absolute shear in this ply
+            tau_max = max(abs(ply['tau_xy_bot']), abs(ply['tau_xy_top']))
+            print(f"{ply['ply_index']:<5} | {ply['ply_name']:<15} | {ply['angle']:<5.1f} | {bot_x:>15.2f} MPa | {top_x:>15.2f} MPa | {tau_max:>12.2f} MPa")
+    else:
+        print("Ply stresses not available. Ensure laminate properties are correctly assigned.")
+
 
     # 7. Generate Report
+    # The report will automatically feature the stack-up (with rosettes and the core) and ply tables
     import os
     report_path = os.path.join(os.path.dirname(__file__), "composite_beam_report.md")
     solver.generate_report(report_path)
