@@ -17,6 +17,7 @@ def run_composite_analysis():
         E2=10000,    # Transverse Modulus (MPa)
         nu12=0.3,    # Poisson's ratio
         G12=5000,    # Shear Modulus (MPa)
+        G13=5000, G23=4000, # Transverse Shear
         thickness=0.125, # mm
         rho=1.6e-6,  # kg/mm^3
         Xt=1500, Xc=1200, Yt=50, Yc=250, S=70 # MPa
@@ -29,6 +30,7 @@ def run_composite_analysis():
         E2=71000,    # Isotropic E
         nu12=0.33,   # Poisson's ratio
         G12=26691,   # G = E / (2*(1+nu))
+        G13=26691, G23=26691,
         thickness=5.0,   # 5mm thick core
         rho=2.7e-6,  # kg/mm^3
         Xt=310, Xc=310, Yt=310, Yc=310, S=190 # 6061-T6 approx

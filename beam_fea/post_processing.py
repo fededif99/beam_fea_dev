@@ -137,10 +137,10 @@ class InternalForceEngine:
 
             if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
                 width = getattr(sec, 'width', getattr(sec, 'diameter', 1.0))
-                EA, ES, EI = mat.get_sectional_stiffness(width)
+                stiff = mat.get_sectional_stiffness(width)
+                EA, ES, EI = stiff['EA'], stiff['ES'], stiff['EI']
                 rho_total = mat.rho * width * mat.total_thickness
-                props = mat.get_effective_properties()
-                GA_s = SHEAR_CORRECTION_FACTOR * props['Gxy'] * (width * mat.total_thickness)
+                GA_s = SHEAR_CORRECTION_FACTOR * stiff['GA_s']
                 element_expert = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
             else:
                 E, G, I, A, rho = mat.E, mat.G, sec.Iy, sec.A, mat.rho
@@ -214,7 +214,7 @@ class StressEngine:
         forces = solver.calculate_internal_forces(num_x_points)
         x_positions = forces['positions']
         N_x = forces['axial_forces']
-        V_x = forces['shear_forces']
+        V_x = forces['shear_forces'] # Transverse shear force V_y
         M_x = forces['bending_moments']
 
         # Build 2D grid for the cross-section
@@ -284,6 +284,29 @@ class StressEngine:
                 except np.linalg.LinAlgError:
                     strains_mid = np.zeros((len(indices), 6))
 
+                # Transverse Shear Stress Recovery (tau_xz)
+                # Recovered by integrating equilibrium: d_sigma_x/dx + d_tau_xz/dz = 0
+                # tau_xz(z) = - integral_{-t/2}^{z} (d_sigma_x/dx) dz
+                # Since sigma_x = Qbar_11 * eps_x + ...
+                # d_sigma_x/dx is related to dN/dx (axial load) and dM/dx (shear force V)
+                # In 1D beam: dM/dx = V. dN/dx = -wx (axial distributed load)
+
+                # Recover d_strains_mid/dx: [ABD_inv] * [dN/dx, 0, 0, dM/dx, 0, 0]^T
+                # Load rates: dN/dx = -wx_sub, dM/dx = V_sub
+                element_dist_loads = InternalForceEngine._get_element_dist_loads(solver)
+                d_load = element_dist_loads.get(eid, (0.0, 0.0, 0.0, 0.0))
+                # Approximate wx as average across element stations for this estação
+                wx_avg = (d_load[2] + d_load[3]) / 2.0
+
+                load_rates = np.zeros((len(indices), 6))
+                load_rates[:, 0] = -wx_avg / width
+                load_rates[:, 3] = V_x[indices] / width
+
+                try:
+                    dstrains_dx = (ABD_inv @ load_rates.T).T # (n_stations, 6)
+                except np.linalg.LinAlgError:
+                    dstrains_dx = np.zeros((len(indices), 6))
+
                 # For each ply, calculate stress at its top, bottom and mid
                 ply_stresses = []
                 z_ply = -t_lam / 2.0
@@ -349,17 +372,42 @@ class StressEngine:
                     fi_th_top = np.array([ply.calculate_failure_index(s, 'tsai_hill') for s in loc_top])
                     fi_tw_top = np.array([ply.calculate_failure_index(s, 'tsai_wu') for s in loc_top])
 
+                    # Integrated transverse shear stress at ply boundaries
+                    # tau_xz = - integral (Qbar_11 * d_eps_x/dx + Qbar_12 * d_eps_y/dx + Qbar_16 * d_gamma_xy/dx) dz
+                    # d_eps(z)/dx = d_eps0/dx + z * d_kappa/dx
+                    def calc_tau_xz(z_start, z_end, tau_start):
+                        # integral_{z_start}^{z_end} (dstrains_dx_0 + z * d_kappa_dx) dz
+                        # = [dstrains_dx_0 * z + 0.5 * d_kappa_dx * z^2]_{z_start}^{z_end}
+                        term0 = dstrains_dx[:, 0:3] * (z_end - z_start)
+                        term1 = 0.5 * dstrains_dx[:, 3:6] * (z_end**2 - z_start**2)
+                        d_eps_int = term0 + term1
+                        d_sig_x_int = (Qbar @ d_eps_int.T).T[:, 0]
+                        return tau_start - d_sig_x_int
+
+                    # Initialize tau at bottom of laminate (must be zero)
+                    if i == 0:
+                        tau_xz_bot = np.zeros(len(indices))
+                    else:
+                        tau_xz_bot = ply_stresses[-1]['tau_xz_top']
+
+                    tau_xz_mid = calc_tau_xz(z_bot, z_mid, tau_xz_bot)
+                    tau_xz_top = calc_tau_xz(z_bot, z_top, tau_xz_bot)
+
                     ply_stresses.append({
                         'index': i,
                         'name': ply.name,
                         'angle': angle,
                         'z_range': (z_bot, z_top),
+                        'tau_xz_bot': tau_xz_bot,
+                        'tau_xz_mid': tau_xz_mid,
+                        'tau_xz_top': tau_xz_top,
                         'sigma_x': (sig_bot[:, 0] + sig_top[:, 0]) / 2.0,
                         'peak_sigma_x': np.maximum(np.abs(sig_bot[:, 0]), np.abs(sig_top[:, 0])),
                         'peak_sigma_1': np.maximum(np.abs(loc_bot[:, 0]), np.abs(loc_top[:, 0])),
                         'peak_sigma_2': np.maximum(np.abs(loc_bot[:, 1]), np.abs(loc_top[:, 1])),
                         'peak_tau_12': np.maximum(np.abs(loc_bot[:, 2]), np.abs(loc_top[:, 2])),
                         'peak_tau_xy': np.maximum(np.abs(sig_bot[:, 2]), np.abs(sig_top[:, 2])),
+                        'peak_tau_xz': np.max(np.abs([tau_xz_bot, tau_xz_mid, tau_xz_top]), axis=0),
                         'peak_von_mises': np.maximum(np.abs(vm_bot), np.abs(vm_top)),
                         'peak_fi_max': np.maximum(fi_max_bot, fi_max_top),
                         'peak_fi_tsai_hill': np.maximum(fi_th_bot, fi_th_top),
@@ -499,7 +547,10 @@ class StressEngine:
                 # Failure indices
                 'fi_max': ply['peak_fi_max'][x_station_idx],
                 'fi_tsai_hill': ply['peak_fi_tsai_hill'][x_station_idx],
-                'fi_tsai_wu': ply['peak_fi_tsai_wu'][x_station_idx]
+                'fi_tsai_wu': ply['peak_fi_tsai_wu'][x_station_idx],
+                'tau_xz_bot': ply['tau_xz_bot'][x_station_idx],
+                'tau_xz_mid': ply['tau_xz_mid'][x_station_idx],
+                'tau_xz_top': ply['tau_xz_top'][x_station_idx],
             })
         return station_stresses
 

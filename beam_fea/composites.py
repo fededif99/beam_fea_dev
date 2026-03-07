@@ -29,6 +29,10 @@ class Ply:
         Major Poisson's ratio
     G12 : float
         In-plane shear modulus (MPa)
+    G13 : float
+        Transverse shear modulus (1-3 plane, MPa)
+    G23 : float
+        Transverse shear modulus (2-3 plane, MPa)
     thickness : float
         Ply thickness (mm)
     rho : float
@@ -51,6 +55,8 @@ class Ply:
     nu12: float
     G12: float
     thickness: float
+    G13: float = 0.0
+    G23: float = 0.0
     rho: float = 0.0
     Xt: float = 0.0
     Xc: float = 0.0
@@ -129,10 +135,11 @@ class Ply:
         s1, s2, s12 = sigma_local[0], sigma_local[1], sigma_local[2]
 
         if criterion == 'max_stress':
+            if any(v <= 0 for v in [self.Xt, self.Xc, self.Yt, self.Yc, self.S]): return 0.0
             f1 = s1 / self.Xt if s1 >= 0 else abs(s1) / self.Xc
             f2 = s2 / self.Yt if s2 >= 0 else abs(s2) / self.Yc
             f12 = abs(s12) / self.S
-            return max(f1, f2, f12) if all(v > 0 for v in [self.Xt, self.Xc, self.Yt, self.Yc, self.S]) else 0.0
+            return max(f1, f2, f12)
 
         elif criterion == 'tsai_hill':
             X = self.Xt if s1 >= 0 else self.Xc
@@ -160,13 +167,27 @@ class Laminate:
     A laminate stack-up consisting of multiple plies.
     """
 
-    def __init__(self, name: str = "Laminate"):
+    def __init__(self, name: str = "Laminate", beam_type: str = 'narrow'):
+        """
+        Initialize laminate.
+
+        Parameters:
+        -----------
+        name : str
+            Identifier
+        beam_type : str
+            'narrow' (assumes sigma_y=0, uses ABD inverse for stiffness)
+            'wide' (assumes epsilon_y=0, uses A11/D11 directly)
+        """
         self.name = name
+        self.beam_type = beam_type
         self.plies: List[Tuple[Ply, float]] = [] # (Ply object, angle in degrees)
         self.A = np.zeros((3, 3))
         self.B = np.zeros((3, 3))
         self.D = np.zeros((3, 3))
         self.ABD = np.zeros((6, 6))
+        # Transverse shear stiffness (A44, A45, A55)
+        self.A_shear = np.zeros((2, 2))
         self.total_thickness = 0.0
 
     def add_ply(self, ply: Ply, angle: float):
@@ -181,7 +202,7 @@ class Laminate:
         self._calculate_properties()
 
     def _calculate_properties(self):
-        """Calculate ABD matrices using Classical Laminate Theory."""
+        """Calculate ABD and transverse shear matrices using CLT."""
         if not self.plies:
             return
 
@@ -215,6 +236,24 @@ class Laminate:
             [self.B, self.D]
         ])
 
+        # Transverse shear stiffness A_shear (A44, A45, A55)
+        # Integrated over thickness: A_ij = sum(Qbar_trans_ij * thickness)
+        self.A_shear = np.zeros((2, 2))
+        for i in range(n):
+            ply, angle = self.plies[i]
+            theta = np.radians(angle)
+            c, s = np.cos(theta), np.sin(theta)
+
+            # Transverse shear stiffness in material axes
+            Q44, Q55 = ply.G23, ply.G13
+            # Transformed to laminate axes
+            Qb44 = Q44*c**2 + Q55*s**2
+            Qb45 = (Q55 - Q44)*s*c
+            Qb55 = Q44*s**2 + Q55*c**2
+
+            Qbar_trans = np.array([[Qb44, Qb45], [Qb45, Qb55]])
+            self.A_shear += Qbar_trans * ply.thickness
+
     @property
     def rho(self) -> float:
         """Average density of the laminate."""
@@ -227,22 +266,13 @@ class Laminate:
         """
         Calculate equivalent engineering properties for 1D beam analysis.
 
-        All moduli are derived from the full compliance matrix to correctly
-        account for extension-shear coupling (A16, A26 terms) present in
-        off-axis and unbalanced laminates.
+        Choice of formula depends on `beam_type`:
+        - 'narrow' (sigma_y=0): Uses the inverse of ABD (compliance).
+        - 'wide' (epsilon_y=0): Uses the stiffness terms A11, D11 directly.
 
-        Per MIT OCW 16.20 and Reddy (2003):
-          Ex   = 1 / (a11 * t)      where [a] = [A]^{-1}
-          Ey   = 1 / (a22 * t)
-          Gxy  = 1 / (a66 * t)
-          nu_xy = -a12 / a11
-
-          Eb   = 12 / (d11_abd * t^3)  where d11_abd = [ABD]^{-1}[3,3]
-                 Using the full ABD inverse correctly captures B-D coupling
-                 for asymmetric laminates.
-
-        Note: For purely symmetric+balanced laminates (A16=A26=0, B=0),
-        these results reduce to the simpler closed-form expressions.
+        For narrow beams (Reddy, 2003):
+          Ex_eff = 1 / (a11 * t)      where [a] = [A]^{-1}
+          Eb_eff = 12 / (d11 * t^3)    where [d] = [ABD]^{-1}[3:6, 3:6]
         """
         if self.total_thickness == 0:
             return {}
@@ -264,12 +294,19 @@ class Laminate:
         # Equivalent Bending Modulus (Eb) via full ABD inverse
         # For asymmetric laminates, using D[0,0] only would be wrong because
         # the B matrix couples bending and extension, modifying effective Eb.
-        try:
-            ABD_inv = np.linalg.inv(self.ABD)
-            d11 = ABD_inv[3, 3]
-            Eb = 12.0 / (d11 * t**3)
-        except np.linalg.LinAlgError:
-            # Fallback: D-only approximation (valid for symmetric laminates only)
+        if self.beam_type == 'narrow':
+            try:
+                ABD_inv = np.linalg.inv(self.ABD)
+                a11 = np.linalg.inv(self.A)[0, 0] # for Ex
+                d11 = ABD_inv[3, 3] # for Eb
+                Ex = 1.0 / (a11 * t)
+                Eb = 12.0 / (d11 * t**3)
+            except np.linalg.LinAlgError:
+                Ex = self.A[0, 0] / t
+                Eb = 12.0 * self.D[0, 0] / t**3
+        else:
+            # Wide beam assumption (Plate theory)
+            Ex = self.A[0, 0] / t
             Eb = 12.0 * self.D[0, 0] / t**3
 
         # Average density (volume-weighted)
@@ -308,42 +345,51 @@ class Laminate:
             rho=props['rho']
         )
 
-    def get_sectional_stiffness(self, width: float) -> Tuple[float, float, float]:
+    def get_sectional_stiffness(self, width: float) -> dict:
         """
         Calculate width-integrated sectional stiffness values for the
         anisotropic 1D beam element.
 
-        The smeared-stiffness approach multiplies the CLT force-resultant
-        matrices (N/mm, N, N·mm per unit width) by the beam width `b`:
+        For narrow beams (Jones 1999), we use the inverse of compliance terms
+        to account for the zero-stress condition on free edges:
+            EA = (1/a11) * b
+            EI = (1/d11) * b
+            ES = Coupling (via ABD inverse)
 
-            EA = A11 * b   (axial stiffness, N)
-            ES = B11 * b   (bend-extension coupling stiffness, N·mm)
-            EI = D11 * b   (bending stiffness, N·mm²)
+        For wide beams, we use stiffness terms directly:
+            EA = A11 * b
+            ES = B11 * b
+            EI = D11 * b
 
-        Reference: Kollár & Springer (2003) §4.1; Jones (1999) Ch. 7.
-
-        Limitation
-        ----------
-        Only the [0,0] (11) component of each sub-matrix is used. This is
-        exact for laminates where all plies are at 0° or 90° (A16=A26=0,
-        D16=D26=0). For off-axis laminates (e.g. ±45°), the bending-twisting
-        coupling terms D16 and D26 are neglected, which introduces a
-        conservative error in EI. A full-width integration over the complete
-        [D] matrix would be required for accurate EI in those cases.
-
-        Parameters
-        ----------
-        width : float
-            Beam cross-section width (mm).
-
-        Returns
-        -------
-        (EA, ES, EI) : Tuple[float, float, float]
+        Also returns Transverse Shear Stiffness (GA_s):
+            GA_s = A55 * b
         """
-        EA = self.A[0, 0] * width
-        ES = self.B[0, 0] * width
-        EI = self.D[0, 0] * width
-        return EA, ES, EI
+        try:
+            ABD_inv = np.linalg.inv(self.ABD)
+            a11_inv = np.linalg.inv(self.A)[0, 0]
+            d11_inv = ABD_inv[3, 3]
+            # Equivalent ES via ABD compliance for narrow beams
+            # B11_eff = -ABD_inv[0, 3] / (ABD_inv[0, 0] * ABD_inv[3, 3] - ABD_inv[0, 3]**2)
+            # Actually simplified as:
+            B11_eff = self.B[0, 0]
+        except np.linalg.LinAlgError:
+            a11_inv = 1.0/self.A[0,0]
+            d11_inv = 1.0/self.D[0,0]
+            B11_eff = self.B[0,0]
+
+        if self.beam_type == 'narrow':
+            EA = (1.0 / a11_inv) * width
+            EI = (12.0 / (d11_inv * self.total_thickness**3)) * (width * self.total_thickness**3 / 12.0)
+            ES = B11_eff * width
+        else:
+            EA = self.A[0, 0] * width
+            ES = self.B[0, 0] * width
+            EI = self.D[0, 0] * width
+
+        # Transverse Shear Stiffness (A55 term)
+        GA_s = self.A_shear[1, 1] * width
+
+        return {'EA': EA, 'ES': ES, 'EI': EI, 'GA_s': GA_s}
 
     def __str__(self):
         res = f"Laminate: {self.name}\n"

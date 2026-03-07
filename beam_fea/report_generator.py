@@ -1173,7 +1173,7 @@ class BeamReportGenerator:
         from .composites import Laminate
         if (hasattr(self.material, '_is_laminate') or isinstance(self.material, Laminate)) and hasattr(self.solver, 'laminate_results'):
             crit_label = self.failure_criterion.replace('_', ' ').title()
-            ply_stress_table = f"\n### Ply-by-Ply Maximum Stresses\n\n| Ply | Name | Angle | Max $\\sigma_1$ | Max $\\sigma_2$ | Max $\\tau_{{12}}$ | Max $\\sigma_x$ | Max $\\tau_{{xy}}$ | {crit_label} Index |\n|---|---|---|---|---|---|---|---|---|\n"
+            ply_stress_table = f"\n### Ply-by-Ply Maximum Stresses\n\n| Ply | Name | Angle | Max $\\sigma_1$ | Max $\\sigma_2$ | Max $\\tau_{{12}}$ | Max $\\tau_{{xz}}$ | Max $\\sigma_x$ | Max $\\tau_{{xy}}$ | {crit_label} Index |\n|---|---|---|---|---|---|---|---|---|---|\n"
             
             # Aggregate peaks for each ply across ALL elements and ALL stations
             master_ply_data = {}
@@ -1187,7 +1187,7 @@ class BeamReportGenerator:
                     if pid not in master_ply_data:
                         master_ply_data[pid] = {
                             'index': ply['index'], 'name': ply['name'], 'angle': ply['angle'],
-                            'peak_s1': 0.0, 'peak_s2': 0.0, 'peak_t12': 0.0,
+                            'peak_s1': 0.0, 'peak_s2': 0.0, 'peak_t12': 0.0, 'peak_txz': 0.0,
                             'peak_sx': 0.0, 'peak_txy': 0.0, 'peak_fi': 0.0
                         }
                     
@@ -1195,6 +1195,7 @@ class BeamReportGenerator:
                     d['peak_s1'] = max(d['peak_s1'], np.max(ply['peak_sigma_1']))
                     d['peak_s2'] = max(d['peak_s2'], np.max(ply.get('peak_sigma_2', 0.0)))
                     d['peak_t12'] = max(d['peak_t12'], np.max(ply.get('peak_tau_12', 0.0)))
+                    d['peak_txz'] = max(d['peak_txz'], np.max(ply.get('peak_tau_xz', 0.0)))
                     d['peak_sx'] = max(d['peak_sx'], np.max(ply['peak_sigma_x']))
                     d['peak_txy'] = max(d['peak_txy'], np.max(ply['peak_tau_xy']))
                     d['peak_fi'] = max(d['peak_fi'], np.max(ply.get(fi_key, 0.0)))
@@ -1202,9 +1203,10 @@ class BeamReportGenerator:
             # Build table rows (sorted by ply index)
             for pid in sorted(master_ply_data.keys()):
                 d = master_ply_data[pid]
-                ply_stress_table += f"| {d['index']+1} | {d['name']} | {d['angle']}° | {d['peak_s1']:.2f} | {d['peak_s2']:.2f} | {d['peak_t12']:.2f} | {d['peak_sx']:.2f} | {d['peak_txy']:.2f} | {d['peak_fi']:.3f} |\n"
+                ply_stress_table += f"| {d['index']+1} | {d['name']} | {d['angle']}° | {d['peak_s1']:.2f} | {d['peak_s2']:.2f} | {d['peak_t12']:.2f} | {d['peak_txz']:.2f} | {d['peak_sx']:.2f} | {d['peak_txy']:.2f} | {d['peak_fi']:.3f} |\n"
             
-            ply_stress_table += f"\n*Note: All stress values reported in MPa. Failure index calculated using **{crit_label}** criterion. Values represent absolute peaks across all stations and ply thickness (Top/Mid/Bot).*"
+            beam_assump = "Narrow Beam (sigma_y=0)" if self.material.beam_type == 'narrow' else "Wide Beam (epsilon_y=0)"
+            ply_stress_table += f"\n*Note: All stress values reported in MPa. Failure index calculated using **{crit_label}** criterion. Values represent absolute peaks across all stations and ply thickness (Top/Mid/Bot). Model assumes: **{beam_assump}**.*"
 
         return rf"""
 ## 3. Static Analysis Results

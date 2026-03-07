@@ -186,11 +186,13 @@ class BeamSolver:
                 width = getattr(sec, 'width', 1.0)
                 if hasattr(sec, 'diameter'): width = sec.diameter
 
-                EA, ES, EI = mat.get_sectional_stiffness(width)
+                stiff = mat.get_sectional_stiffness(width)
+                EA, ES, EI = stiff['EA'], stiff['ES'], stiff['EI']
                 rho_total = mat.rho * width * mat.total_thickness
-                # Timoshenko shear stiffness: κ · Gxy · (width × thickness)
-                props = mat.get_effective_properties()
-                GA_s = SHEAR_CORRECTION_FACTOR * props['Gxy'] * (width * mat.total_thickness)
+
+                # CLT-based Transverse shear stiffness (with shear correction)
+                GA_s = SHEAR_CORRECTION_FACTOR * stiff['GA_s']
+
                 element = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
             else:
                 element = ElementClass(
@@ -245,11 +247,13 @@ class BeamSolver:
                 width = getattr(sec, 'width', 1.0)
                 if hasattr(sec, 'diameter'): width = sec.diameter
 
-                EA, ES, EI = mat.get_sectional_stiffness(width)
+                stiff = mat.get_sectional_stiffness(width)
+                EA, ES, EI = stiff['EA'], stiff['ES'], stiff['EI']
                 rho_total = mat.rho * width * mat.total_thickness
-                # Timoshenko shear stiffness: κ · Gxy · (width × thickness)
-                props = mat.get_effective_properties()
-                GA_s = SHEAR_CORRECTION_FACTOR * props['Gxy'] * (width * mat.total_thickness)
+
+                # CLT-based Transverse shear stiffness
+                GA_s = SHEAR_CORRECTION_FACTOR * stiff['GA_s']
+
                 element = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
             else:
                 element = ElementClass(
