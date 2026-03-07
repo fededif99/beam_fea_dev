@@ -76,8 +76,10 @@ def run_composite_analysis():
     print(f"  Error:          {abs(abs(max_def) - v_analytical)/v_analytical*100:.4e}%")
 
     # 7. Generate Report
-    solver.generate_report("composite_beam_report.md")
-    print("\nReport generated: composite_beam_report.md")
+    import os
+    report_path = os.path.join(os.path.dirname(__file__), "composite_beam_report.md")
+    solver.generate_report(report_path)
+    print(f"\nReport generated: {report_path}")
 
 if __name__ == "__main__":
     run_composite_analysis()

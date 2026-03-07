@@ -61,6 +61,21 @@ class BeamElementMatrices(ABC):
                                  dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Statically consistent force recovery (Homogeneous + Particular).
+        Enforces local element equilibrium by integrating distributed loads explicitly.
+
+        Parameters:
+        -----------
+        u_local : np.ndarray
+            Local element displacement vector [u1, v1, theta1, u2, v2, theta2].
+        xi : Union[float, np.ndarray]
+            Normalized position(s) along element [0, 1].
+        dist_load : Tuple[float, float, float, float]
+            Distributed loads: (wy1, wy2, wx1, wx2).
+
+        Returns:
+        --------
+        (axial_force, shear_force, bending_moment) : Tuple[np.ndarray, np.ndarray, np.ndarray]
+            The recovered internal forces.
         """
         pass
 
@@ -68,6 +83,19 @@ class BeamElementMatrices(ABC):
     def interpolate_forces_homogeneous(self, u_local: np.ndarray, xi: Union[float, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Pure FEA interpolation using shape function derivatives (Homogeneous only).
+        Follows the mathematical displacement approximation without local equilibrium corrections.
+
+        Parameters:
+        -----------
+        u_local : np.ndarray
+            Local element displacement vector [u1, v1, theta1, u2, v2, theta2].
+        xi : Union[float, np.ndarray]
+            Normalized position(s) along element [0, 1].
+
+        Returns:
+        --------
+        (axial_force, shear_force, bending_moment) : Tuple[np.ndarray, np.ndarray, np.ndarray]
+            The interpolated internal forces.
         """
         pass
 

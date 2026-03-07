@@ -1,0 +1,2043 @@
+﻿diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 07c8079..b029435 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -2,6 +2,25 @@
+ 
+ All notable changes to the `beam_fea` project will be documented in this file.
+ 
++## [v2.4.0] - 2026-03-05
++
++- **Visualization**: Overhauled cross-section plotting to draw explicit geometry using Matplotlib patches instead of bounding boxes for all standard sections.
++- **Visualization**: Implemented `plot_laminate_stackup` featuring Abaqus-inspired vertical ply stacks and HyperMesh-inspired polar orientation rosettes.
++- **Visualization**: Added support for subplots in `plot_multiple_sections` to visualize models with varying cross-sections.
++- **Analysis**: Implemented high-fidelity **Ply-by-Ply Stress Recovery** for composite laminates, calculating $\sigma_x, \sigma_y, \tau_{xy}$ for every layer.
++- **API**: Enhanced `BoundaryConditionSet` and `LoadCase` with `.add()` methods for better object-oriented model building.
++- **Reporting**: Upgraded `BeamReportGenerator` to include enhanced cross-section geometry, laminate stack-up diagrams, and ply-by-ply maximum stress tables.
++- **Refactor**: Updated `SectionProperties` and `CrossSection` classes to maintain persistent naming and parent-child relationships for improved visualization.
++
++## [v2.3.0] - 2026-03-05
++
++- **Architecture**: Implemented the **Strategy Pattern** for internal force handling, separating pure FEA approximation (`NodalInterpolationStrategy`) from high-fidelity engineering results (`ConsistentRecoveryStrategy`).
++- **Optimization**: Vectorized the internal force and stress calculation engines in the new `post_processing.py` module, achieving $O(M)$ performance scaling (where $M$ is the number of evaluation points).
++- **Refactor**: Renamed `interpolate_internal_forces` to `recover_forces_consistent` and added `interpolate_forces_homogeneous` to element classes for technical clarity.
++- **Reporting**: Guaranteed high-fidelity diagrams in `BeamReportGenerator` by explicitly utilizing the consistent recovery strategy.
++- **Performance**: Optimized element evaluation loops by grouping points by element, significantly reducing redundant object instantiation.
++- **Cleanup**: Removed dead and commented-out code in `visualizer.py` and synchronized caching logic across the solver.
++
+ ## [v2.2.2] - 2026-03-05
+ 
+ - **Reporting**: Enhanced `BeamReportGenerator` to dynamically display longitudinal ($E_x$), transverse ($E_y$), bending ($E_b$), and shear ($G_{xy}$) moduli for composite laminates, providing better visibility into anisotropic behavior.
+diff --git a/README.md b/README.md
+index d165995..486a97c 100644
+--- a/README.md
++++ b/README.md
+@@ -20,8 +20,17 @@
+ 
+ ## ≡ƒôà Version History
+ 
+-### Latest Version: v2.2.1 *(2026-03-05)*
+-
++### Latest Version: v2.4.0 *(2026-03-05)*
++
++- **Explicit Geometry**: Replaced bounding boxes with Matplotlib patches for exact cross-section visualization.
++- **Composite Stack-ups**: New `plot_laminate_stackup` featuring vertical ply stacks and polar orientation rosettes.
++- **Multi-Section Plots**: Automatic subplot generation for beams with varying cross-sections.
++- **Ply-by-Ply Stresses**: High-fidelity stress recovery calculating $\sigma_x, \sigma_y, \tau_{xy}$ for every ply in a laminate.
++- **Reporting**: Reports now include explicit geometry plots, laminate stack-ups, and ply-stress summaries.
++- **Strategy Pattern**: Decoupled "FEA Interpolation" from "High-Fidelity Recovery" for internal force handling.
++- **Optimization**: Achieve $O(M)$ performance scaling for station evaluations via vectorized grouping.
++- **Post-Processing Module**: Centralized calculation engines in `beam_fea/post_processing.py`.
++- **API Control**: Users can now explicitly choose between standard and consistent recovery modes.
+ - **Physics Verification**: Corrected $E_x$ extraction to use compliance matrix inversion, ensuring accuracy for unbalanced laminates.
+ - **Timoshenko Anisotropy**: Upgraded `AnisotropicBeamElement` to include Timoshenko shear deformation.
+ - **Consistent Force Recovery**: Implemented distributed load particular solutions for precise internal force diagrams in composite beams.
+diff --git a/anisotropic_coupling_report.md b/anisotropic_coupling_report.md
+index d1c0849..e08c56b 100644
+--- a/anisotropic_coupling_report.md
++++ b/anisotropic_coupling_report.md
+@@ -1,6 +1,6 @@
+ # Beam FEA Analysis Report (Static)
+ 
+-**Generated:** 05-03-2026 20:03:05
++**Generated:** 05-03-2026 10:36:16
+ 
+ ---
+ 
+diff --git a/beam_fea/boundary_conditions.py b/beam_fea/boundary_conditions.py
+index 1915dd9..1214cb3 100644
+--- a/beam_fea/boundary_conditions.py
++++ b/beam_fea/boundary_conditions.py
+@@ -262,6 +262,13 @@ class BoundaryConditionSet:
+         self.conditions: List[BoundaryCondition] = []
+         self.spring_supports: List[SpringSupport] = []
+     
++    def add(self, condition: BoundaryCondition):
++        """Add a boundary condition object."""
++        if isinstance(condition, SpringSupport):
++            self.spring_supports.append(condition)
++        else:
++            self.conditions.append(condition)
++
+     def fixed_support(self, node: int):
+         """Add fixed support."""
+         self.conditions.append(FixedSupport(node=node))
+diff --git a/beam_fea/cross_sections.py b/beam_fea/cross_sections.py
+index e93bf49..14c797e 100644
+--- a/beam_fea/cross_sections.py
++++ b/beam_fea/cross_sections.py
+@@ -53,6 +53,8 @@ class SectionProperties:
+         Distance from centroid to right fiber (mm)
+     name : str
+         Descriptive name of the cross-section
++    parent_section : CrossSection, optional
++        The source CrossSection object that generated these properties.
+     """
+     
+     A: float
+@@ -70,6 +72,7 @@ class SectionProperties:
+     z_left: float = None
+     z_right: float = None
+     name: str = "Custom Profile"
++    parent_section: Optional['CrossSection'] = None
+     
+     def __post_init__(self):
+         """Calculate derived properties if not provided."""
+@@ -146,7 +149,7 @@ class CrossSection(ABC):
+ class RectangularSection(CrossSection):
+     """Rectangular cross-section."""
+     
+-    def __init__(self, width: float, height: float):
++    def __init__(self, width: float, height: float, name: str = None):
+         """
+         Initialize rectangular section.
+         """
+@@ -156,6 +159,7 @@ class RectangularSection(CrossSection):
+             raise ValueError(f"Height must be positive, got {height}")
+         self.width = width
+         self.height = height
++        self.name = name or f"Rectangular ({width}w ├ù {height}h)"
+     
+     def properties(self) -> SectionProperties:
+         """Calculate section properties."""
+@@ -173,7 +177,8 @@ class RectangularSection(CrossSection):
+             y_centroid=0.0, z_centroid=0.0,  # Center is reference
+             y_top=h/2, y_bottom=-h/2,
+             z_left=-b/2, z_right=b/2,
+-            name=f"Rectangular ({self.width}w ├ù {self.height}h)"
++            name=f"Rectangular ({self.width}w ├ù {self.height}h)",
++            parent_section=self
+         )
+     
+     def __str__(self):
+@@ -192,7 +197,7 @@ class RectangularSection(CrossSection):
+ class CircularSection(CrossSection):
+     """Solid circular cross-section."""
+     
+-    def __init__(self, diameter: float):
++    def __init__(self, diameter: float, name: str = None):
+         """
+         Initialize circular section.
+         
+@@ -204,6 +209,7 @@ class CircularSection(CrossSection):
+         if diameter <= 0:
+             raise ValueError(f"Diameter must be positive, got {diameter}")
+         self.diameter = diameter
++        self.name = name or f"Circular (Γêà{diameter})"
+     
+     def properties(self) -> SectionProperties:
+         """Calculate section properties."""
+@@ -220,7 +226,8 @@ class CircularSection(CrossSection):
+             y_centroid=0.0, z_centroid=0.0,
+             y_top=r, y_bottom=-r,
+             z_left=-r, z_right=r,
+-            name=f"Circular (Γêà{self.diameter})"
++            name=f"Circular (Γêà{self.diameter})",
++            parent_section=self
+         )
+     
+     def __str__(self):
+@@ -240,7 +247,7 @@ class CircularSection(CrossSection):
+ class HollowCircularSection(CrossSection):
+     """Hollow circular cross-section (pipe/tube)."""
+     
+-    def __init__(self, outer_diameter: float, thickness: float):
++    def __init__(self, outer_diameter: float, thickness: float, name: str = None):
+         """
+         Initialize hollow circular section.
+         
+@@ -260,6 +267,7 @@ class HollowCircularSection(CrossSection):
+         self.outer_diameter = outer_diameter
+         self.thickness = thickness
+         self.inner_diameter = outer_diameter - 2 * thickness
++        self.name = name or f"Hollow Circular (Γêà{outer_diameter} ├ù {thickness}t)"
+     
+     def properties(self) -> SectionProperties:
+         """Calculate section properties."""
+@@ -278,7 +286,8 @@ class HollowCircularSection(CrossSection):
+             y_centroid=0.0, z_centroid=0.0,
+             y_top=ro, y_bottom=-ro,
+             z_left=-ro, z_right=ro,
+-            name=f"Hollow Circular (Γêà{self.outer_diameter} ├ù {self.thickness}t)"
++            name=f"Hollow Circular (Γêà{self.outer_diameter} ├ù {self.thickness}t)",
++            parent_section=self
+         )
+     
+     def __str__(self):
+@@ -315,7 +324,7 @@ class IBeamSection(CrossSection):
+     """I-beam (wide flange) cross-section."""
+     
+     def __init__(self, flange_width: float, total_height: float,
+-                 web_thickness: float, flange_thickness: float):
++                 web_thickness: float, flange_thickness: float, name: str = None):
+         """
+         Initialize I-beam section.
+         
+@@ -346,6 +355,7 @@ class IBeamSection(CrossSection):
+         self.total_height = total_height
+         self.web_thickness = web_thickness
+         self.flange_thickness = flange_thickness
++        self.name = name or f"I-Beam (d={total_height}, bf={flange_width}, tw={web_thickness}, tf={flange_thickness})"
+     
+     def properties(self) -> SectionProperties:
+         """Calculate section properties."""
+@@ -379,7 +389,8 @@ class IBeamSection(CrossSection):
+             y_centroid=0.0, z_centroid=0.0,
+             y_top=d/2, y_bottom=-d/2,
+             z_left=-bf/2, z_right=bf/2,
+-            name=f"I-Beam (d={self.total_height}, bf={self.flange_width}, tw={self.web_thickness}, tf={self.flange_thickness})"
++            name=f"I-Beam (d={self.total_height}, bf={self.flange_width}, tw={self.web_thickness}, tf={self.flange_thickness})",
++            parent_section=self
+         )
+     
+     def __str__(self):
+@@ -419,7 +430,7 @@ class TBeamSection(CrossSection):
+     """T-beam cross-section."""
+     
+     def __init__(self, flange_width: float, flange_thickness: float,
+-                 web_height: float, web_thickness: float):
++                 web_height: float, web_thickness: float, name: str = None):
+         """
+         Initialize T-beam section.
+         
+@@ -439,6 +450,7 @@ class TBeamSection(CrossSection):
+         self.web_height = web_height
+         self.web_thickness = web_thickness
+         self.total_height = flange_thickness + web_height
++        self.name = name or f"T-Beam (bf={flange_width}, tf={flange_thickness}, hw={web_height}, tw={web_thickness})"
+     
+     def properties(self) -> SectionProperties:
+         """Calculate section properties."""
+@@ -474,7 +486,8 @@ class TBeamSection(CrossSection):
+             y_centroid=y_bar, z_centroid=0.0,
+             y_top=y_top_val, y_bottom=-y_bottom_val,
+             z_left=-bf/2, z_right=bf/2,
+-            name=f"T-Beam (bf={self.flange_width}, tf={self.flange_thickness}, hw={self.web_height}, tw={self.web_thickness})"
++            name=f"T-Beam (bf={self.flange_width}, tf={self.flange_thickness}, hw={self.web_height}, tw={self.web_thickness})",
++            parent_section=self
+         )
+     
+     def __str__(self):
+@@ -524,7 +537,7 @@ class TBeamSection(CrossSection):
+ class BoxSection(CrossSection):
+     """Rectangular hollow section (box section)."""
+     
+-    def __init__(self, width: float, height: float, thickness: float):
++    def __init__(self, width: float, height: float, thickness: float, name: str = None):
+         """
+         Initialize box section.
+         
+@@ -550,6 +563,7 @@ class BoxSection(CrossSection):
+         self.width = width
+         self.height = height
+         self.thickness = thickness
++        self.name = name or f"Box Section ({width}w ├ù {height}h ├ù {thickness}t)"
+     
+     def properties(self) -> SectionProperties:
+         """Calculate section properties."""
+@@ -584,7 +598,8 @@ class BoxSection(CrossSection):
+             y_centroid=0.0, z_centroid=0.0,
+             y_top=H/2.0, y_bottom=-H/2.0,
+             z_left=-B/2.0, z_right=B/2.0,
+-            name=f"Box Section ({self.width}w ├ù {self.height}h ├ù {self.thickness}t)"
++            name=f"Box Section ({self.width}w ├ù {self.height}h ├ù {self.thickness}t)",
++            parent_section=self
+         )
+     
+     def __str__(self):
+@@ -626,7 +641,7 @@ class CChannelSection(CrossSection):
+     """C-channel cross-section."""
+     
+     def __init__(self, height: float, flange_width: float,
+-                 web_thickness: float, flange_thickness: float):
++                 web_thickness: float, flange_thickness: float, name: str = None):
+         """
+         Initialize C-channel section.
+         
+@@ -645,6 +660,7 @@ class CChannelSection(CrossSection):
+         self.flange_width = flange_width
+         self.web_thickness = web_thickness
+         self.flange_thickness = flange_thickness
++        self.name = name or f"C-Channel (d={height}, bf={flange_width}, tw={web_thickness}, tf={flange_thickness})"
+     
+     def properties(self) -> SectionProperties:
+         """Calculate section properties."""
+@@ -678,7 +694,8 @@ class CChannelSection(CrossSection):
+             y_centroid=0.0, z_centroid=x_bar,
+             y_top=h/2, y_bottom=-h/2,
+             z_left=-x_bar, z_right=bf-x_bar,
+-            name=f"C-Channel (d={self.height}, bf={self.flange_width}, tw={self.web_thickness}, tf={self.flange_thickness})"
++            name=f"C-Channel (d={self.height}, bf={self.flange_width}, tw={self.web_thickness}, tf={self.flange_thickness})",
++            parent_section=self
+         )
+     
+     def __str__(self):
+@@ -724,7 +741,7 @@ class LSection(CrossSection):
+     """
+     
+     def __init__(self, leg_length_vertical: float, leg_length_horizontal: float,
+-                 thickness: float):
++                 thickness: float, name: str = None):
+         """
+         Initialize L-section (angle).
+         
+@@ -751,6 +768,10 @@ class LSection(CrossSection):
+         self.leg_length_vertical = leg_length_vertical
+         self.leg_length_horizontal = leg_length_horizontal
+         self.thickness = thickness
++
++        is_equal = leg_length_vertical == leg_length_horizontal
++        type_str = "Equal" if is_equal else "Unequal"
++        self.name = name or f"L-Section {type_str} ({leg_length_vertical} ├ù {leg_length_horizontal} ├ù {thickness}t)"
+     
+     def properties(self) -> SectionProperties:
+         """Calculate section properties about centroidal axes."""
+@@ -801,7 +822,8 @@ class LSection(CrossSection):
+             y_centroid=y_bar, z_centroid=x_bar,
+             y_top=h-y_bar, y_bottom=-y_bar,
+             z_left=-x_bar, z_right=b-x_bar,
+-            name=desc
++            name=desc,
++            parent_section=self
+         )
+     
+     def __str__(self):
+diff --git a/beam_fea/element_matrices.py b/beam_fea/element_matrices.py
+index 833cee0..02fefa7 100644
+--- a/beam_fea/element_matrices.py
++++ b/beam_fea/element_matrices.py
+@@ -9,7 +9,7 @@ Provides stiffness and mass matrices for:
+ """
+ 
+ import numpy as np
+-from typing import Tuple
++from typing import Tuple, Union
+ from abc import ABC, abstractmethod
+ 
+ # Standard shear correction factor for rectangular sections
+@@ -57,25 +57,17 @@ class BeamElementMatrices(ABC):
+         pass
+ 
+     @abstractmethod
+-    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float,
+-                                   dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[float, float, float]:
++    def recover_forces_consistent(self, u_local: np.ndarray, xi: Union[float, np.ndarray],
++                                 dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+         """
+-        Interpolate internal forces at a normalized position.
++        Statically consistent force recovery (Homogeneous + Particular).
++        """
++        pass
+ 
+-        Uses superposition of homogeneous and particular solutions for static consistency.
+-        
+-        Parameters:
+-        -----------
+-        u_local : np.ndarray
+-            Local element displacement vector [u1, v1, theta1, u2, v2, theta2]
+-        xi : float
+-            Normalized position along element [0, 1]
+-        dist_load : Tuple[float, float, float, float]
+-            Distributed loads: (wy1, wy2, wx1, wx2)
+-            
+-        Returns:
+-        --------
+-        (axial_force, shear_force, bending_moment) : Tuple[float, float, float]
++    @abstractmethod
++    def interpolate_forces_homogeneous(self, u_local: np.ndarray, xi: Union[float, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
++        """
++        Pure FEA interpolation using shape function derivatives (Homogeneous only).
+         """
+         pass
+ 
+@@ -166,85 +158,55 @@ class EulerBernoulliElement(BeamElementMatrices):
+         
+         return M
+ 
+-    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float,
+-                                   dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[float, float, float]:
+-        """
+-        Interpolate axial, shear, and moment for Euler-Bernoulli beam.
+-        """
+-        L = self.L
+-        E = self.E
+-        I = self.I
+-        A = self.A
+-        
+-        u1 = u_local[0]
+-        v1 = u_local[1]
+-        theta1 = u_local[2]
+-        u2 = u_local[3]
+-        v2 = u_local[4]
+-        theta2 = u_local[5]
+-        
+-        wy1, wy2, wx1, wx2 = dist_load
+-        
+-        # 1. Homogeneous Solution (from nodal displacements)
+-        # Hermite shape functions second derivatives (for moment: M = -EI * d2v/dx2)
++    def interpolate_forces_homogeneous(self, u_local: np.ndarray, xi: Union[float, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
++        """Pure FEA interpolation (Hermite derivatives) for Euler-Bernoulli."""
++        L, E, I, A = self.L, self.E, self.I, self.A
++        u1, v1, theta1, u2, v2, theta2 = u_local
++
++        # Axial (linear)
++        axial_force = A * E * (u2 - u1) / L * np.ones_like(xi)
++
++        # Bending (Cubic Hermite second derivatives)
+         d2N1 = (6 - 12*xi) / L**2
+         d2N2 = (4 - 6*xi) / L
+         d2N3 = (-6 + 12*xi) / L**2
+         d2N4 = (2 - 6*xi) / L
+-        
+-        # Hermite shape functions third derivatives (for shear: V = -EI * d3v/dx3)
+-        d3N1 = -12 / L**3
+-        d3N2 = -6 / L**2
+-        d3N3 = 12 / L**3
+-        d3N4 = -6 / L**2
+-        
+-        moment_h = -E * I * (d2N1 * v1 + d2N2 * theta1 + d2N3 * v2 + d2N4 * theta2)
+-        shear_h = -E * I * (d3N1 * v1 + d3N2 * theta1 + d3N3 * v2 + d3N4 * theta2)
+-
+-        # For statically consistent internal force recovery:
+-        # 1. Total force F = K_local * u_local - F_equivalent_distributed
+-        # 2. V(xi) = V1_total - integral[w(s) L ds]
+-        # 3. M(xi) = -M1_total + V1_total*(xi*L) - integral[w(s)*(xi*L - s*L) ds]
+-
+-        # Consistent nodal forces (equivalent loads) for linear distributed load:
+-        # Fy1 = L/20 * (7*wy1 + 3*wy2)
+-        # M1  = L^2/60 * (3*wy1 + 2*wy2)
+-        # Fy2 = L/20 * (3*wy1 + 7*wy2)
+-        # M2  = -L^2/60 * (2*wy1 + 3*wy2)
++        bending_moment = -E * I * (d2N1*v1 + d2N2*theta1 + d2N3*v2 + d2N4*theta2)
++
++        # Shear (Cubic Hermite third derivatives)
++        d3N1 = -12 / L**3 * np.ones_like(xi)
++        d3N2 = -6 / L**2 * np.ones_like(xi)
++        d3N3 = 12 / L**3 * np.ones_like(xi)
++        d3N4 = -6 / L**2 * np.ones_like(xi)
++        shear_force = -E * I * (d3N1*v1 + d3N2*theta1 + d3N3*v2 + d3N4*theta2)
++
++        return axial_force, shear_force, bending_moment
++
++    def recover_forces_consistent(self, u_local: np.ndarray, xi: Union[float, np.ndarray],
++                                 dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
++        """Statically consistent recovery for Euler-Bernoulli."""
++        L = self.L
++        wy1, wy2, wx1, wx2 = dist_load
++
++        # Equivalent nodal loads
+         f_eq = np.zeros(6)
+         f_eq[1] = (L/20) * (7*wy1 + 3*wy2)
+         f_eq[2] = (L**2/60) * (3*wy1 + 2*wy2)
+         f_eq[4] = (L/20) * (3*wy1 + 7*wy2)
+         f_eq[5] = -(L**2/60) * (2*wy1 + 3*wy2)
+-
+-        # Axial equivalent loads
+-        # Fx1 = L/6 * (2*wx1 + wx2)
+-        # Fx2 = L/6 * (wx1 + 2*wx2)
+         f_eq[0] = (L/6) * (2*wx1 + wx2)
+         f_eq[3] = (L/6) * (wx1 + 2*wx2)
+ 
+-        # Total nodal reactions at element ends (internal forces)
+-        # f_total = K*u - f_eq represents the internal forces at the nodes
+-        # For node 1, f_total[1] is the shear force at the start of the element.
+         f_total = self.stiffness_matrix() @ u_local - f_eq
++        N1, V1, M1 = f_total[0], f_total[1], f_total[2]
+ 
+-        V1 = f_total[1]
+-        M1 = f_total[2]
+-        N1 = f_total[0]
+-
+-        # In this solver's convention:
+-        # Positive V is upward on left face.
+-        # Positive M is bottom-tension (which is -M1 if M1 is CCW acting on the beam end).
+-
+-        # V(xi) = V1 + integral[w(s) L ds] from 0 to xi (if w is positive upward)
++        # Integration
+         int_w = L * (wy1 * (xi - 0.5*xi**2) + wy2 * (0.5*xi**2))
+         shear_force = V1 + int_w
+ 
+-        # M(xi) = -M1 + V1 * (xi*L) + integral[w(s)*(xi*L - s*L) ds]
+         int_w_dist = L**2 * (wy1 * (0.5*xi**2 - xi**3/6) + wy2 * (xi**3/6))
+         bending_moment = -M1 + V1 * (xi * L) + int_w_dist
+ 
+-        # Axial: N(xi) = -N1 - integral[wx(s) L ds] (if N is positive tension)
+         int_wx = L * (wx1 * (xi - 0.5*xi**2) + wx2 * (0.5*xi**2))
+         axial_force = -N1 - int_wx
+         
+@@ -386,15 +348,43 @@ class TimoshenkoElement(BeamElementMatrices):
+         m, L = self.m, self.L
+         return np.diag([m*L/2, m*L/2, 0, m*L/2, m*L/2, 0])
+ 
+-    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float,
+-                                   dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[float, float, float]:
+-        """
+-        Interpolate axial, shear, and moment for Timoshenko beam.
+-        """
++    def interpolate_forces_homogeneous(self, u_local: np.ndarray, xi: Union[float, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
++        """Pure FEA interpolation for Timoshenko."""
++        # For Timoshenko, pure interpolation from displacement field (v, theta)
++        # N = EA * eps = EA * u'
++        # V = kappa*G*A * (v' - theta)
++        # M = EI * theta'
++        L, E, G, I, A, As = self.L, self.E, self.G, self.I, self.A, self.As
++        u1, v1, theta1, u2, v2, theta2 = u_local
++        phi = 12 * E * I / (G * As * L**2)
++        fac = 1.0 / (1.0 + phi)
++
++        # Axial
++        axial_force = A * E * (u2 - u1) / L * np.ones_like(xi)
++
++        # Bending Moment M = EI * d_theta/dx
++        # Shape functions for theta: N_theta = [N2', N4', N6', N8'] in some texts
++        # For our DOF [v1, theta1, v2, theta2]:
++        # theta(xi) = (1/(1+phi)) * [ (6xi/L - 6xi^2/L)v1 + (1 - 4xi + 3xi^2 + phi(1-xi))theta1 + (-6xi/L + 6xi^2/L)v2 + (-2xi + 3xi^2 + phi*xi)theta2 ]
++        d_theta = (fac/L) * (
++            (6 - 12*xi)*v1/L + (-4 + 6*xi - phi)*theta1 +
++            (-6 + 12*xi)*v2/L + (-2 + 6*xi + phi)*theta2
++        )
++        bending_moment = E * I * d_theta
++
++        # Shear Force V = As*G * (dv/dx - theta)
++        # dv/dx = (fac/L) * [ (6xi-6xi^2)v1/L + (L(1-4xi+3xi^2)+phi*L(1-xi))theta1 ... ] - theta
++        # Alternatively, for Timoshenko elements, homogeneous shear is constant across element:
++        # V_h = -12EI / (L^3(1+phi)) * (v1 - v2 + L/2(theta1 + theta2))
++        shear_force = -(12 * E * I * fac / L**3) * (v1 - v2 + 0.5 * L * (theta1 + theta2)) * np.ones_like(xi)
++
++        return axial_force, shear_force, bending_moment
++
++    def recover_forces_consistent(self, u_local: np.ndarray, xi: Union[float, np.ndarray],
++                                 dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
++        """Statically consistent recovery for Timoshenko."""
+         L = self.L
+         wy1, wy2, wx1, wx2 = dist_load
+-
+-        # Consistent force recovery using superposition
+         f_eq = np.zeros(6)
+         f_eq[1] = (L/20) * (7*wy1 + 3*wy2)
+         f_eq[2] = (L**2/60) * (3*wy1 + 2*wy2)
+@@ -404,18 +394,12 @@ class TimoshenkoElement(BeamElementMatrices):
+         f_eq[3] = (L/6) * (wx1 + 2*wx2)
+ 
+         f_total = self.stiffness_matrix() @ u_local - f_eq
+-
+         N1, V1, M1 = f_total[0], f_total[1], f_total[2]
+         
+-        # Axial
+         int_wx = L * (wx1 * (xi - 0.5*xi**2) + wx2 * (0.5*xi**2))
+         axial_force = -N1 - int_wx
+-        
+-        # Shear
+         int_wy = L * (wy1 * (xi - 0.5*xi**2) + wy2 * (0.5*xi**2))
+         shear_force = V1 + int_wy
+-        
+-        # Moment
+         int_wy_dist = L**2 * (wy1 * (0.5*xi**2 - xi**3/6) + wy2 * (xi**3/6))
+         bending_moment = -M1 + V1 * (xi * L) + int_wy_dist
+         
+@@ -559,39 +543,36 @@ class AnisotropicBeamElement(BeamElementMatrices):
+         ])
+         return M
+ 
+-    def interpolate_internal_forces(self, u_local: np.ndarray, xi: float,
+-                                   dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[float, float, float]:
+-        """
+-        Statically-consistent internal force recovery for the anisotropic element.
++    def interpolate_forces_homogeneous(self, u_local: np.ndarray, xi: Union[float, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
++        """Pure FEA interpolation for Anisotropic element."""
++        L, EA, ES, EI = self.L, self.EA, self.ES, self.EI
++        u1, v1, theta1, u2, v2, theta2 = u_local
++        phi = self._phi()
++        fac = 1.0 / (1.0 + phi)
+ 
+-        Uses the same superposition approach as TimoshenkoElement:
++        # eps0 = (u2-u1)/L
++        eps0 = (u2 - u1) / L * np.ones_like(xi)
+ 
+-        1. Compute equivalent nodal loads ``f_eq`` for the distributed load.
+-        2. Recover boundary forces at node 1: ``f_total = K┬╖u - f_eq``.
+-        3. Integrate the distributed load algebraically to get V(╬╛) and M(╬╛).
++        # Curvature kappa = d_theta/dx
++        d_theta = (fac/L) * (
++            (6 - 12*xi)*v1/L + (-4 + 6*xi - phi)*theta1 +
++            (-6 + 12*xi)*v2/L + (-2 + 6*xi + phi)*theta2
++        )
+ 
+-        The coupled constitutive law is honoured:
++        # Coupled constitutive laws
++        axial_force = EA * eps0 + ES * d_theta
++        bending_moment = ES * eps0 + EI * d_theta
+ 
+-            N = EA┬╖╬╡ΓéÇ + ES┬╖╬║
+-            M = ES┬╖╬╡ΓéÇ + EI┬╖╬║   (bottom-tension positive)
++        # Shear (constant across element for homogeneous solution)
++        shear_force = -(12 * EI * fac / L**3) * (v1 - v2 + 0.5 * L * (theta1 + theta2)) * np.ones_like(xi)
+ 
+-        Parameters
+-        ----------
+-        u_local : np.ndarray
+-            Local displacement vector [u1, v1, ╬╕1, u2, v2, ╬╕2].
+-        xi : float
+-            Normalised position along element in [0, 1].
+-        dist_load : tuple
+-            (wy1, wy2, wx1, wx2) ΓÇö linearly varying distributed loads (N/mm).
+-
+-        Returns
+-        -------
+-        (axial_force, shear_force, bending_moment) : Tuple[float, float, float]
+-        """
++        return axial_force, shear_force, bending_moment
++
++    def recover_forces_consistent(self, u_local: np.ndarray, xi: Union[float, np.ndarray],
++                                 dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
++        """Statically consistent recovery for Anisotropic element."""
+         L = self.L
+         wy1, wy2, wx1, wx2 = dist_load
+-
+-        # --- Equivalent nodal loads for linear distributed load ---
+         f_eq = np.zeros(6)
+         f_eq[1] = (L / 20) * (7*wy1 + 3*wy2)
+         f_eq[2] = (L**2 / 60) * (3*wy1 + 2*wy2)
+@@ -600,22 +581,13 @@ class AnisotropicBeamElement(BeamElementMatrices):
+         f_eq[0] = (L / 6) * (2*wx1 + wx2)
+         f_eq[3] = (L / 6) * (wx1 + 2*wx2)
+ 
+-        # Boundary forces at start of element
+         f_total = self.stiffness_matrix() @ u_local - f_eq
+         N1, V1, M1 = f_total[0], f_total[1], f_total[2]
+ 
+-        # --- Axial force N(╬╛) ---
+-        # N(╬╛) = ΓêÆN1 ΓêÆ Γê½ΓéÇ^{╬╛L} wx ds
+         int_wx = L * (wx1 * (xi - 0.5*xi**2) + wx2 * (0.5*xi**2))
+         axial_force = -N1 - int_wx
+-
+-        # --- Shear force V(╬╛) ---
+-        # V(╬╛) = V1 + Γê½ΓéÇ^{╬╛L} wy ds
+         int_wy = L * (wy1 * (xi - 0.5*xi**2) + wy2 * (0.5*xi**2))
+         shear_force = V1 + int_wy
+-
+-        # --- Bending moment M(╬╛) (bottom-tension positive) ---
+-        # M(╬╛) = ΓêÆM1 + V1┬╖(╬╛L) + Γê½ΓéÇ^{╬╛L} wy┬╖(╬╛L ΓêÆ s) ds
+         int_wy_dist = L**2 * (wy1 * (0.5*xi**2 - xi**3/6) + wy2 * (xi**3/6))
+         bending_moment = -M1 + V1 * (xi * L) + int_wy_dist
+ 
+diff --git a/beam_fea/loads.py b/beam_fea/loads.py
+index 4fa91f4..80a6efc 100644
+--- a/beam_fea/loads.py
++++ b/beam_fea/loads.py
+@@ -411,6 +411,10 @@ class LoadCase:
+         self.name = name
+         self.loads: List[Load] = []
+     
++    def add(self, load: Load):
++        """Add a load object."""
++        self.loads.append(load)
++
+     def point_load(self, node: Optional[int] = None, x: Optional[float] = None, 
+                    fx: float = 0, fy: float = 0, mz: float = 0):
+         """Add a point load to this load case."""
+diff --git a/beam_fea/post_processing.py b/beam_fea/post_processing.py
+new file mode 100644
+index 0000000..7a98f67
+--- /dev/null
++++ b/beam_fea/post_processing.py
+@@ -0,0 +1,431 @@
++"""
++post_processing.py
++==================
++Internal force and stress recovery engines.
++"""
++
++import numpy as np
++from abc import ABC, abstractmethod
++from typing import Tuple, List, Union
++
++class ForceRecoveryStrategy(ABC):
++    """Abstract base class for internal force recovery strategies."""
++
++    @abstractmethod
++    def recover(self, element, u_local: np.ndarray, xi: Union[float, np.ndarray],
++                dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
++        """
++        Recover internal forces at normalized position(s) xi.
++
++        Returns:
++        --------
++        (axial, shear, moment) : Tuple of arrays/floats
++        """
++        pass
++
++class NodalInterpolationStrategy(ForceRecoveryStrategy):
++    """
++    Standard FEA interpolation using shape function derivatives.
++    Mathematically consistent with the displacement approximation.
++    """
++
++    def recover(self, element, u_local: np.ndarray, xi: Union[float, np.ndarray],
++                dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
++        # Delegate to element's homogeneous interpolation logic
++        return element.interpolate_forces_homogeneous(u_local, xi)
++
++class ConsistentRecoveryStrategy(ForceRecoveryStrategy):
++    """
++    Statically consistent force recovery (Homogeneous + Particular).
++    Enforces local equilibrium by integrating distributed loads.
++    """
++
++    def recover(self, element, u_local: np.ndarray, xi: Union[float, np.ndarray],
++                dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
++        # Delegate to element's full recovery logic
++        return element.recover_forces_consistent(u_local, xi, dist_load)
++
++class ResultsContainer:
++    """
++    Unified container for analysis results to avoid redundant calculations.
++    """
++    def __init__(self):
++        self.positions = None
++        self.axial_forces = None
++        self.shear_forces = None
++        self.bending_moments = None
++        self.stresses = None
++        self.displacements = None
++        self.reactions = None
++        self.recovery_strategy = "consistent"
++        self.num_points = 100
++
++class InternalForceEngine:
++    """Engine to coordinate internal force calculation across the mesh."""
++
++    @staticmethod
++    def calculate(solver, num_points: int = None, strategy_name: str = "consistent") -> dict:
++        if solver.displacements is None:
++            raise ValueError("Must run solve_static() first")
++
++        mesh = solver.mesh
++        coords = mesh.get_node_coords()
++        x_min, x_max = np.min(coords[:, 0]), np.max(coords[:, 0])
++
++        if num_points is None:
++            positions = np.sort(coords[:, 0])
++        else:
++            positions = np.linspace(x_min, x_max, num_points)
++
++        eval_count = len(positions)
++        axial_forces = np.zeros(eval_count)
++        shear_forces = np.zeros(eval_count)
++        bending_moments = np.zeros(eval_count)
++
++        # Select strategy
++        if strategy_name == "consistent":
++            strategy = ConsistentRecoveryStrategy()
++        else:
++            strategy = NodalInterpolationStrategy()
++
++        # Pre-calculate distributed loads per element
++        element_dist_loads = InternalForceEngine._get_element_dist_loads(solver)
++
++        # Vectorization optimization: Group points by element
++        # This is faster than the previous station-by-station loop
++        points_by_element = {}
++        for i, x in enumerate(positions):
++            eid = mesh.find_element_at_x(x)
++            if eid == -1:
++                eid = 0 if x <= x_min else mesh.num_elements - 1
++            if eid not in points_by_element:
++                points_by_element[eid] = []
++            points_by_element[eid].append(i)
++
++        from .element_matrices import EulerBernoulliElement, TimoshenkoElement, AnisotropicBeamElement, SHEAR_CORRECTION_FACTOR
++        from .composites import Laminate
++
++        for eid, indices in points_by_element.items():
++            elem = mesh.elements[eid]
++            p1, p2 = coords[elem.node1], coords[elem.node2]
++            x1 = p1[0]
++            L = np.sqrt(np.sum((p2 - p1)**2))
++
++            dof_indices = [3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
++                           3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2]
++            u_local = solver.displacements[dof_indices]
++
++            # Local normalized coordinates for this element
++            xi = np.array([(positions[idx] - x1) / L for idx in indices])
++            xi = np.clip(xi, 0, 1) if L > 0 else np.zeros_like(xi)
++
++            # Element expert
++            mat = solver.properties.get_material(elem.id)
++            sec = solver.properties.get_section(elem.id)
++
++            if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
++                width = getattr(sec, 'width', getattr(sec, 'diameter', 1.0))
++                EA, ES, EI = mat.get_sectional_stiffness(width)
++                rho_total = mat.rho * width * mat.total_thickness
++                props = mat.get_effective_properties()
++                GA_s = SHEAR_CORRECTION_FACTOR * props['Gxy'] * (width * mat.total_thickness)
++                element_expert = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
++            else:
++                E, G, I, A, rho = mat.E, mat.G, sec.Iy, sec.A, mat.rho
++                if solver.element_type == 'euler':
++                    element_expert = EulerBernoulliElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
++                else:
++                    element_expert = TimoshenkoElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
++
++            d_load = element_dist_loads.get(eid, (0.0, 0.0, 0.0, 0.0))
++            N, V, M = strategy.recover(element_expert, u_local, xi, dist_load=d_load)
++
++            axial_forces[indices] = N
++            shear_forces[indices] = V
++            bending_moments[indices] = M
++
++        return {
++            'positions': positions,
++            'axial_forces': axial_forces,
++            'shear_forces': shear_forces,
++            'bending_moments': bending_moments
++        }
++
++    @staticmethod
++    def _get_element_dist_loads(solver):
++        """Helper to consolidate distributed loads per element."""
++        element_dist_loads = {}
++        if not solver.last_load_case:
++            return element_dist_loads
++
++        from .loads import UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad
++        coords = solver.mesh.get_node_coords()
++
++        for load in solver.last_load_case.loads:
++            wy1 = wy2 = wx1 = wx2 = 0.0
++            if isinstance(load, UniformDistributedLoad):
++                wy1 = wy2 = load.wy; wx1 = wx2 = load.wx
++            elif isinstance(load, TrapezoidalDistributedLoad):
++                wy1, wy2 = load.wy1, load.wy2; wx1, wx2 = load.wx1, load.wx2
++            elif isinstance(load, TriangularDistributedLoad):
++                wy1, wy2 = (load.w_peak, 0.0) if load.peak_loc == 'start' else (0.0, load.w_peak)
++            else: continue
++
++            if load.element is not None:
++                elems = [load.element] if isinstance(load.element, int) else load.element
++                for eid in elems:
++                    curr = element_dist_loads.get(eid, (0, 0, 0, 0))
++                    element_dist_loads[eid] = (curr[0] + wy1, curr[1] + wy2, curr[2] + wx1, curr[3] + wx2)
++            elif load.x_start is not None:
++                x_s, x_e = min(load.x_start, load.x_end), max(load.x_start, load.x_end)
++                for eid, elem in enumerate(solver.mesh.elements):
++                    p1, p2 = coords[elem.node1, 0], coords[elem.node2, 0]
++                    e_min, e_max = min(p1, p2), max(p1, p2)
++                    i_min, i_max = max(e_min, x_s), min(e_max, x_e)
++                    if i_max > i_min:
++                        def get_w(x, w1, w2, xs, xe):
++                            if abs(xe - xs) < 1e-9: return w1
++                            return w1 + (w2 - w1) * (x - xs) / (xe - xs)
++                        wya = get_w(p1, wy1, wy2, load.x_start, load.x_end)
++                        wyb = get_w(p2, wy1, wy2, load.x_start, load.x_end)
++                        wxa = get_w(p1, wx1, wx2, load.x_start, load.x_end)
++                        wxb = get_w(p2, wx1, wx2, load.x_start, load.x_end)
++                        curr = element_dist_loads.get(eid, (0, 0, 0, 0))
++                        element_dist_loads[eid] = (curr[0] + wya, curr[1] + wyb, curr[2] + wxa, curr[3] + wxb)
++        return element_dist_loads
++
++class StressEngine:
++    """Engine to coordinate 3D stress field calculation."""
++
++    @staticmethod
++    def calculate(solver, num_x_points: int = None, num_y_points: int = 20, num_z_points: int = 20) -> dict:
++        forces = solver.calculate_internal_forces(num_x_points)
++        x_positions = forces['positions']
++        N_x = forces['axial_forces']
++        V_x = forces['shear_forces']
++        M_x = forces['bending_moments']
++
++        # Build 2D grid for the cross-section
++        # (Logic moved from solver.py and optimized)
++        y_min, y_max, z_min, z_max = StressEngine._get_global_bounding_box(solver)
++
++        y_coords = np.linspace(y_min, y_max, num_y_points)
++        z_coords = np.linspace(z_min, z_max, num_z_points)
++        Y, Z = np.meshgrid(y_coords, z_coords, indexing='ij')
++
++        eval_x_count = len(x_positions)
++        shape_3d = (eval_x_count, num_y_points, num_z_points)
++
++        sigma_a = np.zeros(shape_3d)
++        sigma_b = np.zeros(shape_3d)
++        tau_s = np.zeros(shape_3d)
++        sigma_vm = np.zeros(shape_3d)
++        sigma_1 = np.zeros(shape_3d)
++        sigma_2 = np.zeros(shape_3d)
++
++        # Group stations by element for vectorization
++        points_by_element = {}
++        for i, x in enumerate(x_positions):
++            eid = solver.mesh.find_element_at_x(x)
++            if eid == -1: eid = 0 if x <= x_positions[0] else solver.mesh.num_elements - 1
++            if eid not in points_by_element: points_by_element[eid] = []
++            points_by_element[eid].append(i)
++
++        profile_cache = {}
++        from .composites import Laminate
++
++        for eid, indices in points_by_element.items():
++            mat = solver.properties.get_material(eid)
++            sec = solver.properties.get_section(eid)
++            sec_id = id(sec)
++
++            if sec_id not in profile_cache:
++                profile_cache[sec_id] = StressEngine._get_section_profile(sec, Y, Z)
++
++            mask, t_yz, Q_yz = profile_cache[sec_id]
++
++            # --- Special Handling for Laminates (Ply-by-Ply) ---
++            if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
++                lam = mat
++                t_lam = lam.total_thickness
++
++                # Laminate mid-plane strains and curvatures for these stations
++                # For 1D beam: eps_x = eps_x_0 + z * kappa_x
++                # u_local = [u1, v1, th1, u2, v2, th2]
++                # Actually we have global forces N, V, M.
++                # Midplane resultants per unit width: n = N/width, m = M/width
++                width = getattr(sec, 'width', getattr(sec, 'diameter', 1.0))
++
++                N_sub = N_x[indices] / width
++                M_sub = M_x[indices] / width
++
++                # Solve [ABD][eps0; kappa] = [n; m]
++                # [n_x, n_y, n_xy, m_x, m_y, m_xy]^T
++                # In 1D beam, we assume n_y=n_xy=m_y=m_xy = 0
++                load_vectors = np.zeros((len(indices), 6))
++                load_vectors[:, 0] = N_sub
++                load_vectors[:, 3] = M_sub
++
++                try:
++                    ABD_inv = np.linalg.inv(lam.ABD)
++                    strains_mid = (ABD_inv @ load_vectors.T).T # (n_stations, 6)
++                except np.linalg.LinAlgError:
++                    strains_mid = np.zeros((len(indices), 6))
++
++                # For each ply, calculate stress at its top, bottom and mid
++                ply_stresses = []
++                z_ply = -t_lam / 2.0
++                for i, (ply, angle) in enumerate(lam.plies):
++                    Qbar = ply.transformed_reduced_stiffness(angle)
++
++                    # Heights within the ply (top and bottom relative to midplane)
++                    z_bot = z_ply
++                    z_top = z_ply + ply.thickness
++                    z_mid = z_ply + ply.thickness / 2.0
++
++                    # Strains at these heights: eps = eps0 + z * kappa
++                    # eps0 = strains_mid[:, 0:3], kappa = strains_mid[:, 3:6]
++                    eps_bot = strains_mid[:, 0:3] + z_bot * strains_mid[:, 3:6]
++                    eps_top = strains_mid[:, 0:3] + z_top * strains_mid[:, 3:6]
++
++                    # Ply stresses: sig = Qbar * eps
++                    sig_bot = (Qbar @ eps_bot.T).T # (n_stations, 3)
++                    sig_top = (Qbar @ eps_top.T).T # (n_stations, 3)
++
++                    ply_stresses.append({
++                        'index': i,
++                        'name': ply.name,
++                        'angle': angle,
++                        'z_range': (z_bot, z_top),
++                        'sigma_x': (sig_bot[:, 0] + sig_top[:, 0]) / 2.0, # Average for the station's 3D field
++                        'peak_sigma_x': np.maximum(np.abs(sig_bot[:, 0]), np.abs(sig_top[:, 0])),
++                        'sigma_bot': sig_bot,
++                        'sigma_top': sig_top
++                    })
++                    z_ply += ply.thickness
++
++                # Map ply stresses back to Y, Z grid for standard results
++                # In our 1D beam model, Y is the thickness direction for laminates.
++                for idx_in_sub, global_idx in enumerate(indices):
++                    for ply_info in ply_stresses:
++                        z_b, z_t = ply_info['z_range']
++                        # mask_ply identifies points in the grid that belong to this ply
++                        mask_ply = mask & (Y >= z_b) & (Y <= z_t)
++                        sigma_a[global_idx, mask_ply] = ply_info['sigma_x'][idx_in_sub]
++                        # We use von_mises slot for peak ply stress for now
++                        sigma_vm[global_idx, mask_ply] = ply_info['peak_sigma_x'][idx_in_sub]
++
++                # Store ply-by-ply data in a separate attribute for querying
++                if not hasattr(solver, 'laminate_results'):
++                    solver.laminate_results = {}
++                solver.laminate_results[eid] = {
++                    'ply_data': ply_stresses,
++                    'strains_mid': strains_mid,
++                    'x_positions': x_positions[indices]
++                }
++                continue # Skip standard isotropic calculation
++            A, Iy = sec.A, sec.Iy
++
++            # Forces for these stations
++            N_sub = N_x[indices, np.newaxis, np.newaxis]
++            V_sub = V_x[indices, np.newaxis, np.newaxis]
++            M_sub = M_x[indices, np.newaxis, np.newaxis]
++
++            # Stress calculation (vectorized across these stations)
++            sig_a_sub = N_sub / A
++            sig_b_sub = -M_sub * Y[np.newaxis, :, :] / Iy
++
++            valid_t = t_yz > 1e-9
++            shear_base = np.zeros_like(Y)
++            shear_base[valid_t] = Q_yz[valid_t] / (Iy * t_yz[valid_t])
++            tau_s_sub = V_sub * shear_base[np.newaxis, :, :]
++
++            sig_x_sub = sig_a_sub + sig_b_sub
++            vm_sub = np.sqrt(sig_x_sub**2 + 3 * tau_s_sub**2)
++
++            # Principal stresses
++            avg_sig = sig_x_sub / 2.0
++            R = np.sqrt(avg_sig**2 + tau_s_sub**2)
++
++            # Masking
++            # mask is (ny, nz), sig_a_sub is (n_stations, ny, nz)
++            # Apply mask using broadcasting for all stations
++            m_3d = mask[np.newaxis, :, :]
++            sig_a_sub = sig_a_sub * m_3d
++            sig_b_sub = sig_b_sub * m_3d
++            tau_s_sub = tau_s_sub * m_3d
++            vm_sub = vm_sub * m_3d
++
++            sigma_a[indices] = sig_a_sub
++            sigma_b[indices] = sig_b_sub
++            tau_s[indices] = tau_s_sub
++            sigma_vm[indices] = vm_sub
++            sigma_1[indices] = avg_sig + R
++            sigma_2[indices] = avg_sig - R
++
++        return {
++            'x': x_positions, 'y': Y, 'z': Z, 'mask': mask,
++            'axial': sigma_a, 'bending': sigma_b, 'shear': tau_s,
++            'sigma_1': sigma_1, 'sigma_2': sigma_2, 'von_mises': sigma_vm
++        }
++
++    @staticmethod
++    def _get_global_bounding_box(solver):
++        # Union of all sections
++        y_min, y_max = solver.properties.default_section.y_bottom, solver.properties.default_section.y_top
++        z_min, z_max = solver.properties.default_section.z_left, solver.properties.default_section.z_right
++
++        processed_ids = set()
++        unique_secs = []
++        for i in range(solver.mesh.num_elements):
++            sec = solver.properties.get_section(i)
++            if id(sec) not in processed_ids:
++                processed_ids.add(id(sec))
++                unique_secs.append(sec)
++
++        for sec in unique_secs:
++            y_min = min(y_min, sec.y_bottom); y_max = max(y_max, sec.y_top)
++            z_min = min(z_min, sec.z_left); z_max = max(z_max, sec.z_right)
++
++        return y_min, y_max, z_min, z_max
++
++    @staticmethod
++    def get_ply_stresses(solver, element_id: int, x_station_idx: int = 0):
++        """
++        Query detailed ply-by-ply stresses for a specific element and station.
++        """
++        if not hasattr(solver, 'laminate_results') or element_id not in solver.laminate_results:
++            return None
++
++        res = solver.laminate_results[element_id]
++        ply_data = res['ply_data']
++
++        station_stresses = []
++        for ply in ply_data:
++            station_stresses.append({
++                'ply_index': ply['index'],
++                'ply_name': ply['name'],
++                'angle': ply['angle'],
++                'sigma_x_bot': ply['sigma_bot'][x_station_idx, 0],
++                'sigma_x_top': ply['sigma_top'][x_station_idx, 0],
++                'sigma_y_bot': ply['sigma_bot'][x_station_idx, 1],
++                'sigma_y_top': ply['sigma_top'][x_station_idx, 1],
++                'tau_xy_bot': ply['sigma_bot'][x_station_idx, 2],
++                'tau_xy_top': ply['sigma_top'][x_station_idx, 2],
++            })
++        return station_stresses
++
++    @staticmethod
++    def _get_section_profile(sec, Y, Z):
++        try:
++            return sec.get_stress_profile(Y, Z)
++        except AttributeError:
++            y_top = sec.y_top if sec.y_top is not None else np.sqrt(sec.A)/2
++            y_bot = sec.y_bottom if sec.y_bottom is not None else -np.sqrt(sec.A)/2
++            z_r = sec.z_right if sec.z_right is not None else (sec.Iz/sec.A)**0.5 if sec.Iz else np.sqrt(sec.A)/2
++            z_l = sec.z_left if sec.z_left is not None else -(sec.Iz/sec.A)**0.5 if sec.Iz else -np.sqrt(sec.A)/2
++            mask = (Y <= y_top) & (Y >= y_bot) & (Z <= z_r) & (Z >= z_l)
++            t_yz = np.full_like(Y, z_r - z_l)
++            Q_yz = (t_yz) / 2.0 * (y_top**2 - Y**2)
++            Q_yz[~mask] = 0.0; t_yz[~mask] = 0.0
++            return mask, t_yz, Q_yz
+diff --git a/beam_fea/report_generator.py b/beam_fea/report_generator.py
+index a48bae2..e6045d9 100644
+--- a/beam_fea/report_generator.py
++++ b/beam_fea/report_generator.py
+@@ -74,9 +74,10 @@ class BeamReportGenerator:
+         
+     def calculate_internal_forces(self, num_points: int = 100):
+         """
+-        Calculate shear force and bending moment along the beam using centralized solver logic.
++        Calculate internal forces using consistent recovery for reporting.
+         """
+-        results = self.solver.calculate_internal_forces(num_points)
++        # Ensure we use high-fidelity recovery for the report diagrams
++        results = self.solver.calculate_internal_forces(num_points, strategy='consistent')
+         self.positions = results['positions']
+         self.shear_forces = results['shear_forces']
+         self.bending_moments = results['bending_moments']
+@@ -867,17 +868,26 @@ class BeamReportGenerator:
+         plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
+         plt.close()
+     
+-    def plot_cross_section(self, output_path: str, dpi: int = 150):
++    def plot_cross_sections(self, output_path: str, dpi: int = 150):
+         """
+-        Plot cross-section using BeamVisualizer.
++        Plot unique cross-sections using BeamVisualizer.
+         """
+         from .visualizer import BeamVisualizer
+         viz = BeamVisualizer(self.mesh)
+-        viz.plot_section_properties(
+-            self.section,
+-            output_path=output_path,
+-            dpi=dpi
+-        )
++        if self.solver.properties.has_multiple_sections(self.mesh.num_elements):
++            viz.plot_multiple_sections(self.solver.properties, output_path=output_path, dpi=dpi)
++        else:
++            viz.plot_section_properties(self.section, output_path=output_path, dpi=dpi)
++
++    def plot_laminate_stackup(self, output_path: str, dpi: int = 150):
++        """
++        Plot laminate stack-up if the material is a laminate.
++        """
++        from .composites import Laminate
++        from .visualizer import BeamVisualizer
++        if hasattr(self.material, '_is_laminate') or isinstance(self.material, Laminate):
++            viz = BeamVisualizer(self.mesh)
++            viz.plot_laminate_stackup(self.material, output_path=output_path, dpi=dpi)
+     
+     def generate_report(self, output_path: str, deformation_scale: Union[float, str] = 'auto'):
+         """
+@@ -904,6 +914,10 @@ class BeamReportGenerator:
+         md_content += self._generate_executive_summary(has_static, has_modal)
+         md_content += self._generate_model_setup(images_dir, images_rel_path)
+         
++        # Cross-section visualization (Enhanced)
++        self.plot_cross_sections(str(images_dir / "cross_sections.png"))
++        self.plot_laminate_stackup(str(images_dir / "laminate_stackup.png"))
++
+         if has_static:
+             md_content += self._generate_static_results(images_dir, images_rel_path, deformation_scale)
+             
+@@ -1047,7 +1061,9 @@ class BeamReportGenerator:
+ **Detailed Loads:**
+ {load_details_str}
+ 
+-### Cross-Section Properties
++### Cross-Section Geometry
++
++![Cross Sections]({images_rel_path}/cross_sections.png)
+ 
+ | Property | Value | Units |
+ |----------|-------|-------|
+@@ -1058,6 +1074,8 @@ class BeamReportGenerator:
+ 
+ {mat_props_md.strip()}
+ 
++{self._generate_laminate_section(images_rel_path)}
++
+ ---
+ """
+ 
+@@ -1149,6 +1167,20 @@ class BeamReportGenerator:
+         max_shear_val, shear_x, shear_y, shear_z = get_max_stress_info(self.stresses['shear'])
+         max_axial_val, axial_x, axial_y, axial_z = get_max_stress_info(self.stresses['axial'])
+ 
++        # Ply-by-ply stress summary for report
++        ply_stress_table = ""
++        from .composites import Laminate
++        if (hasattr(self.material, '_is_laminate') or isinstance(self.material, Laminate)) and hasattr(self.solver, 'laminate_results'):
++            ply_stress_table = "\n### Ply-by-Ply Maximum Stresses\n\n| Ply | Name | Angle | Max $\\sigma_x$ [MPa] |\n|---|---|---|---|\n"
++            # Get peak for each ply across all stations
++            # For simplicity, we look at element 0's results
++            if 0 in self.solver.laminate_results:
++                ply_data = self.solver.laminate_results[0]['ply_data']
++                for ply in ply_data:
++                    # peak_sigma_x is per station
++                    peak_val = np.max(ply['peak_sigma_x'])
++                    ply_stress_table += f"| {ply['index']+1} | {ply['name']} | {ply['angle']}┬░ | {peak_val:.2f} |\n"
++
+         return rf"""
+ ## 3. Static Analysis Results
+ 
+@@ -1186,6 +1218,8 @@ Shear Force (V) and Bending Moment (M) distributions:
+ | Shear (Max)      | {max_shear_val:.2f} | ({shear_x:.1f}, {shear_y:.1f}, {shear_z:.1f}) | MPa |
+ | Axial (Max)      | {max_axial_val:.2f} | ({axial_x:.1f}, {axial_y:.1f}, {axial_z:.1f}) | MPa |
+ 
++{ply_stress_table}
++
+ ---
+ """
+ 
+@@ -1223,6 +1257,20 @@ Shear Force (V) and Bending Moment (M) distributions:
+ 
+         return results_md + "---\n"
+ 
++    def _generate_laminate_section(self, images_rel_path):
++        """Generate additional section for laminate details."""
++        from .composites import Laminate
++        if not (hasattr(self.material, '_is_laminate') or isinstance(self.material, Laminate)):
++            return ""
++
++        return rf"""
++### Composite Laminate Details
++
++![Laminate Stackup]({images_rel_path}/laminate_stackup.png)
++
++The following stack-up defines the laminate properties and fiber orientations.
++"""
++
+     def _generate_footer(self):
+         """Generate report footer."""
+         return "\n\n*Report generated by Beam FEA Analysis Tool*\n"
+diff --git a/beam_fea/solver.py b/beam_fea/solver.py
+index 10b1964..cf491f5 100644
+--- a/beam_fea/solver.py
++++ b/beam_fea/solver.py
+@@ -94,6 +94,10 @@ class BeamSolver:
+         # State for reporting
+         self.last_load_case = None
+         self.last_bc_set = None
++
++        # Post-processing settings
++        self.recovery_strategy = 'consistent'
++        self.results = None
+     
+     def _validate_model(self, bc_set: BoundaryConditionSet = None):
+         """
+@@ -369,385 +373,38 @@ class BeamSolver:
+             'moment': {'value': res['bending_moments'][m_idx], 'x': pos[m_idx]}
+         }
+ 
+-    def calculate_internal_forces(self, num_points: int = None) -> dict:
++    def calculate_internal_forces(self, num_points: int = None, strategy: str = None) -> dict:
+         """
+-        Calculate shear force and bending moment distributions along the beam.
+-        
+-        Parameters:
+-        -----------
+-        num_points : int, optional
+-            Number of points for interpolation along beam length. 
+-            Defaults to self.mesh.num_nodes if None.
+-            
+-        Returns:
+-        --------
+-        results : dict
+-            Dictionary containing 'positions', 'shear_forces', and 'bending_moments'.
++        Calculate internal force distributions using the specified strategy.
+         """
+-        if self.displacements is None:
+-            raise ValueError("Must run solve_static() first")
+-            
++        from .post_processing import InternalForceEngine
++        
++        strat = strategy or self.recovery_strategy
++        
+         # Check cache
+-        if self._cached_forces is not None and self._cached_forces_params == num_points:
++        cache_key = (num_points, strat)
++        if self._cached_forces is not None and self._cached_forces_params == cache_key:
+             return self._cached_forces
+ 
+-        coords = self.mesh.get_node_coords()
+-        x_min, x_max = np.min(coords[:, 0]), np.max(coords[:, 0])
+-        
+-        # Create evaluation points
+-        if num_points is None:
+-            # Physics-aligned: use the exact nodal coordinates by default
+-            positions = np.sort(coords[:, 0])
+-            eval_count = len(positions)
+-        else:
+-            # Interpolated: use a uniform grid for smooth plotting
+-            positions = np.linspace(x_min, x_max, num_points)
+-            eval_count = num_points
+-            
+-        axial_forces = np.zeros(eval_count)
+-        shear_forces = np.zeros(eval_count)
+-        bending_moments = np.zeros(eval_count)
+-        
+-        # Determine evaluation points per element to avoid redundant element instantiation
+-        from .element_matrices import EulerBernoulliElement, TimoshenkoElement
+-        
+-        # Pre-calculate distributed loads per element
+-        element_dist_loads = {}
+-        if self.last_load_case:
+-            from .loads import (UniformDistributedLoad, TrapezoidalDistributedLoad,
+-                               TriangularDistributedLoad)
+-            for load in self.last_load_case.loads:
+-                # Transverse (wy) and Axial (wx)
+-                wy1 = wy2 = wx1 = wx2 = 0.0
+-
+-                if isinstance(load, UniformDistributedLoad):
+-                    wy1 = wy2 = load.wy
+-                    wx1 = wx2 = load.wx
+-                elif isinstance(load, TrapezoidalDistributedLoad):
+-                    wy1, wy2 = load.wy1, load.wy2
+-                    wx1, wx2 = load.wx1, load.wx2
+-                elif isinstance(load, TriangularDistributedLoad):
+-                    if load.peak_loc == 'start':
+-                        wy1, wy2 = load.w_peak, 0.0
+-                    else:
+-                        wy1, wy2 = 0.0, load.w_peak
+-                else:
+-                    continue # Not a distributed load
+-
+-                # Identify elements affected
+-                if load.element is not None:
+-                    elems = [load.element] if isinstance(load.element, int) else load.element
+-                    for eid in elems:
+-                        curr = element_dist_loads.get(eid, (0, 0, 0, 0))
+-                        element_dist_loads[eid] = (curr[0] + wy1, curr[1] + wy2, curr[2] + wx1, curr[3] + wx2)
+-                elif load.x_start is not None and load.x_end is not None:
+-                    x_s, x_e = min(load.x_start, load.x_end), max(load.x_start, load.x_end)
+-                    for eid, elem in enumerate(self.mesh.elements):
+-                        p1, p2 = coords[elem.node1], coords[elem.node2]
+-                        e_min, e_max = min(p1[0], p2[0]), max(p1[0], p2[0])
+-
+-                        # Intersection
+-                        i_min, i_max = max(e_min, x_s), min(e_max, x_e)
+-                        if i_max > i_min:
+-                            # For simplicity, if coordinate-based distributed load is used,
+-                            # we interpolate the intensities at element ends
+-                            def get_w(x, w1, w2, xs, xe):
+-                                if abs(xe - xs) < 1e-9: return w1
+-                                return w1 + (w2 - w1) * (x - xs) / (xe - xs)
+-
+-                            wya = get_w(p1[0], wy1, wy2, load.x_start, load.x_end)
+-                            wyb = get_w(p2[0], wy1, wy2, load.x_start, load.x_end)
+-                            wxa = get_w(p1[0], wx1, wx2, load.x_start, load.x_end)
+-                            wxb = get_w(p2[0], wx1, wx2, load.x_start, load.x_end)
+-
+-                            curr = element_dist_loads.get(eid, (0, 0, 0, 0))
+-                            element_dist_loads[eid] = (curr[0] + wya, curr[1] + wyb, curr[2] + wxa, curr[3] + wxb)
+-
+-        # Re-instantiate expert and cache element properties only if element changes
+-        current_elem_idx = -1
+-        x1, L, u_local = 0.0, 1.0, None
+-        element_expert = None
+-
+-        from .element_matrices import AnisotropicBeamElement
+-        from .composites import Laminate
+-
+-        for i, x in enumerate(positions):
+-            # Find element containing point x
+-            found_idx = -1
+-            
+-            # 1. Try current element (spatial coherence) - Most efficient for evaluation loops
+-            if current_elem_idx != -1:
+-                if L > 0 and x1 <= x <= x1 + L:
+-                    found_idx = current_elem_idx
+-            
+-            # 2. Delegate to Mesh for optimized/indexed search
+-            if found_idx == -1:
+-                found_idx = self.mesh.find_element_at_x(x)
+-            
+-            # Fallback for numerical precision at ends
+-            if found_idx == -1:
+-                if x <= x_min:
+-                    found_idx = 0
+-                elif x >= x_max:
+-                    found_idx = self.mesh.num_elements - 1
+-            
+-            if found_idx == -1:
+-                continue
+-            
+-            # Update cache and expert only if element truly changes
+-            if found_idx != current_elem_idx:
+-                current_elem_idx = found_idx
+-                elem = self.mesh.elements[current_elem_idx]
+-                
+-                # Cache boundary and length
+-                p1, p2 = coords[elem.node1], coords[elem.node2]
+-                x1 = p1[0]
+-                L = np.sqrt(np.sum((p2 - p1)**2))
+-                
+-                # Local element displacements
+-                dof_indices = [
+-                    3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
+-                    3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2
+-                ]
+-                u_local = self.displacements[dof_indices]
+-                
+-                # Instantiate the correct element type expert
+-                # Support multiple materials/sections via collector
+-                mat = self.properties.get_material(elem.id)
+-                sec = self.properties.get_section(elem.id)
+-                
+-                if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
+-                    width = getattr(sec, 'width', 1.0)
+-                    if hasattr(sec, 'diameter'): width = sec.diameter
+-                    EA, ES, EI = mat.get_sectional_stiffness(width)
+-                    rho_total = mat.rho * width * mat.total_thickness
+-                    # Timoshenko shear stiffness: ╬║ ┬╖ Gxy ┬╖ (width ├ù thickness)
+-                    props = mat.get_effective_properties()
+-                    GA_s = SHEAR_CORRECTION_FACTOR * props['Gxy'] * (width * mat.total_thickness)
+-                    element_expert = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
+-                else:
+-                    E, G, I, A, rho = mat.E, mat.G, sec.Iy, sec.A, mat.rho
+-                    if self.element_type == 'euler':
+-                        element_expert = EulerBernoulliElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
+-                    else:
+-                        element_expert = TimoshenkoElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
+-            
+-            # Local position xi [0, 1] - Uses cached L and x1
+-            xi = np.clip((x - x1) / L, 0, 1) if L > 0 else 0
+-            
+-            # Pass distributed load for this element
+-            d_load = element_dist_loads.get(current_elem_idx, (0.0, 0.0, 0.0, 0.0))
+-            N, V, M = element_expert.interpolate_internal_forces(u_local, xi, dist_load=d_load)
+-            axial_forces[i] = N
+-            shear_forces[i] = V
+-            bending_moments[i] = M
+-            
+-        res = {
+-            'positions': positions,
+-            'axial_forces': axial_forces,
+-            'shear_forces': shear_forces,
+-            'bending_moments': bending_moments
+-        }
++        res = InternalForceEngine.calculate(self, num_points, strat)
+         
+         # Update cache
+         self._cached_forces = res
+-        self._cached_forces_params = num_points
++        self._cached_forces_params = cache_key
+         
+         return res
+         
+     def calculate_stresses(self, num_x_points: int = None, num_y_points: int = 20, num_z_points: int = 20) -> dict:
+         """
+         Calculate detailed 3D stress field over the beam's length and cross-section.
+-        
+-        Parameters:
+-        -----------
+-        num_x_points : int, optional
+-            Number of points along the beam length. Defaults to self.mesh.num_nodes if None.
+-        num_y_points : int
+-            Number of grid points in the cross-section y-direction (depth).
+-        num_z_points : int
+-            Number of grid points in the cross-section z-direction (width).
+-            
+-        Returns:
+-        --------
+-        dict
+-            Dictionary containing evaluation grids and 3D stress arrays:
+-            'x': 1D array of positions
+-            'y': 2D grid of y coordinates
+-            'z': 2D grid of z coordinates
+-            'mask': 2D boolean mask of the cross section shape
+-            'axial': 3D array of axial stresses
+-            'bending': 3D array of bending stresses
+-            'shear': 3D array of transverse shear stresses
+-            'von_mises': 3D array of von Mises equivalent stresses
+         """
+-        # 1. Check cache
+-        params = (num_x_points, num_y_points, num_z_points)
++        from .post_processing import StressEngine
++
++        params = (num_x_points, num_y_points, num_z_points, self.recovery_strategy)
+         if self._cached_stresses is not None and self._cached_stresses_params == params:
+             return self._cached_stresses
+ 
+-        from .static_analysis import StressAnalysis
+-        
+-        # 2. Get internal forces along the beam
+-        forces = self.calculate_internal_forces(num_x_points)
+-        x_positions = forces['positions']
+-        N_x = forces['axial_forces']
+-        V_x = forces['shear_forces']
+-        M_x = forces['bending_moments']
+-        
+-        # 2. Build 2D grid for the cross-section
+-        # Use union of all bounding boxes to accommodate multiple sections
+-        y_min_global, y_max_global = self.properties.default_section.y_bottom, self.properties.default_section.y_top
+-        z_min_global, z_max_global = self.properties.default_section.z_left, self.properties.default_section.z_right
+-        
+-        # Check all unique sections for bounding box expansions
+-        processed_ids = set()
+-        unique_secs = []
+-        for i in range(self.mesh.num_elements):
+-            sec = self.properties.get_section(i)
+-            if id(sec) not in processed_ids:
+-                processed_ids.add(id(sec))
+-                unique_secs.append(sec)
+-            
+-        for sec in unique_secs:
+-            y_min_global = min(y_min_global, sec.y_bottom)
+-            y_max_global = max(y_max_global, sec.y_top)
+-            z_min_global = min(z_min_global, sec.z_left)
+-            z_max_global = max(z_max_global, sec.z_right)
+-
+-        # Fallback for simple properties
+-        if y_min_global is None:
+-            r = np.sqrt(self.section.Iy / self.section.A)
+-            y_min_global, y_max_global = -2*r, 2*r
+-        if z_min_global is None:
+-            r = np.sqrt(self.section.Iz / self.section.A) if self.section.Iz else np.sqrt(self.section.Iy / self.section.A)
+-            z_min_global, z_max_global = -2*r, 2*r
+-            
+-        y_coords = np.linspace(y_min_global, y_max_global, num_y_points)
+-        z_coords = np.linspace(z_min_global, z_max_global, num_z_points)
+-        Y, Z = np.meshgrid(y_coords, z_coords, indexing='ij')
+-        
+-        # 3. Calculate stresses (Vectorized if single section, else loop)
+-        eval_x_count = len(x_positions)
+-        shape_3d = (eval_x_count, num_y_points, num_z_points)
+-
+-        has_multiple_sections = self.properties.has_multiple_sections(self.mesh.num_elements)
+-
+-        if not has_multiple_sections:
+-            # Full Vectorization for single-section beams
+-            sec = self.properties.default_section
+-            try:
+-                mask, t_yz, Q_yz = sec.get_stress_profile(Y, Z)
+-            except AttributeError:
+-                # Fallback for simple properties: use bounding box mask
+-                y_top = sec.y_top if sec.y_top is not None else np.sqrt(sec.A)/2
+-                y_bot = sec.y_bottom if sec.y_bottom is not None else -np.sqrt(sec.A)/2
+-                z_r = sec.z_right if sec.z_right is not None else (sec.Iz/sec.A)**0.5 if sec.Iz else np.sqrt(sec.A)/2
+-                z_l = sec.z_left if sec.z_left is not None else -(sec.Iz/sec.A)**0.5 if sec.Iz else -np.sqrt(sec.A)/2
+-                
+-                mask = (Y <= y_top) & (Y >= y_bot) & (Z <= z_r) & (Z >= z_l)
+-                t_yz = np.full_like(Y, z_r - z_l)
+-                Q_yz = (t_yz) / 2.0 * (y_top**2 - Y**2)
+-                Q_yz[~mask] = 0.0
+-                t_yz[~mask] = 0.0
+-            A, Iy = sec.A, sec.Iy
+-
+-            # Expand forces to 3D
+-            N_3d = N_x[:, np.newaxis, np.newaxis]
+-            V_3d = V_x[:, np.newaxis, np.newaxis]
+-            M_3d = M_x[:, np.newaxis, np.newaxis]
+-
+-            sigma_a = np.broadcast_to(N_3d / A, shape_3d).copy()
+-            sigma_b = -M_3d * Y[np.newaxis, :, :] / Iy
+-
+-            valid_t = t_yz > 1e-9
+-            shear_base = np.zeros_like(Y)
+-            shear_base[valid_t] = Q_yz[valid_t] / (Iy * t_yz[valid_t])
+-            tau_s = V_3d * shear_base[np.newaxis, :, :]
+-
+-            sigma_x = sigma_a + sigma_b
+-            avg_sig = sigma_x / 2.0
+-            R = np.sqrt(avg_sig**2 + tau_s**2)
+-            sigma_1, sigma_2 = avg_sig + R, avg_sig - R
+-            sigma_vm = np.sqrt(sigma_x**2 + 3 * tau_s**2)
+-
+-            # Global Masking
+-            inv_mask = ~np.broadcast_to(mask[np.newaxis, :, :], shape_3d)
+-            sigma_a[inv_mask] = sigma_b[inv_mask] = tau_s[inv_mask] = 0.0
+-            sigma_1[inv_mask] = sigma_2[inv_mask] = sigma_vm[inv_mask] = 0.0
+-
+-        else:
+-            # Multi-section beams
+-            sigma_a = np.zeros(shape_3d)
+-            sigma_b = np.zeros(shape_3d)
+-            tau_s = np.zeros(shape_3d)
+-            sigma_vm = np.zeros(shape_3d)
+-            sigma_1 = np.zeros(shape_3d)
+-            sigma_2 = np.zeros(shape_3d)
+-
+-            profile_cache = {}
+-
+-            for i, x in enumerate(x_positions):
+-                elem_idx = self.mesh.find_element_at_x(x)
+-                if elem_idx == -1:
+-                    elem_idx = 0 if x <= x_positions[0] else self.mesh.num_elements - 1
+-
+-                elem = self.mesh.elements[elem_idx]
+-                sec = self.properties.get_section(elem.id)
+-
+-                sec_id = id(sec)
+-                if sec_id not in profile_cache:
+-                    try:
+-                        mask, t_yz, Q_yz = sec.get_stress_profile(Y, Z)
+-                    except AttributeError:
+-                        # Fallback for simple properties: use bounding box mask
+-                        y_top = sec.y_top if sec.y_top is not None else np.sqrt(sec.A)/2
+-                        y_bot = sec.y_bottom if sec.y_bottom is not None else -np.sqrt(sec.A)/2
+-                        z_r = sec.z_right if sec.z_right is not None else (sec.Iz/sec.A)**0.5 if sec.Iz else np.sqrt(sec.A)/2
+-                        z_l = sec.z_left if sec.z_left is not None else -(sec.Iz/sec.A)**0.5 if sec.Iz else -np.sqrt(sec.A)/2
+-                        
+-                        mask = (Y <= y_top) & (Y >= y_bot) & (Z <= z_r) & (Z >= z_l)
+-                        t_yz = np.full_like(Y, z_r - z_l)
+-                        Q_yz = (t_yz) / 2.0 * (y_top**2 - Y**2)
+-                        Q_yz[~mask] = 0.0
+-                        t_yz[~mask] = 0.0
+-                    profile_cache[sec_id] = (mask, t_yz, Q_yz)
+-
+-                mask, t_yz, Q_yz = profile_cache[sec_id]
+-                A, Iy = sec.A, sec.Iy
+-
+-                sigma_a_x = np.full_like(Y, N_x[i] / A)
+-                sigma_b_x = -M_x[i] * Y / Iy
+-
+-                tau_s_x = np.zeros_like(Y)
+-                valid_t = t_yz > 1e-9
+-                tau_s_x[valid_t] = V_x[i] * Q_yz[valid_t] / (Iy * t_yz[valid_t])
+-
+-                sig_x = sigma_a_x + sigma_b_x
+-                avg_sig = sig_x / 2.0
+-                R = np.sqrt(avg_sig**2 + tau_s_x**2)
+-
+-                sigma_a[i], sigma_b[i], tau_s[i] = sigma_a_x, sigma_b_x, tau_s_x
+-                sigma_1[i], sigma_2[i] = avg_sig + R, avg_sig - R
+-                sigma_vm[i] = np.sqrt(sig_x**2 + 3 * tau_s_x**2)
+-
+-                # Element Masking
+-                m_3d = mask # (ny, nz)
+-                sigma_a[i][~m_3d] = sigma_b[i][~m_3d] = tau_s[i][~m_3d] = 0.0
+-                sigma_1[i][~m_3d] = sigma_2[i][~m_3d] = sigma_vm[i][~m_3d] = 0.0
+-
+-        res = {
+-            'x': x_positions,
+-            'y': Y,
+-            'z': Z,
+-            'mask': mask,
+-            'axial': sigma_a,
+-            'bending': sigma_b,
+-            'shear': tau_s,
+-            'sigma_1': sigma_1,
+-            'sigma_2': sigma_2,
+-            'von_mises': sigma_vm
+-        }
++        res = StressEngine.calculate(self, num_x_points, num_y_points, num_z_points)
+         
+         # Update cache
+         self._cached_stresses = res
+diff --git a/beam_fea/visualizer.py b/beam_fea/visualizer.py
+index 4de56f2..19b9bac 100644
+--- a/beam_fea/visualizer.py
++++ b/beam_fea/visualizer.py
+@@ -138,15 +138,12 @@ class BeamVisualizer:
+         
+         fig, ax = plt.subplots(figsize=fs, dpi=dpi)
+         
+-        # ax.plot(coords[:, 0] / x_scale, coords[:, 1], '--', color=st.colour_undeformed, 
+-        #         alpha=0.3, label='Undeformed')
+         ax.plot(coords[:, 0] / x_scale, v_mode, color=st.colour_deformed, linewidth=st.line_width)
+         
+         ax.axhline(0, color=st.colour_zero_line, linewidth=1)
+         ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
+         ax.set_ylabel('Modal Amplitude', fontsize=st.label_fontsize)
+         ax.set_title(f'Mode Shape {mode_num} - {frequency:.2f} Hz', fontsize=st.title_fontsize, weight='bold')
+-        # ax.legend(fontsize=st.tick_fontsize)
+         ax.grid(True, alpha=st.grid_alpha)
+         
+         plt.tight_layout()
+@@ -280,7 +277,7 @@ class BeamVisualizer:
+                                output_path: Optional[str] = None,
+                                dpi: int = 100):
+         """
+-        Visualize cross-section properties, centroid, and extreme fibers.
++        Visualize cross-section properties, centroid, and explicit geometry.
+         
+         Parameters:
+         -----------
+@@ -289,51 +286,107 @@ class BeamVisualizer:
+         title : str
+             Title for the plot
+         """
++        from matplotlib.patches import Rectangle, Circle, Polygon, PathPatch
++        import matplotlib.path as mpath
++
+         fig, ax = plt.subplots(figsize=(8, 8), dpi=dpi)
++        st = DEFAULT_STYLE
+         
+         yc, zc = props.y_centroid, props.z_centroid
+         
+-        # Fiber positions in reference system
+-        y_top = yc + props.y_top
+-        y_bot = yc + props.y_bottom
+-        z_left = zc + props.z_left
+-        z_right = zc + props.z_right
+-        
+-        # Draw bounding box
+-        box_y = [y_bot, y_top, y_top, y_bot, y_bot]
+-        box_z = [z_left, z_left, z_right, z_right, z_left]
+-        ax.fill(box_z, box_y, color='lightblue', alpha=0.3, label='Bounding Box')
+-        ax.plot(box_z, box_y, 'k--', alpha=0.5, label='Bounding Box')
++        # Explicit Geometry Drawing
++        drawn = False
++        if hasattr(props, 'parent_section') and props.parent_section is not None:
++            sec = props.parent_section
++            from .cross_sections import (RectangularSection, CircularSection, HollowCircularSection,
++                                       IBeamSection, TBeamSection, BoxSection, CChannelSection, LSection)
++
++            color = st.colour_primary
++            alpha = 0.7
++
++            if isinstance(sec, RectangularSection):
++                w, h = sec.width, sec.height
++                ax.add_patch(Rectangle((zc - w/2, yc - h/2), w, h, color=color, alpha=alpha, label=sec.name))
++                drawn = True
++            elif isinstance(sec, CircularSection):
++                ax.add_patch(Circle((zc, yc), sec.diameter/2, color=color, alpha=alpha, label=sec.name))
++                drawn = True
++            elif isinstance(sec, HollowCircularSection):
++                ax.add_patch(Circle((zc, yc), sec.outer_diameter/2, color=color, alpha=alpha, label=sec.name))
++                ax.add_patch(Circle((zc, yc), sec.inner_diameter/2, color='white', zorder=2))
++                drawn = True
++            elif isinstance(sec, IBeamSection):
++                d, bf, tw, tf = sec.total_height, sec.flange_width, sec.web_thickness, sec.flange_thickness
++                # Top flange
++                ax.add_patch(Rectangle((zc - bf/2, yc + d/2 - tf), bf, tf, color=color, alpha=alpha))
++                # Bottom flange
++                ax.add_patch(Rectangle((zc - bf/2, yc - d/2), bf, tf, color=color, alpha=alpha))
++                # Web
++                ax.add_patch(Rectangle((zc - tw/2, yc - d/2 + tf), tw, d - 2*tf, color=color, alpha=alpha, label=sec.name))
++                drawn = True
++            elif isinstance(sec, TBeamSection):
++                bf, tf, hw, tw = sec.flange_width, sec.flange_thickness, sec.web_height, sec.web_thickness
++                y_top = yc + props.y_top
++                y_bot = yc + props.y_bottom
++                # Flange
++                ax.add_patch(Rectangle((zc - bf/2, y_top - tf), bf, tf, color=color, alpha=alpha))
++                # Web
++                ax.add_patch(Rectangle((zc - tw/2, y_bot), tw, hw, color=color, alpha=alpha, label=sec.name))
++                drawn = True
++            elif isinstance(sec, BoxSection):
++                W, H, t = sec.width, sec.height, sec.thickness
++                ax.add_patch(Rectangle((zc - W/2, yc - H/2), W, H, color=color, alpha=alpha, label=sec.name))
++                ax.add_patch(Rectangle((zc - (W-2*t)/2, yc - (H-2*t)/2), W-2*t, H-2*t, color='white', zorder=2))
++                drawn = True
++            elif isinstance(sec, CChannelSection):
++                h, bf, tw, tf = sec.height, sec.flange_width, sec.web_thickness, sec.flange_thickness
++                z_back = zc - sec.properties().z_centroid # back of web is at z=0 in local coords? No, z_centroid is distance from back of web.
++                # back of web is at zc - z_centroid_from_back
++                z0 = zc - sec.properties().z_centroid
++                # Web
++                ax.add_patch(Rectangle((z0, yc - h/2), tw, h, color=color, alpha=alpha, label=sec.name))
++                # Top flange
++                ax.add_patch(Rectangle((z0 + tw, yc + h/2 - tf), bf - tw, tf, color=color, alpha=alpha))
++                # Bottom flange
++                ax.add_patch(Rectangle((z0 + tw, yc - h/2), bf - tw, tf, color=color, alpha=alpha))
++                drawn = True
++            elif isinstance(sec, LSection):
++                hv, hh, t = sec.leg_length_vertical, sec.leg_length_horizontal, sec.thickness
++                z0 = zc - sec.properties().z_centroid
++                y0 = yc - sec.properties().y_centroid
++                # Vertical leg
++                ax.add_patch(Rectangle((z0, y0), t, hv, color=color, alpha=alpha, label=sec.name))
++                # Horizontal leg
++                ax.add_patch(Rectangle((z0 + t, y0), hh - t, t, color=color, alpha=alpha))
++                drawn = True
++
++        if not drawn:
++            # Fallback to bounding box if no explicit geometry is available
++            y_top = yc + props.y_top
++            y_bot = yc + props.y_bottom
++            z_left = zc + props.z_left
++            z_right = zc + props.z_right
++            box_y = [y_bot, y_top, y_top, y_bot, y_bot]
++            box_z = [z_left, z_left, z_right, z_right, z_left]
++            ax.fill(box_z, box_y, color='lightblue', alpha=0.3, label='Bounding Box (Fallback)')
++            ax.plot(box_z, box_y, 'k--', alpha=0.5)
+         
+         # Neutral Axes (passing through centroid)
+         ax.axhline(yc, color='gray', linestyle=':', alpha=0.6, label='Neutral Axis (z)')
+         ax.axvline(zc, color='gray', linestyle=':', alpha=0.6, label='Neutral Axis (y)')
+         
+         # Centroid Marker
+-        ax.plot(zc, yc, 'ro', markersize=10, label=f'Centroid ({zc:.1f}, {yc:.1f})')
++        ax.plot(zc, yc, 'ro', markersize=10, label=f'Centroid')
+         
+         # Reference Origin
+         ax.plot(0, 0, 'kx', markersize=12, label='Reference (0,0)')
+         
+-        # Dimensions as annotations (cleaner than labels under dimensions)
+-        width = z_right - z_left
+-        height = y_top - y_bot
+-        
+-        # Add dimension lines with arrows
+-        ax.annotate('', xy=(z_left, y_bot - (height*0.1)), xytext=(z_right, y_bot - (height*0.1)),
+-                    arrowprops=dict(arrowstyle='<->', color='black'))
+-        ax.text((z_left+z_right)/2, y_bot - (height*0.15), f'w={width:.1f}', ha='center', verticalalignment='top')
+-        
+-        ax.annotate('', xy=(z_right + (width*0.1), y_bot), xytext=(z_right + (width*0.1), y_top),
+-                    arrowprops=dict(arrowstyle='<->', color='black'))
+-        ax.text(z_right + (width*0.15), (y_bot+y_top)/2, f'h={height:.1f}', va='center', rotation=90)
+-        
+         # Labels and formatting
+         ax.set_xlabel('z (mm)')
+         ax.set_ylabel('y (mm)')
+-        ax.set_title(title)
+-        ax.grid(True, alpha=0.2)
+-        ax.axis('equal')
++        ax.set_title(title, fontsize=st.title_fontsize, weight='bold')
++        ax.grid(True, alpha=st.grid_alpha)
++        ax.set_aspect('equal', adjustable='datalim')
+         
+         # Add property text box - include units clearly
+         props_text = (f"Area: {props.A:.1f} mm┬▓\n"
+@@ -354,6 +407,203 @@ class BeamVisualizer:
+         else:
+             plt.show()
+ 
++    def plot_multiple_sections(self, property_set, output_path: Optional[str] = None, dpi: int = 150):
++        """
++        Plot all unique cross-sections in a PropertySet as subplots.
++        """
++        unique_secs = []
++        seen_ids = set()
++
++        # We need to know how many elements to check.
++        # But PropertySet might not be resolved yet.
++        # Let's assume it is resolved if we are calling this.
++        if not property_set._is_resolved:
++             # Try to resolve with a dummy count if possible, or just look at assignments
++             for assignment in property_set._assignments:
++                 sec = assignment['section']
++                 if sec and id(sec) not in seen_ids:
++                     seen_ids.add(id(sec))
++                     unique_secs.append(sec)
++        else:
++            for eid in range(len(property_set._sec_map)):
++                sec = property_set.get_section(eid)
++                if id(sec) not in seen_ids:
++                    seen_ids.add(id(sec))
++                    unique_secs.append(sec)
++
++        num_secs = len(unique_secs)
++        if num_secs == 0:
++            return
++
++        cols = min(num_secs, 3)
++        rows = (num_secs + cols - 1) // cols
++
++        fig = plt.figure(figsize=(5 * cols, 5 * rows), dpi=dpi)
++        st = DEFAULT_STYLE
++
++        from matplotlib.patches import Rectangle, Circle
++        from .cross_sections import (RectangularSection, CircularSection, HollowCircularSection,
++                                   IBeamSection, TBeamSection, BoxSection, CChannelSection, LSection)
++
++        for i, sec_props in enumerate(unique_secs):
++            ax = fig.add_subplot(rows, cols, i + 1)
++
++            yc, zc = sec_props.y_centroid, sec_props.z_centroid
++            color = st.colour_primary
++            alpha = 0.7
++
++            drawn = False
++            if hasattr(sec_props, 'parent_section') and sec_props.parent_section is not None:
++                sec = sec_props.parent_section
++                if isinstance(sec, RectangularSection):
++                    w, h = sec.width, sec.height
++                    ax.add_patch(Rectangle((zc - w/2, yc - h/2), w, h, color=color, alpha=alpha))
++                    drawn = True
++                elif isinstance(sec, CircularSection):
++                    ax.add_patch(Circle((zc, yc), sec.diameter/2, color=color, alpha=alpha))
++                    drawn = True
++                elif isinstance(sec, HollowCircularSection):
++                    ax.add_patch(Circle((zc, yc), sec.outer_diameter/2, color=color, alpha=alpha))
++                    ax.add_patch(Circle((zc, yc), sec.inner_diameter/2, color='white', zorder=2))
++                    drawn = True
++                elif isinstance(sec, IBeamSection):
++                    d, bf, tw, tf = sec.total_height, sec.flange_width, sec.web_thickness, sec.flange_thickness
++                    ax.add_patch(Rectangle((zc - bf/2, yc + d/2 - tf), bf, tf, color=color, alpha=alpha))
++                    ax.add_patch(Rectangle((zc - bf/2, yc - d/2), bf, tf, color=color, alpha=alpha))
++                    ax.add_patch(Rectangle((zc - tw/2, yc - d/2 + tf), tw, d - 2*tf, color=color, alpha=alpha))
++                    drawn = True
++                elif isinstance(sec, TBeamSection):
++                    bf, tf, hw, tw = sec.flange_width, sec.flange_thickness, sec.web_height, sec.web_thickness
++                    y_top = yc + sec_props.y_top
++                    y_bot = yc + sec_props.y_bottom
++                    ax.add_patch(Rectangle((zc - bf/2, y_top - tf), bf, tf, color=color, alpha=alpha))
++                    ax.add_patch(Rectangle((zc - tw/2, y_bot), tw, hw, color=color, alpha=alpha))
++                    drawn = True
++                elif isinstance(sec, BoxSection):
++                    W, H, t = sec.width, sec.height, sec.thickness
++                    ax.add_patch(Rectangle((zc - W/2, yc - H/2), W, H, color=color, alpha=alpha))
++                    ax.add_patch(Rectangle((zc - (W-2*t)/2, yc - (H-2*t)/2), W-2*t, H-2*t, color='white', zorder=2))
++                    drawn = True
++                elif isinstance(sec, CChannelSection):
++                    h, bf, tw, tf = sec.height, sec.flange_width, sec.web_thickness, sec.flange_thickness
++                    z0 = zc - sec_props.z_centroid
++                    ax.add_patch(Rectangle((z0, yc - h/2), tw, h, color=color, alpha=alpha))
++                    ax.add_patch(Rectangle((z0 + tw, yc + h/2 - tf), bf - tw, tf, color=color, alpha=alpha))
++                    ax.add_patch(Rectangle((z0 + tw, yc - h/2), bf - tw, tf, color=color, alpha=alpha))
++                    drawn = True
++                elif isinstance(sec, LSection):
++                    hv, hh, t = sec.leg_length_vertical, sec.leg_length_horizontal, sec.thickness
++                    z0 = zc - sec_props.z_centroid
++                    y0 = yc - sec_props.y_centroid
++                    ax.add_patch(Rectangle((z0, y0), t, hv, color=color, alpha=alpha))
++                    ax.add_patch(Rectangle((z0 + t, y0), hh - t, t, color=color, alpha=alpha))
++                    drawn = True
++
++            if not drawn:
++                y_top, y_bot = yc + sec_props.y_top, yc + sec_props.y_bottom
++                z_l, z_r = zc + sec_props.z_left, zc + sec_props.z_right
++                ax.fill([z_l, z_r, z_r, z_l, z_l], [y_bot, y_bot, y_top, y_top, y_bot], color='lightblue', alpha=0.3)
++                ax.plot([z_l, z_r, z_r, z_l, z_l], [y_bot, y_bot, y_top, y_top, y_bot], 'k--', alpha=0.5)
++
++            ax.axhline(yc, color='gray', linestyle=':', alpha=0.6)
++            ax.axvline(zc, color='gray', linestyle=':', alpha=0.6)
++            ax.plot(zc, yc, 'ro', markersize=6)
++            ax.set_title(sec_props.name, fontsize=st.label_fontsize)
++            ax.set_aspect('equal', adjustable='datalim')
++            ax.grid(True, alpha=st.grid_alpha)
++
++        plt.tight_layout()
++        if output_path:
++            plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
++            plt.close()
++        else:
++            plt.show()
++
++    def plot_laminate_stackup(self, laminate, output_path: Optional[str] = None, dpi: int = 150):
++        """
++        Visualize the laminate stack-up and fiber orientation.
++
++        Abaqus-inspired stack-up plot with a HyperMesh-style orientation rosette.
++        """
++        from matplotlib.patches import Rectangle, Wedge
++        import matplotlib.cm as cm
++
++        st = DEFAULT_STYLE
++        fig = plt.figure(figsize=(10, 8), dpi=dpi)
++
++        # Grid layout: left for stackup, right for rosette and info
++        gs = plt.GridSpec(1, 2, width_ratios=[1, 1])
++        ax_stack = fig.add_subplot(gs[0, 0])
++        ax_info = fig.add_subplot(gs[0, 1])
++
++        # 1. Stack-up Plot (Abaqus style)
++        plies = laminate.plies # list of (Ply, angle)
++        total_t = laminate.total_thickness
++
++        y_bottom = -total_t / 2
++        colors = cm.get_cmap('viridis')(np.linspace(0, 0.8, len(plies)))
++
++        for i, (ply, angle) in enumerate(plies):
++            t = ply.thickness
++            rect = Rectangle((0, y_bottom), 1.0, t, facecolor=colors[i], alpha=0.8, edgecolor='black', linewidth=1)
++            ax_stack.add_patch(rect)
++
++            # Label with orientation
++            ax_stack.text(0.5, y_bottom + t/2, f"Ply {i+1}: {angle}┬░ ({ply.name})",
++                         ha='center', va='center', weight='bold', color='white' if i < len(plies)/2 else 'black')
++            y_bottom += t
++
++        ax_stack.set_xlim(-0.5, 1.5)
++        ax_stack.set_ylim(-total_t/2 - 0.1*total_t, total_t/2 + 0.1*total_t)
++        ax_stack.set_xticks([])
++        ax_stack.set_ylabel("Thickness (mm)", fontsize=st.label_fontsize)
++        ax_stack.set_title(f"Stack-up: {laminate.name}", fontsize=st.label_fontsize, weight='bold')
++        ax_stack.grid(axis='y', alpha=0.3)
++
++        # 2. Orientation Rosette (HyperMesh style)
++        ax_info.set_aspect('equal')
++        ax_info.axis('off')
++
++        # Draw background circles
++        for r in [0.5, 0.8, 1.0]:
++            circle = plt.Circle((0, 0), r, color='gray', fill=False, linestyle='--', alpha=0.3)
++            ax_info.add_patch(circle)
++
++        # Draw axes
++        ax_info.plot([-1.1, 1.1], [0, 0], 'k-', alpha=0.5)
++        ax_info.plot([0, 0], [-1.1, 1.1], 'k-', alpha=0.5)
++        ax_info.text(1.2, 0, 'x (0┬░)', ha='left', va='center')
++        ax_info.text(0, 1.2, 'y (90┬░)', ha='center', va='bottom')
++
++        # Draw ply orientation lines
++        for i, (ply, angle) in enumerate(plies):
++            theta = np.radians(angle)
++            ax_info.plot([0, np.cos(theta)], [0, np.sin(theta)], color=colors[i],
++                        linewidth=2, label=f"Ply {i+1} ({angle}┬░)")
++            # Small arrowhead
++            ax_info.annotate('', xy=(np.cos(theta), np.sin(theta)), xytext=(0.9*np.cos(theta), 0.9*np.sin(theta)),
++                            arrowprops=dict(arrowstyle='->', color=colors[i], lw=2))
++
++        # Effective properties summary
++        props = laminate.get_effective_properties()
++        summary_text = (f"Laminate Properties:\n"
++                       f"Total Thick: {total_t:.3f} mm\n"
++                       f"Ex: {props['Ex']/1000:.1f} GPa\n"
++                       f"Ey: {props['Ey']/1000:.1f} GPa\n"
++                       f"Eb: {props['Eb']/1000:.1f} GPa\n"
++                       f"Gxy: {props['Gxy']/1000:.1f} GPa\n"
++                       f"nu_xy: {props['nu_xy']:.3f}")
++
++        plt.figtext(0.75, 0.15, summary_text, bbox=dict(facecolor='white', alpha=0.8),
++                    ha='center', va='center', family='monospace')
++
++        plt.tight_layout()
++        if output_path:
++            plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
++            plt.close()
++        else:
++            plt.show()
++
+ 
+ if __name__ == "__main__":
+     print("\nVisualization Module")
+diff --git a/examples/template_multi_property.py b/examples/template_multi_property.py
+index fda2317..314e33a 100644
+--- a/examples/template_multi_property.py
++++ b/examples/template_multi_property.py
+@@ -61,10 +61,22 @@ def main():
+     solver = BeamSolver(mesh, props)
+     solver.solve_static(lc, bc)
+ 
+-    # 6. RESULTS
+-    # Force recovery at high resolution (100 points) to see smooth diagrams
+-    # despite having only 2 finite elements.
+-    solver.calculate_internal_forces(num_points=100)
++    # 6. RESULTS & RECOVERY STRATEGIES
++    print("\nComparing internal force strategies (on a very coarse 2-element mesh):")
++
++    # 6.1. Standard Interpolation (FEA Approximation)
++    # This will show a step-wise shear and linear moment (approximating the curve)
++    res_std = solver.calculate_internal_forces(num_points=100, strategy='standard')
++    M_mid_std = res_std['bending_moments'][50]
++    print(f"  [Standard Interpolation] Mid-span Moment: {M_mid_std:.1f} N-mm")
++
++    # 6.2. Consistent Recovery (Analytical Fidelity)
++    # This will show a perfect parabolic moment even with just 2 elements
++    res_con = solver.calculate_internal_forces(num_points=100, strategy='consistent')
++    M_mid_con = res_con['bending_moments'][50]
++    print(f"  [Consistent Recovery   ] Mid-span Moment: {M_mid_con:.1f} N-mm (Exact)")
++
++    # Stresses automatically use the consistent recovery strategy for report accuracy
+     solver.calculate_stresses(num_x_points=50)
+ 
+     # 7. REPORT

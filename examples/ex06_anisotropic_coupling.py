@@ -61,8 +61,10 @@ def run_coupling_demo():
     print(f"\nAsymmetric Beam Internal Axial Force at root: {forces['axial_forces'][0]:.2f} N")
 
     # Generate Report to verify composite material formatting
-    solver_asym.generate_report("anisotropic_coupling_report.md")
-    print("\nReport generated: anisotropic_coupling_report.md")
+    import os
+    report_path = os.path.join(os.path.dirname(__file__), "anisotropic_coupling_report.md")
+    solver_asym.generate_report(report_path)
+    print(f"\nReport generated: {report_path}")
 
 if __name__ == "__main__":
     run_coupling_demo()

@@ -17,9 +17,21 @@ class ForceRecoveryStrategy(ABC):
         """
         Recover internal forces at normalized position(s) xi.
 
+        Parameters:
+        -----------
+        element : BeamElementMatrices
+            The beam element formulation expert (Euler, Timoshenko, etc.).
+        u_local : np.ndarray
+            Local element displacement vector [u1, v1, theta1, u2, v2, theta2].
+        xi : Union[float, np.ndarray]
+            Normalized position(s) along element [0, 1].
+        dist_load : Tuple[float, float, float, float], optional
+            Distributed loads: (wy1, wy2, wx1, wx2).
+
         Returns:
         --------
-        (axial, shear, moment) : Tuple of arrays/floats
+        (axial, shear, moment) : Tuple[np.ndarray, np.ndarray, np.ndarray]
+            The extracted internal forces at the requested domain points.
         """
         pass
 

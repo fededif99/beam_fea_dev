@@ -47,7 +47,7 @@ def main():
     
     # 6. REPORT GENERATION
     import os
-    report_path = os.path.join(os.getcwd(), "template_modal_report.md")
+    report_path = os.path.join(os.path.dirname(__file__), "template_modal_report.md")
     solver.generate_report(report_path)
     print(f"[SUCCESS] Report generated: {report_path}")
 

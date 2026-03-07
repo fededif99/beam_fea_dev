@@ -38,7 +38,9 @@ def run_combined_example():
     
     # 4. Generate Combined Report
     print("Generating combined report...")
-    report_path = solver.generate_report("examples/ex04_combined_report.md")
+    import os
+    report_path = os.path.join(os.path.dirname(__file__), "ex04_combined_report.md")
+    solver.generate_report(report_path)
     print(f"Report generated at: {report_path}")
 
 if __name__ == "__main__":
