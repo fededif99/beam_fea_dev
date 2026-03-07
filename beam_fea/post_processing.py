@@ -130,7 +130,7 @@ class InternalForceEngine:
 
         element_dist_loads = InternalForceEngine._get_element_dist_loads(solver)
 
-        from .element_matrices import UnifiedBeamElement, SHEAR_CORRECTION_FACTOR
+        from .element_matrices import UnifiedBeamElement
         coords = solver.mesh.get_node_coords()
         is_euler = (solver.element_type == 'euler')
 
@@ -152,7 +152,7 @@ class InternalForceEngine:
 
             element_expert = UnifiedBeamElement(
                 EA=stiff['EA'], ES=stiff['ES'], EI=stiff['EI'],
-                L=L, rho_total=rho_lin, GA_s=stiff['GA_s'] * SHEAR_CORRECTION_FACTOR,
+                L=L, rho_total=rho_lin, GA_s=stiff['GA_s'] * sec.shear_factor,
                 force_euler=is_euler
             )
 

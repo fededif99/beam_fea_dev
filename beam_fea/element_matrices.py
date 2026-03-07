@@ -12,8 +12,6 @@ import numpy as np
 from typing import Tuple, Union
 from abc import ABC, abstractmethod
 
-# Standard shear correction factor for rectangular sections
-SHEAR_CORRECTION_FACTOR = 5/6
 
 
 class BeamElementMatrices(ABC):
@@ -514,7 +512,7 @@ class TimoshenkoElement(UnifiedBeamElement):
     Deprecated: Lightweight wrapper for UnifiedBeamElement.
     Uses Timoshenko shear deformation.
     """
-    def __init__(self, E, G, I, A, L, rho, kappa=SHEAR_CORRECTION_FACTOR):
+    def __init__(self, E, G, I, A, L, rho, kappa=5/6):
         super().__init__(EA=E*A, ES=0, EI=E*I, L=L, rho_total=rho*A, GA_s=G*A*kappa, force_euler=False)
         # For legacy test compatibility
         self.E, self.G, self.I, self.A, self.rho, self.kappa = E, G, I, A, rho, kappa

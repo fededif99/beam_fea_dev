@@ -11,7 +11,7 @@ from .mesh import Mesh, MeshGenerator
 from .materials import Material, get_material
 from .cross_sections import CrossSection, SectionProperties
 from .properties import PropertySet
-from .element_matrices import EulerBernoulliElement, TimoshenkoElement, SHEAR_CORRECTION_FACTOR
+from .element_matrices import EulerBernoulliElement, TimoshenkoElement
 from .boundary_conditions import BoundaryConditionSet
 from .loads import LoadCase
 from .static_analysis import StaticAnalysis
@@ -192,7 +192,7 @@ class BeamSolver:
 
             element = UnifiedBeamElement(
                 EA=stiff['EA'], ES=stiff['ES'], EI=stiff['EI'],
-                L=L, rho_total=rho_lin, GA_s=stiff['GA_s'] * SHEAR_CORRECTION_FACTOR,
+                L=L, rho_total=rho_lin, GA_s=stiff['GA_s'] * sec.shear_factor,
                 force_euler=is_euler
             )
 
