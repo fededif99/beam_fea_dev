@@ -19,3 +19,18 @@ examples/*.md
 .DS_Store
 visual_stress_tests/
 test_force_report_images/
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary & Patch Files
+*.patch
+*.diff
+*.log
+
+# Coverage & Testing
+.coverage
+htmlcov/
