@@ -2,6 +2,12 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.4.7] - 2026-03-07
+
+- **Visualization**: Performed an aesthetic overhaul of `plot_laminate_stackup` featuring a vivid, premium color palette for orientations.
+- **Visualization**: Fixed rosette geometry using `FancyArrowPatch` for unified, perfectly aligned orientation vectors with consistent line thickness.
+- **Visualization**: Polished the report layout with rounded property dashboards and high-contrast labels.
+
 ## [v2.4.6] - 2026-03-07
 
 - **Visualization**: Implemented **Angle-based coloring** in `plot_laminate_stackup`; all plies with the same fiber orientation now share the same color for better pattern recognition.

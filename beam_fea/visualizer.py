@@ -542,80 +542,81 @@ class BeamVisualizer:
         
         unique_angles = sorted(list(set(angle for ply, angle in plies)))
         
-        # Use a qualitative colormap for discrete angles
-        num_angles = len(unique_angles)
-        type_colors = cm.get_cmap('tab10' if num_angles <= 10 else 'viridis')(np.linspace(0, 1, num_angles))
-        color_map = {angle: type_colors[k] for k, angle in enumerate(unique_angles)}
+        # Premium Vivid Palette for orientations
+        vivid_colors = ['#0078D4', '#D13438', '#107C10', '#5C2D91', '#FF8C00', '#00B7C3', '#E3008C', '#004E8C', '#605E5C']
+        color_map = {angle: vivid_colors[k % len(vivid_colors)] for k, angle in enumerate(unique_angles)}
 
         # 1. Stack-up Plot (Professional style)
         y_bottom = -total_t / 2
         for i, (ply, angle) in enumerate(plies):
             t = ply.thickness
             color = color_map[angle]
-            rect = Rectangle((0, y_bottom), 1.0, t, facecolor=color, alpha=0.8, edgecolor='black', linewidth=1)
+            rect = Rectangle((0, y_bottom), 1.0, t, facecolor=color, alpha=0.85, edgecolor='black', linewidth=1.2)
             ax_stack.add_patch(rect)
 
             # Label with orientation (Contrast-aware text)
-            lum = np.mean(color[:3])
+            lum = np.mean([int(color[i:i+2], 16) for i in (1, 3, 5)]) / 255
             ax_stack.text(0.5, y_bottom + t/2, f"P{i+1}: {angle}°",
-                         ha='center', va='center', weight='bold', color='white' if lum < 0.5 else 'black')
+                         ha='center', va='center', weight='bold', color='white' if lum < 0.6 else 'black')
             y_bottom += t
 
         ax_stack.set_xlim(-0.5, 1.5)
         ax_stack.set_ylim(-total_t/2 - 0.1*total_t, total_t/2 + 0.1*total_t)
         ax_stack.set_xticks([])
-        ax_stack.set_ylabel("Thickness (mm)", fontsize=st.label_fontsize)
-        ax_stack.set_title(f"Stack-up: {laminate.name}", fontsize=st.label_fontsize, weight='bold')
-        ax_stack.grid(axis='y', alpha=0.3)
+        ax_stack.set_ylabel("Thickness (mm)", fontsize=st.label_fontsize, weight='bold')
+        ax_stack.set_title(f"Laminate Stack-up: {laminate.name}", fontsize=st.title_fontsize, weight='bold', pad=15)
+        ax_stack.grid(axis='y', alpha=0.3, linestyle=':')
 
         # 2. Orientation Rosette (HyperMesh style)
         ax_info.set_aspect('equal')
         ax_info.axis('off')
+        from matplotlib.patches import FancyArrowPatch
 
-        # Draw background circles
+        # Draw background circles with better styling
         for r in [0.5, 0.8, 1.0]:
-            circle = plt.Circle((0, 0), r, color='gray', fill=False, linestyle='--', alpha=0.3)
+            circle = plt.Circle((0, 0), r, color='#E1E1E1', fill=False, linestyle='-', alpha=0.5, linewidth=0.8)
             ax_info.add_patch(circle)
 
         # Draw axes
-        ax_info.plot([-1.1, 1.1], [0, 0], 'k-', alpha=0.5)
-        ax_info.plot([0, 0], [-1.1, 1.1], 'k-', alpha=0.5)
-        ax_info.text(1.2, 0, 'x (0°)', ha='left', va='center')
-        ax_info.text(0, 1.2, 'y (90°)', ha='center', va='bottom')
+        ax_info.plot([-1.1, 1.1], [0, 0], color='#666666', alpha=0.3, linewidth=1)
+        ax_info.plot([0, 0], [-1.1, 1.1], color='#666666', alpha=0.3, linewidth=1)
+        ax_info.text(1.2, 0, 'X (0°)', ha='left', va='center', weight='bold', color='#666666')
+        ax_info.text(0, 1.2, 'Y (90°)', ha='center', va='bottom', weight='bold', color='#666666')
 
-        # Draw unique orientations in rosette (Exactly one line + one arrow per angle)
+        # Draw orientations with Unified Arrow Patches (Prevents mismatch)
         for angle in unique_angles:
             theta = np.radians(angle)
             color = color_map[angle]
             
-            # Simple single line from center to edge
-            ax_info.plot([0, np.cos(theta)], [0, np.sin(theta)], 
-                        color=color, linewidth=4, label=f"{angle}° Orientation")
+            # Unified Vector (Single object for line + arrow)
+            arrow = FancyArrowPatch((0, 0), (np.cos(theta), np.sin(theta)),
+                                    arrowstyle='-|>', mutation_scale=20,
+                                    color=color, linewidth=3.5, antialiased=True, zorder=10)
+            ax_info.add_patch(arrow)
             
-            # Tip Arrow and Label (Clean tip)
-            ax_info.annotate('', xy=(np.cos(theta), np.sin(theta)), 
-                            xytext=(0.95 * np.cos(theta), 0.95 * np.sin(theta)),
-                            arrowprops=dict(arrowstyle='->', color='black', lw=2))
-            ax_info.text(1.2*np.cos(theta), 1.2*np.sin(theta), f"{angle}°", 
-                        ha='center', va='center', weight='bold', color=color)
+            # Bold centered labels
+            ax_info.text(1.25*np.cos(theta), 1.25*np.sin(theta), f"{angle}°", 
+                        ha='center', va='center', weight='bold', color=color, fontsize=11)
 
-        # Legend for Angle mapping
-        legend_elements = [plt.Line2D([0], [0], color=color_map[a], lw=8, label=f"{a}° Orientation") for a in unique_angles]
-        ax_info.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 1.3), 
-                       title="Fiber Orientations", ncol=2, fontsize=9)
+        # Centered Orientation Legend
+        legend_elements = [plt.Line2D([0], [0], color=color_map[a], lw=10, label=f"{a}° Orientation") for a in unique_angles]
+        ax_info.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 1.35), 
+                       title="Fiber Directions", title_fontsize=10, ncol=2, frameon=True, fontsize=9)
 
-        # Effective properties summary (Moved to bottom, plenty of space)
+        # Effective properties summary (Dashboard style)
         props = laminate.get_effective_properties()
-        summary_text = (f"Laminate Properties:\n"
+        summary_text = (f"Effective Engineering Constants:\n"
+                       f"-------------------------------\n"
                        f"Total Thick: {total_t:.3f} mm\n"
-                       f"Ex: {props['Ex']/1000:.1f} GPa\n"
-                       f"Ey: {props['Ey']/1000:.1f} GPa\n"
-                       f"Eb: {props['Eb']/1000:.1f} GPa\n"
-                       f"Gxy: {props['Gxy']/1000:.1f} GPa\n"
-                       f"nu_xy: {props['nu_xy']:.3f}")
+                       f"Ex (Axial):  {props['Ex']/1000:7.1f} GPa\n"
+                       f"Ey (Trans):  {props['Ey']/1000:7.1f} GPa\n"
+                       f"Eb (Bend):   {props['Eb']/1000:7.1f} GPa\n"
+                       f"Gxy (Shear): {props['Gxy']/1000:7.1f} GPa\n"
+                       f"Nu_xy:       {props['nu_xy']:7.3f}")
 
-        plt.figtext(0.75, 0.12, summary_text, bbox=dict(facecolor='ivory', alpha=0.9, edgecolor='gray'),
-                    ha='center', va='center', family='monospace', zorder=20)
+        plt.figtext(0.75, 0.12, summary_text, 
+                    bbox=dict(facecolor='#F8F9FA', alpha=0.95, edgecolor='#D1D1D1', boxstyle='round,pad=1'),
+                    ha='center', va='center', family='monospace', fontsize=10, zorder=20)
 
         plt.tight_layout()
         if output_path:
