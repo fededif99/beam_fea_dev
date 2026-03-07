@@ -22,6 +22,9 @@ All notable changes to the `beam_fea` project will be documented in this file.
 - **Solver**: Implemented general 2D element rotation support, enabling the analysis of angled frames and cranked beams.
 - **Post-Processing**: Updated internal force and stress recovery to handle angled elements via global-to-local coordinate transformations.
 - **Visualization**: Enhanced `BeamVisualizer` and `BeamReportGenerator` to correctly render angled beams, maintaining aspect ratios and using path-length axes for force diagrams.
+- **Modal**: Implemented automatic mass-normalization of mode shapes.
+- **Modal**: Added calculation of effective modal masses and participation factors for both X and Y directions.
+- **Modal**: Enhanced reports with detailed "Modal Properties & Mass Participation" tables including cumulative mass.
 
 ## [v2.4.10] - 2026-03-07
 

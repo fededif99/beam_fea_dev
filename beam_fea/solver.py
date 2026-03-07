@@ -85,6 +85,7 @@ class BeamSolver:
         # Modal Results
         self.last_frequencies = None
         self.last_mode_shapes = None
+        self.last_modal_participation = None
         
         # Analysis objects
         self.static_solver = StaticAnalysis(use_sparse=True)
@@ -288,6 +289,9 @@ class BeamSolver:
         self.last_bc_set = bc_set
         self.last_frequencies = frequencies
         self.last_mode_shapes = mode_shapes
+
+        # Calculate participation factors
+        self.last_modal_participation = self.modal_solver.get_modal_participation_summary(self.M_global)
 
         return frequencies, mode_shapes
     

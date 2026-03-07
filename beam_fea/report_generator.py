@@ -1273,20 +1273,43 @@ Shear Force (V) and Bending Moment (M) distributions:
             viz.plot_mode_shape(self.mode_shapes[:, i], i+1, f_val, output_path=str(images_dir / img_name))
             mode_shape_plots.append((i+1, f_val, img_name))
 
-        # Frequency Table
+        # Frequency & Participation Table
         freq_rows = []
+        cum_x = 0.0
+        cum_y = 0.0
+
+        has_part = hasattr(self.solver, 'last_modal_participation') and self.solver.last_modal_participation
+
         for i, f in enumerate(self.frequencies):
-            freq_rows.append(f"| {i+1} | {f:8.2f} | {f*60:12.0f} |")
+            period = 1/f if f > 0 else 0
+
+            if has_part:
+                m_data = self.solver.last_modal_participation['modes'][i]
+                eff_x = m_data['percent_x'] * 100
+                eff_y = m_data['percent_y'] * 100
+                cum_x += eff_x
+                cum_y += eff_y
+                freq_rows.append(f"| {i+1} | {f:8.2f} | {period:8.4f} | {eff_x:10.2f}% | {eff_y:10.2f}% | {cum_y:12.2f}% |")
+            else:
+                freq_rows.append(f"| {i+1} | {f:8.2f} | {period:8.4f} | - | - | - |")
+
         freq_table = "\n".join(freq_rows)
+
+        total_mass_str = ""
+        if has_part:
+            tm_x = self.solver.last_modal_participation['total_mass_x']
+            tm_y = self.solver.last_modal_participation['total_mass_y']
+            total_mass_str = f"\n**Total Structural Mass**: {tm_y:.4e} kg (Y), {tm_x:.4e} kg (X)\n"
 
         results_md = rf"""
 ## 4. Modal Analysis Results
 
-### Natural Frequencies
+### Modal Properties & Mass Participation
 
-| Mode | Frequency (Hz) | Frequency (RPM) |
-|------|----------------|-----------------|
+| Mode | Frequency (Hz) | Period (s) | Effective X (%) | Effective Y (%) | Cumulative Y (%) |
+|------|----------------|------------|-----------------|-----------------|------------------|
 {freq_table}
+{total_mass_str}
 
 ### Mode Shapes (First 3)
 
