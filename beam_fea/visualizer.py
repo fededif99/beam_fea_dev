@@ -536,22 +536,22 @@ class BeamVisualizer:
         ax_stack = fig.add_subplot(gs[0, 0])
         ax_info = fig.add_subplot(gs[0, 1])
 
-        # 1. Map Colors to Unique Materials for consistency
+        # 1. Map Colors to Unique Fiber Angles for consistency
         plies = laminate.plies
         total_t = laminate.total_thickness
         
-        unique_mats = sorted(list(set(ply.name for ply, angle in plies)))
+        unique_angles = sorted(list(set(angle for ply, angle in plies)))
         
-        # Use simple distinct colors for materials
-        num_mats = len(unique_mats)
-        type_colors = cm.get_cmap('tab10' if num_mats <= 10 else 'viridis')(np.linspace(0, 1, num_mats))
-        color_map = {mat_name: type_colors[k] for k, mat_name in enumerate(unique_mats)}
+        # Use a qualitative colormap for discrete angles
+        num_angles = len(unique_angles)
+        type_colors = cm.get_cmap('tab10' if num_angles <= 10 else 'viridis')(np.linspace(0, 1, num_angles))
+        color_map = {angle: type_colors[k] for k, angle in enumerate(unique_angles)}
 
         # 1. Stack-up Plot (Professional style)
         y_bottom = -total_t / 2
         for i, (ply, angle) in enumerate(plies):
             t = ply.thickness
-            color = color_map[ply.name]
+            color = color_map[angle]
             rect = Rectangle((0, y_bottom), 1.0, t, facecolor=color, alpha=0.8, edgecolor='black', linewidth=1)
             ax_stack.add_patch(rect)
 
@@ -583,35 +583,28 @@ class BeamVisualizer:
         ax_info.text(1.2, 0, 'x (0°)', ha='left', va='center')
         ax_info.text(0, 1.2, 'y (90°)', ha='center', va='bottom')
 
-        # Draw unique orientations in rosette
-        unique_angles = sorted(list(set(angle for ply, angle in plies)))
+        # Draw unique orientations in rosette (Exactly one line + one arrow per angle)
         for angle in unique_angles:
             theta = np.radians(angle)
-            # Find all unique materials used in this direction
-            mats_in_dir = sorted(list(set(ply.name for ply, a in plies if a == angle)))
-            num_mats_in_dir = len(mats_in_dir)
+            color = color_map[angle]
             
-            # Segmented stem by material
-            for k, mat_name in enumerate(mats_in_dir):
-                r_start = k / num_mats_in_dir
-                r_end = (k + 1) / num_mats_in_dir
-                ax_info.plot([r_start * np.cos(theta), r_end * np.cos(theta)], 
-                            [r_start * np.sin(theta), r_end * np.sin(theta)], 
-                            color=color_map[mat_name], linewidth=4)
+            # Simple single line from center to edge
+            ax_info.plot([0, np.cos(theta)], [0, np.sin(theta)], 
+                        color=color, linewidth=4, label=f"{angle}° Orientation")
             
-            # Tip Arrow and Label
+            # Tip Arrow and Label (Clean tip)
             ax_info.annotate('', xy=(np.cos(theta), np.sin(theta)), 
-                            xytext=(0.9 * np.cos(theta), 0.9 * np.sin(theta)),
+                            xytext=(0.95 * np.cos(theta), 0.95 * np.sin(theta)),
                             arrowprops=dict(arrowstyle='->', color='black', lw=2))
-            ax_info.text(1.15*np.cos(theta), 1.15*np.sin(theta), f"{angle}°", 
-                        ha='center', va='center', weight='bold')
+            ax_info.text(1.2*np.cos(theta), 1.2*np.sin(theta), f"{angle}°", 
+                        ha='center', va='center', weight='bold', color=color)
 
-        # Add Material Legend (Top of info pane)
-        legend_elements = [plt.Line2D([0], [0], color=color_map[m], lw=8, label=m) for m in unique_mats]
+        # Legend for Angle mapping
+        legend_elements = [plt.Line2D([0], [0], color=color_map[a], lw=8, label=f"{a}° Orientation") for a in unique_angles]
         ax_info.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 1.3), 
-                       title="Materials", ncol=2, fontsize=8)
+                       title="Fiber Orientations", ncol=2, fontsize=9)
 
-        # Effective properties summary (Moved to bottom to avoid legend clash)
+        # Effective properties summary (Moved to bottom, plenty of space)
         props = laminate.get_effective_properties()
         summary_text = (f"Laminate Properties:\n"
                        f"Total Thick: {total_t:.3f} mm\n"
@@ -621,7 +614,7 @@ class BeamVisualizer:
                        f"Gxy: {props['Gxy']/1000:.1f} GPa\n"
                        f"nu_xy: {props['nu_xy']:.3f}")
 
-        plt.figtext(0.75, 0.1, summary_text, bbox=dict(facecolor='white', alpha=0.9, edgecolor='gray'),
+        plt.figtext(0.75, 0.12, summary_text, bbox=dict(facecolor='ivory', alpha=0.9, edgecolor='gray'),
                     ha='center', va='center', family='monospace', zorder=20)
 
         plt.tight_layout()

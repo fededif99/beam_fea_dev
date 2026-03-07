@@ -2,6 +2,12 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.4.6] - 2026-03-07
+
+- **Visualization**: Implemented **Angle-based coloring** in `plot_laminate_stackup`; all plies with the same fiber orientation now share the same color for better pattern recognition.
+- **Visualization**: Simplified orientation rosette to show exactly one line and one arrow per unique angle, eliminating visual clutter.
+- **Visualization**: Polished layout with Ivory-colored properties box and centered orientation legend.
+
 ## [v2.4.5] - 2026-03-07
 
 - **Visualization**: Refined `plot_laminate_stackup` to color by **Material Name** (e.g., all CFRP plies share the same color) for better structural insight in sandwich panels.
