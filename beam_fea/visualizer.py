@@ -642,7 +642,7 @@ class BeamVisualizer:
                        f"Poisson's Ratio:\n"
                        f"  nu_xy:         {props['nu_xy']:7.3f}")
 
-        ax_info.text(0.5, -0.2, summary_text, transform=ax_info.transAxes,
+        ax_info.text(0.5, -0.05, summary_text, transform=ax_info.transAxes,
                     bbox=dict(facecolor='#FFFFFF', alpha=1.0, edgecolor='#AAAAAA', boxstyle='square,pad=1'),
                     ha='center', va='top', family='monospace', fontsize=9, zorder=20)
 
