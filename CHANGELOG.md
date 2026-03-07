@@ -2,6 +2,12 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.4.5] - 2026-03-07
+
+- **Visualization**: Refined `plot_laminate_stackup` to color by **Material Name** (e.g., all CFRP plies share the same color) for better structural insight in sandwich panels.
+- **Visualization**: Optimized plot layout to prevent overlap between the material legend and the laminate properties summary box.
+- **Visualization**: Enhanced rosettes with material-segmented stems and clear angle labels.
+
 ## [v2.4.4] - 2026-03-07
 
 - **Visualization**: Redesigned `plot_laminate_stackup` for professional consistency; colors are now mapped to unique (Material, Angle) pairs.

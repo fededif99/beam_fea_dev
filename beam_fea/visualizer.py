@@ -536,34 +536,29 @@ class BeamVisualizer:
         ax_stack = fig.add_subplot(gs[0, 0])
         ax_info = fig.add_subplot(gs[0, 1])
 
-        # 1. Map Colors to Unique (Material, Angle) pairs for consistency
+        # 1. Map Colors to Unique Materials for consistency
         plies = laminate.plies
         total_t = laminate.total_thickness
         
-        unique_ply_types = []
-        seen_types = set()
-        for ply, angle in plies:
-            ply_type = (ply.name, angle)
-            if ply_type not in seen_types:
-                seen_types.add(ply_type)
-                unique_ply_types.append(ply_type)
+        unique_mats = sorted(list(set(ply.name for ply, angle in plies)))
         
-        # Use a qualitative colormap for discrete categories
-        num_types = len(unique_ply_types)
-        type_colors = cm.get_cmap('tab10' if num_types <= 10 else 'viridis')(np.linspace(0, 1, num_types))
-        color_map = {ply_type: type_colors[k] for k, ply_type in enumerate(unique_ply_types)}
+        # Use simple distinct colors for materials
+        num_mats = len(unique_mats)
+        type_colors = cm.get_cmap('tab10' if num_mats <= 10 else 'viridis')(np.linspace(0, 1, num_mats))
+        color_map = {mat_name: type_colors[k] for k, mat_name in enumerate(unique_mats)}
 
         # 1. Stack-up Plot (Professional style)
         y_bottom = -total_t / 2
         for i, (ply, angle) in enumerate(plies):
             t = ply.thickness
-            color = color_map[(ply.name, angle)]
+            color = color_map[ply.name]
             rect = Rectangle((0, y_bottom), 1.0, t, facecolor=color, alpha=0.8, edgecolor='black', linewidth=1)
             ax_stack.add_patch(rect)
 
-            # Label with orientation
+            # Label with orientation (Contrast-aware text)
+            lum = np.mean(color[:3])
             ax_stack.text(0.5, y_bottom + t/2, f"P{i+1}: {angle}°",
-                         ha='center', va='center', weight='bold', color='white' if np.mean(color[:3]) < 0.5 else 'black')
+                         ha='center', va='center', weight='bold', color='white' if lum < 0.5 else 'black')
             y_bottom += t
 
         ax_stack.set_xlim(-0.5, 1.5)
@@ -592,31 +587,31 @@ class BeamVisualizer:
         unique_angles = sorted(list(set(angle for ply, angle in plies)))
         for angle in unique_angles:
             theta = np.radians(angle)
-            # Groups plies belonging to this angle
-            matching_types = [pt for pt in unique_ply_types if pt[1] == angle]
+            # Find all unique materials used in this direction
+            mats_in_dir = sorted(list(set(ply.name for ply, a in plies if a == angle)))
+            num_mats_in_dir = len(mats_in_dir)
             
-            # Draw segmented line if multiple materials share the same angle
-            num_mats = len(matching_types)
-            for k, ply_type in enumerate(matching_types):
-                r_start = k / num_mats
-                r_end = (k + 1) / num_mats
+            # Segmented stem by material
+            for k, mat_name in enumerate(mats_in_dir):
+                r_start = k / num_mats_in_dir
+                r_end = (k + 1) / num_mats_in_dir
                 ax_info.plot([r_start * np.cos(theta), r_end * np.cos(theta)], 
                             [r_start * np.sin(theta), r_end * np.sin(theta)], 
-                            color=color_map[ply_type], linewidth=4)
+                            color=color_map[mat_name], linewidth=4)
             
-            # ONE arrow at the very tip for this orientation
+            # Tip Arrow and Label
             ax_info.annotate('', xy=(np.cos(theta), np.sin(theta)), 
-                            xytext=(0.95 * np.cos(theta), 0.95 * np.sin(theta)),
+                            xytext=(0.9 * np.cos(theta), 0.9 * np.sin(theta)),
                             arrowprops=dict(arrowstyle='->', color='black', lw=2))
-            ax_info.text(1.1*np.cos(theta), 1.1*np.sin(theta), f"{angle}°", ha='center', va='center')
+            ax_info.text(1.15*np.cos(theta), 1.15*np.sin(theta), f"{angle}°", 
+                        ha='center', va='center', weight='bold')
 
-        # Add Legend for Material-Angle pairs
-        for k, ply_type in enumerate(unique_ply_types):
-            name, angle = ply_type
-            ax_info.plot([0], [0], color=color_map[ply_type], linewidth=8, label=f"{angle}°: {name}")
-        ax_info.legend(loc='lower center', bbox_to_anchor=(0.5, -0.2), ncol=2, fontsize=8)
+        # Add Material Legend (Top of info pane)
+        legend_elements = [plt.Line2D([0], [0], color=color_map[m], lw=8, label=m) for m in unique_mats]
+        ax_info.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 1.3), 
+                       title="Materials", ncol=2, fontsize=8)
 
-        # Effective properties summary
+        # Effective properties summary (Moved to bottom to avoid legend clash)
         props = laminate.get_effective_properties()
         summary_text = (f"Laminate Properties:\n"
                        f"Total Thick: {total_t:.3f} mm\n"
@@ -626,7 +621,7 @@ class BeamVisualizer:
                        f"Gxy: {props['Gxy']/1000:.1f} GPa\n"
                        f"nu_xy: {props['nu_xy']:.3f}")
 
-        plt.figtext(0.75, 0.15, summary_text, bbox=dict(facecolor='white', alpha=0.8),
+        plt.figtext(0.75, 0.1, summary_text, bbox=dict(facecolor='white', alpha=0.9, edgecolor='gray'),
                     ha='center', va='center', family='monospace', zorder=20)
 
         plt.tight_layout()
