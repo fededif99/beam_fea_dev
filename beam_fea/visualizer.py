@@ -536,21 +536,34 @@ class BeamVisualizer:
         ax_stack = fig.add_subplot(gs[0, 0])
         ax_info = fig.add_subplot(gs[0, 1])
 
-        # 1. Stack-up Plot (Abaqus style)
-        plies = laminate.plies # list of (Ply, angle)
+        # 1. Map Colors to Unique (Material, Angle) pairs for consistency
+        plies = laminate.plies
         total_t = laminate.total_thickness
+        
+        unique_ply_types = []
+        seen_types = set()
+        for ply, angle in plies:
+            ply_type = (ply.name, angle)
+            if ply_type not in seen_types:
+                seen_types.add(ply_type)
+                unique_ply_types.append(ply_type)
+        
+        # Use a qualitative colormap for discrete categories
+        num_types = len(unique_ply_types)
+        type_colors = cm.get_cmap('tab10' if num_types <= 10 else 'viridis')(np.linspace(0, 1, num_types))
+        color_map = {ply_type: type_colors[k] for k, ply_type in enumerate(unique_ply_types)}
 
+        # 1. Stack-up Plot (Professional style)
         y_bottom = -total_t / 2
-        colors = cm.get_cmap('viridis')(np.linspace(0, 0.8, len(plies)))
-
         for i, (ply, angle) in enumerate(plies):
             t = ply.thickness
-            rect = Rectangle((0, y_bottom), 1.0, t, facecolor=colors[i], alpha=0.8, edgecolor='black', linewidth=1)
+            color = color_map[(ply.name, angle)]
+            rect = Rectangle((0, y_bottom), 1.0, t, facecolor=color, alpha=0.8, edgecolor='black', linewidth=1)
             ax_stack.add_patch(rect)
 
             # Label with orientation
-            ax_stack.text(0.5, y_bottom + t/2, f"Ply {i+1}: {angle}° ({ply.name})",
-                         ha='center', va='center', weight='bold', color='white' if i < len(plies)/2 else 'black')
+            ax_stack.text(0.5, y_bottom + t/2, f"P{i+1}: {angle}°",
+                         ha='center', va='center', weight='bold', color='white' if np.mean(color[:3]) < 0.5 else 'black')
             y_bottom += t
 
         ax_stack.set_xlim(-0.5, 1.5)
@@ -575,23 +588,33 @@ class BeamVisualizer:
         ax_info.text(1.2, 0, 'x (0°)', ha='left', va='center')
         ax_info.text(0, 1.2, 'y (90°)', ha='center', va='bottom')
 
-        # Draw ply orientation lines in reverse order (top plies first, bottom plies drawn last on top)
-        # We vary the radius so inner plies are shorter and don't hide the outer ones.
-        for i in reversed(range(len(plies))):
-            ply, angle = plies[i]
+        # Draw unique orientations in rosette
+        unique_angles = sorted(list(set(angle for ply, angle in plies)))
+        for angle in unique_angles:
             theta = np.radians(angle)
+            # Groups plies belonging to this angle
+            matching_types = [pt for pt in unique_ply_types if pt[1] == angle]
             
-            # Radius decreases for bottom plies, creating a "segmented" look for same-angle stacks
-            r = 0.3 + 0.7 * (i + 1) / len(plies)
+            # Draw segmented line if multiple materials share the same angle
+            num_mats = len(matching_types)
+            for k, ply_type in enumerate(matching_types):
+                r_start = k / num_mats
+                r_end = (k + 1) / num_mats
+                ax_info.plot([r_start * np.cos(theta), r_end * np.cos(theta)], 
+                            [r_start * np.sin(theta), r_end * np.sin(theta)], 
+                            color=color_map[ply_type], linewidth=4)
             
-            # Plot rosette vector with a Z-order that keeps inner plies on top
-            ax_info.plot([0, r * np.cos(theta)], [0, r * np.sin(theta)], color=colors[i],
-                        linewidth=3, label=f"Ply {i+1} ({angle}°)", zorder=10+i)
-            # Arrowhead at the tip of each segment
-            ax_info.annotate('', xy=(r * np.cos(theta), r * np.sin(theta)), 
-                            xytext=(0.9 * r * np.cos(theta), 0.9 * r * np.sin(theta)),
-                            arrowprops=dict(arrowstyle='->', color=colors[i], lw=1.5),
-                            zorder=10+i)
+            # ONE arrow at the very tip for this orientation
+            ax_info.annotate('', xy=(np.cos(theta), np.sin(theta)), 
+                            xytext=(0.95 * np.cos(theta), 0.95 * np.sin(theta)),
+                            arrowprops=dict(arrowstyle='->', color='black', lw=2))
+            ax_info.text(1.1*np.cos(theta), 1.1*np.sin(theta), f"{angle}°", ha='center', va='center')
+
+        # Add Legend for Material-Angle pairs
+        for k, ply_type in enumerate(unique_ply_types):
+            name, angle = ply_type
+            ax_info.plot([0], [0], color=color_map[ply_type], linewidth=8, label=f"{angle}°: {name}")
+        ax_info.legend(loc='lower center', bbox_to_anchor=(0.5, -0.2), ncol=2, fontsize=8)
 
         # Effective properties summary
         props = laminate.get_effective_properties()
@@ -604,7 +627,7 @@ class BeamVisualizer:
                        f"nu_xy: {props['nu_xy']:.3f}")
 
         plt.figtext(0.75, 0.15, summary_text, bbox=dict(facecolor='white', alpha=0.8),
-                    ha='center', va='center', family='monospace')
+                    ha='center', va='center', family='monospace', zorder=20)
 
         plt.tight_layout()
         if output_path:

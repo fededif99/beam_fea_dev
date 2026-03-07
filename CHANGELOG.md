@@ -2,6 +2,12 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.4.4] - 2026-03-07
+
+- **Visualization**: Redesigned `plot_laminate_stackup` for professional consistency; colors are now mapped to unique (Material, Angle) pairs.
+- **Visualization**: Simplified rosette plot to show a single arrow per orientation with segmented colored stems for multi-material directions.
+- **Reporting**: Added an explicit Material-Angle legend to composite reports for better interpretability.
+
 ## [v2.4.3] - 2026-03-07
 
 - **Visualization**: Fixed rosette stacking in `plot_laminate_stackup`; orientation lines now use radius-offset segments to ensure all ply colors are visible when angles overlap.
