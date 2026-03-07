@@ -9,16 +9,22 @@ from beam_fea.composites import Ply, Laminate
 import numpy as np
 
 def run_coupling_demo():
-    # 1. Define Carbon Ply
-    ply = Ply(E1=150000, E2=10000, nu12=0.3, G12=5000, thickness=1.0, rho=1.6e-6)
+    # 1. Define Carbon Ply with strengths for failure index extraction
+    ply = Ply(
+        E1=150000, E2=10000, nu12=0.3,
+        G12=5000, G13=5000, G23=4000,
+        thickness=1.0, rho=1.6e-6,
+        Xt=1500, Xc=1200, Yt=50, Yc=250, S=70
+    )
 
     # 2. Setup TWO Laminates: Symmetric vs Asymmetric
     # Symmetric [0/90]s
-    lam_sym = Laminate("Symmetric [0/90]s")
+    # We use beam_type='narrow' for exact matching with 1D textbooks
+    lam_sym = Laminate("Symmetric [0/90]s", beam_type='narrow')
     lam_sym.add_stack(ply, [0, 90, 90, 0])
 
     # Asymmetric [0/90]
-    lam_asym = Laminate("Asymmetric [0/90]")
+    lam_asym = Laminate("Asymmetric [0/90]", beam_type='narrow')
     lam_asym.add_stack(ply, [0, 0, 90, 90]) # Stacked as 2 plies of 0 then 2 of 90 for same total thickness
 
     print("\n" + "="*60)
@@ -60,10 +66,13 @@ def run_coupling_demo():
     forces = solver_asym.calculate_internal_forces(num_points=10)
     print(f"\nAsymmetric Beam Internal Axial Force at root: {forces['axial_forces'][0]:.2f} N")
 
-    # Generate Report to verify composite material formatting
+    # Generate Report to verify high-fidelity composite reporting
     import os
     report_path = os.path.join(os.path.dirname(__file__), "anisotropic_coupling_report.md")
-    solver_asym.generate_report(report_path)
+
+    # We can specify the failure criterion for the report (default is 'tsai_wu')
+    solver_asym.generate_report(report_path, failure_criterion='tsai_hill')
+
     print(f"\nReport generated: {report_path}")
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@ class BeamReportGenerator:
     """
     
     def __init__(self, solver, mesh, material, section, load_case, bc_set,
-                 displacements, reactions):
+                 displacements, reactions, failure_criterion: str = 'tsai_wu'):
         """
         Initialize report generator.
         
@@ -61,6 +61,7 @@ class BeamReportGenerator:
         self.bc_set = bc_set
         self.displacements = displacements
         self.reactions = reactions
+        self.failure_criterion = failure_criterion
         
         # Modal Results
         self.frequencies = None
@@ -79,6 +80,7 @@ class BeamReportGenerator:
         # Ensure we use high-fidelity recovery for the report diagrams
         results = self.solver.calculate_internal_forces(num_points, strategy='consistent')
         self.positions = results['positions']
+        self.path_positions = results.get('path_positions', self.positions)
         self.shear_forces = results['shear_forces']
         self.bending_moments = results['bending_moments']
     
@@ -286,7 +288,7 @@ class BeamReportGenerator:
 
     def plot_structure_diagram(self, output_path: str, dpi: int = 150):
         """
-        Plot beam structure with boundary conditions and loads.
+        Plot beam structure with boundary conditions and loads (2D supported).
 
         Boundary conditions are drawn as engineering-standard glyphs:
         - Fixed  : hatched wall rectangle
@@ -302,9 +304,11 @@ class BeamReportGenerator:
         """
         st = DEFAULT_STYLE
         coords = self.mesh.get_node_coords()
-        beam_length = coords[:, 0].max() - coords[:, 0].min()
+        dx_max = coords[:, 0].max() - coords[:, 0].min()
+        dy_max = coords[:, 1].max() - coords[:, 1].min()
+        beam_length = max(dx_max, dy_max)
 
-        # Scale things relative to beam length in scaled units
+        # Scale things relative to characteristic beam dimension
         x_scale, x_unit = smart_units(beam_length, 'length')
         L_scaled = beam_length / x_scale
         
@@ -314,9 +318,9 @@ class BeamReportGenerator:
         fig, ax = plt.subplots(figsize=st.figsize_structure, dpi=dpi)
 
         # ---- Beam line -------------------------------------------------
-        ax.plot(coords[:, 0] / x_scale, coords[:, 1], '-',
+        ax.plot(coords[:, 0] / x_scale, coords[:, 1] / x_scale, '-',
                 color=st.colour_primary, linewidth=st.beam_line_width, label='Beam', zorder=2)
-        ax.plot(coords[:, 0] / x_scale, coords[:, 1], 'o',
+        ax.plot(coords[:, 0] / x_scale, coords[:, 1] / x_scale, 'o',
                 color=st.colour_primary, markersize=5, zorder=2)
 
         # ---- Characteristic height for glyph sizing --------------------
@@ -328,7 +332,7 @@ class BeamReportGenerator:
         for bc in self.bc_set.conditions:
             node_id = bc.node
             x = coords[node_id, 0] / x_scale
-            y = coords[node_id, 1]
+            y = coords[node_id, 1] / x_scale
 
             if isinstance(bc, FixedSupport):
                 # Decide which side the wall is on
@@ -373,14 +377,16 @@ class BeamReportGenerator:
             for load in self.load_case.loads:
                 if isinstance(load, PointLoad):
                     if load.node is not None:
-                        x_raw, y_pt = coords[load.node, 0], coords[load.node, 1]
+                        x_raw, y_raw = coords[load.node, 0], coords[load.node, 1]
                     elif load.x is not None:
-                        x_raw, y_pt = load.x, 0.0
+                        # For angled beams, coordinate loads are tricky.
+                        # We resolve x only for horizontal beams.
+                        x_raw, y_raw = load.x, 0.0
                     else:
                         continue
-                    if not (coords[:, 0].min() <= x_raw <= coords[:, 0].max()):
-                        continue
+
                     x_pt = x_raw / x_scale
+                    y_pt = y_raw / x_scale
 
                     x_key = round(x_pt, 4)
 
@@ -477,7 +483,9 @@ class BeamReportGenerator:
         """
         st = DEFAULT_STYLE
         coords = self.mesh.get_node_coords()
-        beam_length = coords[:, 0].max() - coords[:, 0].min()
+        dx_max = coords[:, 0].max() - coords[:, 0].min()
+        dy_max = coords[:, 1].max() - coords[:, 1].min()
+        beam_length = max(dx_max, dy_max)
 
         # Scale relative to scaled beam length
         x_scale, x_unit = smart_units(beam_length, 'length')
@@ -490,9 +498,9 @@ class BeamReportGenerator:
         fig, ax = plt.subplots(figsize=st.figsize_structure, dpi=dpi)
 
         # ---- Beam line -------------------------------------------------
-        ax.plot(coords[:, 0] / x_scale, coords[:, 1], '-',
+        ax.plot(coords[:, 0] / x_scale, coords[:, 1] / x_scale, '-',
                 color=st.colour_primary, linewidth=st.beam_line_width, label='Beam', zorder=2)
-        ax.plot(coords[:, 0] / x_scale, coords[:, 1], 'o',
+        ax.plot(coords[:, 0] / x_scale, coords[:, 1] / x_scale, 'o',
                 color=st.colour_primary, markersize=5, zorder=2)
 
         # ---- Load scaling (per-component) including reactions ----------
@@ -527,7 +535,7 @@ class BeamReportGenerator:
         for i, bc in enumerate(self.bc_set.conditions):
             node_id = bc.node
             x_pt = coords[node_id, 0] / x_scale
-            y_pt = coords[node_id, 1]
+            y_pt = coords[node_id, 1] / x_scale
             x_key = round(x_pt, 4)
 
             if isinstance(bc, (PinnedSupport, RollerSupport, FixedSupport)):
@@ -573,11 +581,11 @@ class BeamReportGenerator:
         if self.load_case:
             for load in self.load_case.loads:
                 if isinstance(load, PointLoad):
-                    if load.node is not None: x_raw, y_pt = coords[load.node, 0], coords[load.node, 1]
-                    elif load.x is not None: x_raw, y_pt = load.x, 0.0
+                    if load.node is not None: x_raw, y_raw = coords[load.node, 0], coords[load.node, 1]
+                    elif load.x is not None: x_raw, y_raw = load.x, 0.0
                     else: continue
-                    if not (coords[:, 0].min() <= x_raw <= coords[:, 0].max()): continue
                     x_pt = x_raw / x_scale
+                    y_pt = y_raw / x_scale
                     x_key = round(x_pt, 4)
 
                     if abs(load.fy) > 1e-10:
@@ -688,12 +696,14 @@ class BeamReportGenerator:
         if self.shear_forces is None:
             self.calculate_internal_forces()
 
-        beam_length = self.positions[-1] - self.positions[0]
+        # Use path positions for angled beams
+        path_pos = getattr(self, 'path_positions', self.positions)
+        beam_length = path_pos[-1] - path_pos[0]
         x_scale, x_unit = smart_units(beam_length, 'length')
         max_abs_V = np.max(np.abs(self.shear_forces))
         v_scale, v_unit = smart_units(max_abs_V, 'force')
 
-        pos_scaled = self.positions / x_scale
+        pos_scaled = path_pos / x_scale
         V_scaled   = self.shear_forces / v_scale
 
         fig, ax = plt.subplots(figsize=st.figsize_wide, dpi=dpi)
@@ -753,12 +763,14 @@ class BeamReportGenerator:
         if self.bending_moments is None:
             self.calculate_internal_forces()
 
-        beam_length = self.positions[-1] - self.positions[0]
+        # Use path positions for angled beams
+        path_pos = getattr(self, 'path_positions', self.positions)
+        beam_length = path_pos[-1] - path_pos[0]
         x_scale, x_unit = smart_units(beam_length, 'length')
         max_abs_M = np.max(np.abs(self.bending_moments))
         m_scale, m_unit = smart_units(max_abs_M, 'moment')
 
-        pos_scaled = self.positions / x_scale
+        pos_scaled = path_pos / x_scale
         M_scaled   = self.bending_moments / m_scale
 
         fig, ax = plt.subplots(figsize=st.figsize_wide, dpi=dpi)
@@ -796,7 +808,8 @@ class BeamReportGenerator:
                 lbl.set_color(st.colour_max)
                 lbl.set_weight('bold')
 
-        ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
+        ax.set_xlabel(f'Path Position ({x_unit})', fontsize=st.label_fontsize)
+        ax.set_xlabel(f'Path Position ({x_unit})', fontsize=st.label_fontsize)
         ax.set_ylabel(f'Bending Moment ({m_unit})', fontsize=st.label_fontsize)
         ax.set_title('Bending Moment Diagram', fontsize=st.title_fontsize, weight='bold')
         ax.grid(True, alpha=st.grid_alpha)
@@ -1171,38 +1184,41 @@ class BeamReportGenerator:
         ply_stress_table = ""
         from .composites import Laminate
         if (hasattr(self.material, '_is_laminate') or isinstance(self.material, Laminate)) and hasattr(self.solver, 'laminate_results'):
-            ply_stress_table = "\n### Ply-by-Ply Maximum Stresses\n\n| Ply | Name | Angle | Max $\\sigma_x$ | Max $\\tau_{xy}$ | Max Von Mises | Max $\\sigma_1$ |\n|---|---|---|---|---|---|---|\n"
+            crit_label = self.failure_criterion.replace('_', ' ').title()
+            ply_stress_table = f"\n### Ply-by-Ply Maximum Stresses\n\n| Ply | Name | Angle | Max $\\sigma_1$ | Max $\\sigma_2$ | Max $\\tau_{{12}}$ | Max $\\tau_{{xz}}$ | Max $\\sigma_x$ | Max $\\tau_{{xy}}$ | {crit_label} Index |\n|---|---|---|---|---|---|---|---|---|---|\n"
             
             # Aggregate peaks for each ply across ALL elements and ALL stations
-            # ply_id -> {index, name, angle, peak_sx, peak_txy, peak_vm, peak_s1}
             master_ply_data = {}
             
+            fi_key = f'peak_fi_{self.failure_criterion}'
+            if self.failure_criterion == 'max_stress': fi_key = 'peak_fi_max'
+
             for eid, results in self.solver.laminate_results.items():
                 for ply in results['ply_data']:
                     pid = ply['index']
                     if pid not in master_ply_data:
                         master_ply_data[pid] = {
-                            'index': ply['index'],
-                            'name': ply['name'],
-                            'angle': ply['angle'],
-                            'peak_sx': 0.0,
-                            'peak_txy': 0.0,
-                            'peak_vm': 0.0,
-                            'peak_s1': 0.0
+                            'index': ply['index'], 'name': ply['name'], 'angle': ply['angle'],
+                            'peak_s1': 0.0, 'peak_s2': 0.0, 'peak_t12': 0.0, 'peak_txz': 0.0,
+                            'peak_sx': 0.0, 'peak_txy': 0.0, 'peak_fi': 0.0
                         }
                     
-                    # Update peaks
-                    master_ply_data[pid]['peak_sx'] = max(master_ply_data[pid]['peak_sx'], np.max(ply['peak_sigma_x']))
-                    master_ply_data[pid]['peak_txy'] = max(master_ply_data[pid]['peak_txy'], np.max(ply.get('peak_tau_xy', 0.0)))
-                    master_ply_data[pid]['peak_vm'] = max(master_ply_data[pid]['peak_vm'], np.max(ply.get('peak_von_mises', 0.0)))
-                    master_ply_data[pid]['peak_s1'] = max(master_ply_data[pid]['peak_s1'], np.max(ply.get('peak_sigma_1', 0.0)))
+                    d = master_ply_data[pid]
+                    d['peak_s1'] = max(d['peak_s1'], np.max(ply['peak_sigma_1']))
+                    d['peak_s2'] = max(d['peak_s2'], np.max(ply.get('peak_sigma_2', 0.0)))
+                    d['peak_t12'] = max(d['peak_t12'], np.max(ply.get('peak_tau_12', 0.0)))
+                    d['peak_txz'] = max(d['peak_txz'], np.max(ply.get('peak_tau_xz', 0.0)))
+                    d['peak_sx'] = max(d['peak_sx'], np.max(ply['peak_sigma_x']))
+                    d['peak_txy'] = max(d['peak_txy'], np.max(ply['peak_tau_xy']))
+                    d['peak_fi'] = max(d['peak_fi'], np.max(ply.get(fi_key, 0.0)))
 
             # Build table rows (sorted by ply index)
             for pid in sorted(master_ply_data.keys()):
                 d = master_ply_data[pid]
-                ply_stress_table += f"| {d['index']+1} | {d['name']} | {d['angle']}° | {d['peak_sx']:.2f} | {d['peak_txy']:.2f} | {d['peak_vm']:.2f} | {d['peak_s1']:.2f} |\n"
+                ply_stress_table += f"| {d['index']+1} | {d['name']} | {d['angle']}° | {d['peak_s1']:.2f} | {d['peak_s2']:.2f} | {d['peak_t12']:.2f} | {d['peak_txz']:.2f} | {d['peak_sx']:.2f} | {d['peak_txy']:.2f} | {d['peak_fi']:.3f} |\n"
             
-            ply_stress_table += "\n*Note: All stress values reported in MPa. Values represent the absolute peak across all elements and ply boundaries (top/bottom).*"
+            beam_assump = "Narrow Beam (sigma_y=0)" if self.material.beam_type == 'narrow' else "Wide Beam (epsilon_y=0)"
+            ply_stress_table += f"\n*Note: All stress values reported in MPa. Failure index calculated using **{crit_label}** criterion. Values represent absolute peaks across all stations and ply thickness (Top/Mid/Bot). Model assumes: **{beam_assump}**.*"
 
         return rf"""
 ## 3. Static Analysis Results
@@ -1257,20 +1273,43 @@ Shear Force (V) and Bending Moment (M) distributions:
             viz.plot_mode_shape(self.mode_shapes[:, i], i+1, f_val, output_path=str(images_dir / img_name))
             mode_shape_plots.append((i+1, f_val, img_name))
 
-        # Frequency Table
+        # Frequency & Participation Table
         freq_rows = []
+        cum_x = 0.0
+        cum_y = 0.0
+
+        has_part = hasattr(self.solver, 'last_modal_participation') and self.solver.last_modal_participation
+
         for i, f in enumerate(self.frequencies):
-            freq_rows.append(f"| {i+1} | {f:8.2f} | {f*60:12.0f} |")
+            period = 1/f if f > 0 else 0
+
+            if has_part:
+                m_data = self.solver.last_modal_participation['modes'][i]
+                eff_x = m_data['percent_x'] * 100
+                eff_y = m_data['percent_y'] * 100
+                cum_x += eff_x
+                cum_y += eff_y
+                freq_rows.append(f"| {i+1} | {f:8.2f} | {period:8.4f} | {eff_x:10.2f}% | {eff_y:10.2f}% | {cum_y:12.2f}% |")
+            else:
+                freq_rows.append(f"| {i+1} | {f:8.2f} | {period:8.4f} | - | - | - |")
+
         freq_table = "\n".join(freq_rows)
+
+        total_mass_str = ""
+        if has_part:
+            tm_x = self.solver.last_modal_participation['total_mass_x']
+            tm_y = self.solver.last_modal_participation['total_mass_y']
+            total_mass_str = f"\n**Total Structural Mass**: {tm_y:.4e} kg (Y), {tm_x:.4e} kg (X)\n"
 
         results_md = rf"""
 ## 4. Modal Analysis Results
 
-### Natural Frequencies
+### Modal Properties & Mass Participation
 
-| Mode | Frequency (Hz) | Frequency (RPM) |
-|------|----------------|-----------------|
+| Mode | Frequency (Hz) | Period (s) | Effective X (%) | Effective Y (%) | Cumulative Y (%) |
+|------|----------------|------------|-----------------|-----------------|------------------|
 {freq_table}
+{total_mass_str}
 
 ### Mode Shapes (First 3)
 

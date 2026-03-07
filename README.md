@@ -22,11 +22,13 @@
 
 ### Latest Version: v2.4.11 *(2026-03-07)*
 
+- **Ply-by-Ply Stresses**: High-fidelity stress recovery at multiple depths (Top, Mid, Bottom) per ply.
+- **Local Stress Analysis**: Transformation to material-axis coordinates ($\sigma_1, \sigma_2, \tau_{12}$) for all laminate plies.
+- **Failure Criteria**: Built-in support for **Maximum Stress**, **Tsai-Hill**, and **Tsai-Wu** criteria.
+- **Enhanced Reporting**: Reports now include detailed ply-by-ply stress tables with local stresses and selectable failure indices.
+- **Unified Architecture**: Unified element matrices and stress recovery engines for both isotropic and composite materials.
+- **Transverse Shear Recovery**: Implemented layer-wise equilibrium integration for out-of-plane shear stress ($\tau_{xz}$).
 - **Explicit Geometry**: Replaced bounding boxes with Matplotlib patches for exact cross-section visualization.
-- **Composite Stack-ups**: New `plot_laminate_stackup` featuring vertical ply stacks and polar orientation rosettes.
-- **Multi-Section Plots**: Automatic subplot generation for beams with varying cross-sections.
-- **Ply-by-Ply Stresses**: High-fidelity stress recovery calculating $\sigma_x, \sigma_y, \tau_{xy}$ for every ply in a laminate.
-- **Reporting**: Reports now include explicit geometry plots, laminate stack-ups, and ply-stress summaries.
 - **Strategy Pattern**: Decoupled "FEA Interpolation" from "High-Fidelity Recovery" for internal force handling.
 - **Optimization**: Achieve $O(M)$ performance scaling for station evaluations via vectorized grouping.
 - **Post-Processing Module**: Centralized calculation engines in `beam_fea/post_processing.py`.
@@ -281,19 +283,17 @@ Advanced material modeling using Classical Laminate Theory (CLT) for composite s
 
 #### `Ply` Class
 
-Defines an orthotropic composite lamina.
+Defines an orthotropic composite lamina including material strengths for failure analysis.
 
 ```python
 from beam_fea.composites import Ply
 
 carbon_ply = Ply(
     name="T300_Epoxy",
-    E1=135000,   # Longitudinal Modulus (MPa)
-    E2=10000,    # Transverse Modulus (MPa)
-    nu12=0.3,    # Poisson's ratio
-    G12=5000,    # Shear Modulus (MPa)
-    thickness=0.125, # mm
-    rho=1.6e-6   # kg/mm³
+    E1=135000, E2=10000, nu12=0.3,
+    G12=5000, G13=5000, G23=4000, # In-plane and Transverse Shear
+    thickness=0.125, rho=1.6e-6,
+    Xt=1500, Xc=1200, Yt=50, Yc=250, S=70 # Strengths (MPa)
 )
 ```
 
@@ -304,7 +304,8 @@ Assembles plies into a stack-up and computes the [ABD] matrix and effective engi
 ```python
 from beam_fea.composites import Laminate
 
-lam = Laminate("Wing_Spar_Flange")
+# beam_type: 'narrow' (sigma_y=0) or 'wide' (epsilon_y=0)
+lam = Laminate("Wing_Spar_Flange", beam_type='narrow')
 # Add plies from bottom to top; angle is in degrees
 lam.add_stack(carbon_ply, [0, 45, -45, 90, 90, -45, 45, 0])
 
@@ -364,7 +365,8 @@ Static utilities for rapid meshing.
 
 - **`beam_mesh_1d(length, num_elements)`**: Creates a simple straight line mesh.
 - **`line_mesh(start_xy, end_xy, num_elements)`**: Meshes a line between two points.
-- **`multi_span_beam(lengths, elements_per_span)`**: Creates a continuous beam mesh over multiple supports.
+- **`path_mesh(points, elements_per_segment)`**: Creates a general 2D angled beam mesh from a list of $(x, y)$ waypoints. Supports segment-wise grading.
+- **`multi_span_beam(lengths, elements_per_span)`**: Creates a continuous beam mesh over multiple supports (supports horizontal/vertical).
 - **`graded_mesh(start, end, n, grading_ratio)`**: Meshes with variable element sizes (Ratio > 1 increases size).
 - **`curved_beam(radius, start_ang, end_ang, n)`**: Meshes a circular arc.
 
@@ -506,7 +508,8 @@ solver = BeamSolver(mesh, material, section, element_type='euler')
 - **`calculate_internal_forces(num_points=100)`**: Returns dictionary of `axial_forces`, `shear_forces`, and `bending_moments`.
 - **`calculate_stresses(num_x, num_y, num_z)`**: Generates 3D stress matrices (Axial, Bending, Shear, von Mises, Principal).
 - **`visualize(analysis_type, **kwargs)`**: Orchestrates plots (see 3.7).
-- **`generate_report(filepath, ...)`**: Generates professional engineering report (see 3.8).
+- **`generate_report(filepath, failure_criterion='tsai_wu', ...)`**: Generates professional engineering report (see 3.8).
+  - *Criteria*: `'max_stress'`, `'tsai_hill'`, `'tsai_wu'`
 
 ---
 

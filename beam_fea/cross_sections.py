@@ -51,6 +51,8 @@ class SectionProperties:
         Distance from centroid to left fiber (mm)
     z_right : float
         Distance from centroid to right fiber (mm)
+    shear_factor : float
+        Shear correction factor (kappa) for Timoshenko beams.
     name : str
         Descriptive name of the cross-section
     parent_section : CrossSection, optional
@@ -71,6 +73,7 @@ class SectionProperties:
     y_bottom: float = None
     z_left: float = None
     z_right: float = None
+    shear_factor: float = 1.0
     name: str = "Custom Profile"
     parent_section: Optional['CrossSection'] = None
     
@@ -177,6 +180,7 @@ class RectangularSection(CrossSection):
             y_centroid=0.0, z_centroid=0.0,  # Center is reference
             y_top=h/2, y_bottom=-h/2,
             z_left=-b/2, z_right=b/2,
+            shear_factor=5/6,
             name=f"Rectangular ({self.width}w × {self.height}h)",
             parent_section=self
         )
@@ -226,6 +230,7 @@ class CircularSection(CrossSection):
             y_centroid=0.0, z_centroid=0.0,
             y_top=r, y_bottom=-r,
             z_left=-r, z_right=r,
+            shear_factor=9/10,
             name=f"Circular (∅{self.diameter})",
             parent_section=self
         )
@@ -286,6 +291,7 @@ class HollowCircularSection(CrossSection):
             y_centroid=0.0, z_centroid=0.0,
             y_top=ro, y_bottom=-ro,
             z_left=-ro, z_right=ro,
+            shear_factor=0.5,
             name=f"Hollow Circular (∅{self.outer_diameter} × {self.thickness}t)",
             parent_section=self
         )
@@ -384,11 +390,16 @@ class IBeamSection(CrossSection):
         # Torsional constant (approximate for thin-walled I-beam)
         J = (2*bf*tf**3 + (d - 2*tf)*tw**3) / 3
         
+        # Shear correction factor (approx A_web/A_total)
+        A_web = tw * (d - 2*tf)
+        kappa = A_web / A_total
+
         return SectionProperties(
             A=A_total, Iy=Iy, Iz=Iz, J=J, Sy=Sy, Sz=Sz,
             y_centroid=0.0, z_centroid=0.0,
             y_top=d/2, y_bottom=-d/2,
             z_left=-bf/2, z_right=bf/2,
+            shear_factor=kappa,
             name=f"I-Beam (d={self.total_height}, bf={self.flange_width}, tw={self.web_thickness}, tf={self.flange_thickness})",
             parent_section=self
         )
@@ -486,6 +497,7 @@ class TBeamSection(CrossSection):
             y_centroid=y_bar, z_centroid=0.0,
             y_top=y_top_val, y_bottom=-y_bottom_val,
             z_left=-bf/2, z_right=bf/2,
+            shear_factor=tw * hw / A_total,
             name=f"T-Beam (bf={self.flange_width}, tf={self.flange_thickness}, hw={self.web_height}, tw={self.web_thickness})",
             parent_section=self
         )
@@ -598,6 +610,7 @@ class BoxSection(CrossSection):
             y_centroid=0.0, z_centroid=0.0,
             y_top=H/2.0, y_bottom=-H/2.0,
             z_left=-B/2.0, z_right=B/2.0,
+            shear_factor=2*t*h / A,
             name=f"Box Section ({self.width}w × {self.height}h × {self.thickness}t)",
             parent_section=self
         )
@@ -694,6 +707,7 @@ class CChannelSection(CrossSection):
             y_centroid=0.0, z_centroid=x_bar,
             y_top=h/2, y_bottom=-h/2,
             z_left=-x_bar, z_right=bf-x_bar,
+            shear_factor=tw * (h - 2*tf) / A_total,
             name=f"C-Channel (d={self.height}, bf={self.flange_width}, tw={self.web_thickness}, tf={self.flange_thickness})",
             parent_section=self
         )
@@ -822,6 +836,7 @@ class LSection(CrossSection):
             y_centroid=y_bar, z_centroid=x_bar,
             y_top=h-y_bar, y_bottom=-y_bar,
             z_left=-x_bar, z_right=b-x_bar,
+            shear_factor=t * h / A_total,
             name=desc,
             parent_section=self
         )

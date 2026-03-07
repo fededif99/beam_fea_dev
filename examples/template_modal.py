@@ -38,7 +38,8 @@ def main():
 
     # 4. SOLVE MODAL
     print("  Solving Modal Analysis...")
-    solver = BeamSolver(mesh, material, section)
+    # Unified model handles modal analysis with consistent mass matrices
+    solver = BeamSolver(mesh, material, section, element_type='timoshenko')
     num_modes = 5
     frequencies, mode_shapes = solver.solve_modal(bc, num_modes=num_modes)
     

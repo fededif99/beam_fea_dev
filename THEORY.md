@@ -10,7 +10,7 @@ The package support two distinct beam theories to handle structures ranging from
 
 ### 1.1 Euler-Bernoulli Beam Theory
 
-Standard theory for slender structures (Length/Depth > 15). It assumes sections remain plane and strictly normal to the centroidal axis.
+Standard theory for slender structures (Length/Depth > 15). It assumes sections remain plane and strictly normal to the centroidal axis. In the unified model, this is recovered by setting transverse shear flexibility $\phi = 0$.
 
 **Application:**
 
@@ -157,25 +157,42 @@ $$E_b = \frac{12}{[ABD]^{-1}_{[3,3]} \cdot t^3}$$
 
 This captures B-D coupling for asymmetric laminates.
 
-### 3.4 Smeared-Stiffness Beam Model (Kollár & Springer §4.1)
+### 3.4 Narrow vs. Wide Beam Assumptions
 
-CLT sectional stiffnesses (per unit width) are integrated over the beam width $b$ to yield 1D stiffness parameters:
+The choice of effective stiffness parameters depends on the beam's cross-sectional aspect ratio:
 
-$$EA = A_{11} \cdot b, \quad ES = B_{11} \cdot b, \quad EI = D_{11} \cdot b$$
+- **Wide Beam** (Plate-like, $\varepsilon_y = 0$): Stiffness terms $A_{11}$ and $D_{11}$ are used directly.
+- **Narrow Beam** (1D Beam-like, $\sigma_y = 0$): Compliance terms $a_{11}$ and $d_{11}$ (from $[ABD]^{-1}$) are used to account for the zero-stress boundary condition on the free edges.
 
-These feed a Timoshenko-based `AnisotropicBeamElement` with coupled constitutive law:
+### 3.5 Unified Stiffness Architecture
 
-$$N = EA\varepsilon_0 + ES\kappa, \quad M = ES\varepsilon_0 + EI\kappa$$
+All element matrices are derived from a unified coupled Timoshenko formulation:
 
-where $\varepsilon_0 = u'$ (axial strain), $\kappa = v''$ (curvature). The coupling term $ES$ (from $B_{11}$) is non-zero only for **asymmetric laminates**.
+$$EA = \text{Axial Stiffness (N)}, \quad ES = \text{Coupling (N·mm)}, \quad EI = \text{Bending (N·mm²)}, \quad GA_s = \text{Shear (N)}$$
 
-### 3.5 Anisotropic Stiffness Matrix
+Constitutive law: $\{N, M, V\} = \text{diag}([A_{coupled}], GA_s) \{\varepsilon_0, \kappa, \gamma\}$.
 
-The element stiffness matrix has three contributions:
+The element stiffness matrix $k_{local}$ is assembled from:
 
 1. **Axial sub-matrix**: $\frac{EA}{L}\begin{bmatrix}1&-1\\-1&1\end{bmatrix}$
-2. **Timoshenko bending sub-matrix** (DOFs $v_1,\theta_1,v_2,\theta_2$): standard $\phi$-corrected form with shear flexibility $\phi = 12EI/(GA_s L^2)$ where $GA_s = \kappa G_{xy} A_{cs}$
-3. **Coupling kernel** from energy $U_{\text{coup}} = ES\int u'v''\,dx = \frac{ES}{L}(u_2-u_1)(\theta_2-\theta_1)$
+2. **Timoshenko bending sub-matrix**: Standard $\phi$-corrected form with $\phi = 12EI/(GA_s L^2)$.
+3. **Coupling kernel**: $\frac{ES}{L}(u_2-u_1)(\theta_2-\theta_1)$ accounting for $B_{11}$ effects.
+
+### 3.6 Transverse Shear Stress Recovery ($\tau_{xz}$)
+
+Out-of-plane shear stress is recovered by integrating the 3D equilibrium equation layer-wise through the thickness $z$:
+
+$$\frac{\partial \sigma_x}{\partial x} + \frac{\partial \tau_{xz}}{\partial z} = 0 \implies \tau_{xz}(z) = -\int_{-t/2}^{z} \frac{\partial \sigma_x}{\partial x} dz$$
+
+where $\frac{\partial \sigma_x}{\partial x}$ is derived from the rate of change of mid-plane strains $\{\frac{\partial \varepsilon^0}{\partial x}, \frac{\partial \kappa}{\partial x}\}$ which are related to the axial load rate $dN/dx$ and shear force $V = dM/dx$.
+
+### 3.7 Composite Failure Criteria
+
+Calculated in local material coordinates $(1, 2, 12)$:
+
+1. **Maximum Stress**: $FI = \max\left(\frac{\sigma_1}{X}, \frac{\sigma_2}{Y}, \frac{|\tau_{12}|}{S}\right)$
+2. **Tsai-Hill**: $FI = \left(\frac{\sigma_1}{X}\right)^2 - \frac{\sigma_1\sigma_2}{X^2} + \left(\frac{\sigma_2}{Y}\right)^2 + \left(\frac{\tau_{12}}{S}\right)^2$
+3. **Tsai-Wu**: $FI = F_1\sigma_1 + F_{11}\sigma_1^2 + F_2\sigma_2 + F_{22}\sigma_2^2 + F_{66}\tau_{12}^2 + 2F_{12}\sigma_1\sigma_2$
 
 ### 3.6 References
 

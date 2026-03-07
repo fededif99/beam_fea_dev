@@ -128,9 +128,11 @@ class ModalAnalysis:
         
         # Return requested number of modes
         if num_modes is not None and not is_sparse_initially:
-            # For sparse, we already extracted k modes
-            # For dense, we computed all, so slice them
-            return self.frequencies[:num_modes], self.mode_shapes[:, :num_modes]
+            self.frequencies = self.frequencies[:num_modes]
+            self.mode_shapes = self.mode_shapes[:, :num_modes]
+
+        # Automatic mass-normalization: phi.T @ M @ phi = I
+        self.normalize_mode_shapes(M)
         
         return self.frequencies, self.mode_shapes
     
@@ -164,21 +166,70 @@ class ModalAnalysis:
         return phi @ K @ phi
     
     def calculate_participation_factor(self, M: np.ndarray, 
-                                      direction: np.ndarray, mode: int) -> float:
+                                      direction: np.ndarray, mode_idx: int) -> float:
         """
-        Calculate modal participation factor.
+        Calculate modal participation factor Γ_i.
         
-        Parameters:
-        -----------
-        M : np.ndarray
-            Mass matrix
-        direction : np.ndarray
-            Load direction vector
-        mode : int
-            Mode number
+        Γ_i = (φ_iᵀ M L) / (φ_iᵀ M φ_i)
+
+        If shapes are mass-normalized, denominator is 1.0.
         """
-        phi = self.mode_shapes[:, mode]
-        return (phi @ M @ direction) / (phi @ M @ phi)
+        phi = self.mode_shapes[:, mode_idx]
+        # Ensure direction is a vector of same size as M
+        L = direction
+        denom = phi @ M @ phi
+        if abs(denom) < 1e-12: return 0.0
+        return (phi @ M @ L) / denom
+
+    def calculate_effective_modal_mass(self, M: np.ndarray,
+                                      direction: np.ndarray, mode_idx: int) -> float:
+        """
+        Calculate effective modal mass m_eff_i.
+
+        m_eff_i = (φ_iᵀ M L)² / (φ_iᵀ M φ_i)
+        """
+        phi = self.mode_shapes[:, mode_idx]
+        L = direction
+        num = (phi @ M @ L)**2
+        den = (phi @ M @ phi)
+        if abs(den) < 1e-12: return 0.0
+        return num / den
+
+    def get_modal_participation_summary(self, M: np.ndarray) -> dict:
+        """
+        Calculate participation factors and effective masses for all solved modes.
+        Considers both X (axial) and Y (transverse) base excitation.
+        """
+        num_dofs = M.shape[0]
+        num_modes = len(self.frequencies)
+
+        # Influence vectors for base excitation (unit displacement at all nodes)
+        L_x = np.zeros(num_dofs); L_x[0::3] = 1.0
+        L_y = np.zeros(num_dofs); L_y[1::3] = 1.0
+
+        total_mass_x = L_x @ M @ L_x
+        total_mass_y = L_y @ M @ L_y
+
+        results = {
+            'total_mass_x': total_mass_x,
+            'total_mass_y': total_mass_y,
+            'modes': []
+        }
+
+        for i in range(num_modes):
+            mx_eff = self.calculate_effective_modal_mass(M, L_x, i)
+            my_eff = self.calculate_effective_modal_mass(M, L_y, i)
+
+            results['modes'].append({
+                'mode': i + 1,
+                'frequency': self.frequencies[i],
+                'mass_x': mx_eff,
+                'mass_y': my_eff,
+                'percent_x': mx_eff / total_mass_x if total_mass_x > 0 else 0,
+                'percent_y': my_eff / total_mass_y if total_mass_y > 0 else 0
+            })
+
+        return results
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ Handles node creation, element connectivity, and mesh refinement.
 """
 
 import numpy as np
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Union
 from dataclasses import dataclass
 
 
@@ -87,6 +87,7 @@ class Mesh:
         """Initialize empty mesh."""
         self.nodes: List[Node] = []
         self.elements: List[Element] = []
+        self.waypoint_nodes: List[int] = [] # Node IDs at segment boundaries
         self._node_counter = 0
         self._element_counter = 0
         self._elem_starts = None  # Cache for element search
@@ -239,7 +240,7 @@ class MeshGenerator:
     
     @staticmethod
     def line_mesh(start: Tuple[float, float], end: Tuple[float, float],
-                  num_elements: int) -> Mesh:
+                  num_elements: int) -> 'Mesh':
         """
         Generate a uniform mesh along a straight line.
         
@@ -274,7 +275,7 @@ class MeshGenerator:
     
     @staticmethod
     def beam_mesh_1d(length: float, num_elements: int,
-                     orientation: str = 'horizontal') -> Mesh:
+                     orientation: str = 'horizontal') -> 'Mesh':
         """
         Generate a 1D beam mesh (horizontal or vertical).
         
@@ -310,7 +311,7 @@ class MeshGenerator:
     
     @staticmethod
     def graded_mesh(start: Tuple[float, float], end: Tuple[float, float],
-                    num_elements: int, grading_ratio: float = 1.0) -> Mesh:
+                    num_elements: int, grading_ratio: float = 1.0) -> 'Mesh':
         """
         Generate a mesh with graded element sizes.
         
@@ -371,48 +372,123 @@ class MeshGenerator:
         return mesh
     
     @staticmethod
-    def multi_span_beam(span_lengths: List[float],
-                        elements_per_span: List[int]) -> Mesh:
+    def path_mesh(points: List[Tuple[float, float]],
+                  elements_per_segment: Union[int, List[int]],
+                  grading_ratios: Optional[Union[float, List[float]]] = None) -> 'Mesh':
         """
-        Generate mesh for a multi-span continuous beam.
-        
+        Generate a 2D mesh along a multi-point path (angled beams).
+
         Parameters:
         -----------
-        span_lengths : list
-            Length of each span (mm)
-        elements_per_span : list
-            Number of elements in each span
-            
+        points : list of (x, y) tuples
+            Waypoints for the beam structure.
+        elements_per_segment : int or list of int
+            Number of elements in each segment between points.
+        grading_ratios : float or list of float, optional
+            Grading ratio for each segment.
+
         Returns:
         --------
         mesh : Mesh
-            Generated mesh
+            The generated 2D beam mesh. `mesh.waypoint_nodes` contains IDs.
+        """
+        if len(points) < 2:
+            raise ValueError("Path must have at least 2 points.")
+
+        num_segments = len(points) - 1
+
+        # Standardize inputs to lists
+        if isinstance(elements_per_segment, int):
+            elements_per_segment = [elements_per_segment] * num_segments
+        if len(elements_per_segment) != num_segments:
+            raise ValueError(f"Expected {num_segments} element counts, got {len(elements_per_segment)}")
+
+        if grading_ratios is None:
+            grading_ratios = [1.0] * num_segments
+        elif isinstance(grading_ratios, float):
+            grading_ratios = [grading_ratios] * num_segments
+
+        mesh = Mesh()
+
+        # Add first waypoint
+        first_id = mesh.add_node(points[0][0], points[0][1])
+        mesh.waypoint_nodes.append(first_id)
+
+        current_node_id = first_id
+
+        for i in range(num_segments):
+            p1, p2 = points[i], points[i+1]
+            num_elem = elements_per_segment[i]
+            ratio = grading_ratios[i]
+
+            # Use graded_mesh logic for each segment
+            seg_mesh = MeshGenerator.graded_mesh(p1, p2, num_elem, ratio)
+
+            # Merge nodes and elements (skipping the first node of seg_mesh as it's the current_node_id)
+            # seg_mesh nodes: [0, 1, ..., num_elem]
+            # ID mapping for new nodes
+            node_map = {0: current_node_id}
+
+            for j in range(1, seg_mesh.num_nodes):
+                n = seg_mesh.nodes[j]
+                node_map[j] = mesh.add_node(n.x, n.y)
+
+            for e in seg_mesh.elements:
+                mesh.add_element(node_map[e.node1], node_map[e.node2])
+
+            current_node_id = node_map[seg_mesh.num_nodes - 1]
+            mesh.waypoint_nodes.append(current_node_id)
+
+        return mesh
+
+    @staticmethod
+    def multi_span_beam(span_lengths: List[Union[float, Tuple[float, float]]],
+                        elements_per_span: List[int],
+                        orientation: str = 'horizontal') -> 'Mesh':
+        """
+        Generate mesh for a multi-span continuous beam.
+
+        Parameters:
+        -----------
+        span_lengths : list of float or tuple
+            If float: Length of each span (mm). Orientation applies.
+            If tuple: (dx, dy) relative vector for each span.
+        elements_per_span : list of int
+            Number of elements in each span.
+        orientation : str
+            'horizontal' or 'vertical' (only used if span_lengths are floats).
+
+        Returns:
+        --------
+        mesh : Mesh
+            Generated mesh. `mesh.waypoint_nodes` contains support IDs.
         """
         if len(span_lengths) != len(elements_per_span):
             raise ValueError("span_lengths and elements_per_span must have same length")
-        
-        mesh = Mesh()
-        
-        current_x = 0.0
-        node_id = 0
-        
-        # First node
-        mesh.add_node(current_x, 0.0)
-        
-        for span_length, num_elem in zip(span_lengths, elements_per_span):
-            element_length = span_length / num_elem
-            
-            for i in range(num_elem):
-                current_x += element_length
-                next_node = mesh.add_node(current_x, 0.0)
-                mesh.add_element(node_id, next_node)
-                node_id = next_node
-        
-        return mesh
+
+        # Convert span definitions to waypoints
+        points = [(0.0, 0.0)]
+        curr_x, curr_y = 0.0, 0.0
+
+        for val in span_lengths:
+            if isinstance(val, (int, float)):
+                if orientation.lower() == 'horizontal':
+                    curr_x += val
+                else:
+                    curr_y += val
+            elif isinstance(val, (tuple, list, np.ndarray)) and len(val) == 2:
+                curr_x += val[0]
+                curr_y += val[1]
+            else:
+                raise TypeError(f"Invalid span definition: {val}. Expected float or (dx, dy).")
+
+            points.append((curr_x, curr_y))
+
+        return MeshGenerator.path_mesh(points, elements_per_span)
     
     @staticmethod
     def curved_beam(radius: float, start_angle: float, end_angle: float,
-                    num_elements: int) -> Mesh:
+                    num_elements: int) -> 'Mesh':
         """
         Generate mesh for a curved beam.
         
@@ -462,7 +538,7 @@ class MeshRefinement:
     """Mesh refinement utilities."""
     
     @staticmethod
-    def refine_uniform(mesh: Mesh, refinement_level: int = 1) -> Mesh:
+    def refine_uniform(mesh: 'Mesh', refinement_level: int = 1) -> 'Mesh':
         """
         Uniformly refine mesh by splitting each element.
         

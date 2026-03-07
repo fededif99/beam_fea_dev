@@ -11,7 +11,7 @@ from .mesh import Mesh, MeshGenerator
 from .materials import Material, get_material
 from .cross_sections import CrossSection, SectionProperties
 from .properties import PropertySet
-from .element_matrices import EulerBernoulliElement, TimoshenkoElement, SHEAR_CORRECTION_FACTOR
+from .element_matrices import EulerBernoulliElement, TimoshenkoElement
 from .boundary_conditions import BoundaryConditionSet
 from .loads import LoadCase
 from .static_analysis import StaticAnalysis
@@ -40,7 +40,7 @@ class BeamSolver:
         section : SectionProperties, optional
             Cross-section properties. Required if material is a Material object.
         element_type : str
-            'euler' or 'timoshenko'
+            'euler' or 'timoshenko' (default: 'euler')
         """
         self.mesh = mesh
         self.element_type = element_type.lower()
@@ -85,6 +85,7 @@ class BeamSolver:
         # Modal Results
         self.last_frequencies = None
         self.last_mode_shapes = None
+        self.last_modal_participation = None
         
         # Analysis objects
         self.static_solver = StaticAnalysis(use_sparse=True)
@@ -159,109 +160,45 @@ class BeamSolver:
                     # Timoshenko is fine but overkill for very slender beams
                     pass 
     
-    def _assemble_stiffness_matrix(self):
-        """Assemble global stiffness matrix only."""
+    def _assemble_system_matrices(self, assembly_type: str = 'both'):
+        """
+        Unified global matrix assembly for stiffness and mass.
+
+        Parameters:
+        -----------
+        assembly_type : str
+            'stiffness', 'mass', or 'both'
+        """
         from scipy.sparse import coo_matrix
+        from .element_matrices import UnifiedBeamElement, get_rotation_matrix
 
         num_dofs = self.mesh.num_dofs
         K_rows, K_cols, K_data = [], [], []
-
-        from .element_matrices import AnisotropicBeamElement
-        from .composites import Laminate
-
-        ElementClass = EulerBernoulliElement if self.element_type == 'euler' else TimoshenkoElement
-        coords = self.mesh.get_node_coords()
-
-        for elem in self.mesh.elements:
-            p1, p2 = coords[elem.node1], coords[elem.node2]
-            L = np.sqrt(np.sum((p2 - p1)**2))
-
-            # Determine properties for this element via collector
-            mat = self.properties.get_material(elem.id)
-            sec = self.properties.get_section(elem.id)
-
-            # Check for anisotropy (Laminate override)
-            if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
-                # Detect width from section (standardized sections have 'width')
-                width = getattr(sec, 'width', 1.0)
-                if hasattr(sec, 'diameter'): width = sec.diameter
-
-                EA, ES, EI = mat.get_sectional_stiffness(width)
-                rho_total = mat.rho * width * mat.total_thickness
-                # Timoshenko shear stiffness: κ · Gxy · (width × thickness)
-                props = mat.get_effective_properties()
-                GA_s = SHEAR_CORRECTION_FACTOR * props['Gxy'] * (width * mat.total_thickness)
-                element = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
-            else:
-                element = ElementClass(
-                    E=mat.E,
-                    G=mat.G,
-                    I=sec.Iy,
-                    A=sec.A,
-                    L=L,
-                    rho=mat.rho
-                )
-
-            k_local = element.stiffness_matrix()
-
-            dof_indices = np.array([
-                3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
-                3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2
-            ])
-            ii, jj = np.meshgrid(dof_indices, dof_indices, indexing='ij')
-
-            K_rows.append(ii.ravel())
-            K_cols.append(jj.ravel())
-            K_data.append(k_local.ravel())
-
-        self.K_global = coo_matrix(
-            (np.concatenate(K_data), (np.concatenate(K_rows), np.concatenate(K_cols))),
-            shape=(num_dofs, num_dofs)
-        ).tocsr()
-
-    def _assemble_mass_matrix(self):
-        """Assemble global mass matrix only (called lazily for modal analysis)."""
-        from scipy.sparse import coo_matrix
-
-        num_dofs = self.mesh.num_dofs
         M_rows, M_cols, M_data = [], [], []
 
-        from .element_matrices import AnisotropicBeamElement
-        from .composites import Laminate
-
-        ElementClass = EulerBernoulliElement if self.element_type == 'euler' else TimoshenkoElement
         coords = self.mesh.get_node_coords()
+        is_euler = (self.element_type == 'euler')
+        do_k = assembly_type in ['stiffness', 'both']
+        do_m = assembly_type in ['mass', 'both']
 
         for elem in self.mesh.elements:
             p1, p2 = coords[elem.node1], coords[elem.node2]
-            L = np.sqrt(np.sum((p2 - p1)**2))
+            dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+            L = np.sqrt(dx**2 + dy**2)
+            angle = np.arctan2(dy, dx)
+            T = get_rotation_matrix(angle)
 
-            # Determine properties for this element via collector
+            # Unified property retrieval
             mat = self.properties.get_material(elem.id)
             sec = self.properties.get_section(elem.id)
+            stiff = mat.get_sectional_stiffness(sec)
+            rho_lin = mat.get_linear_density(sec)
 
-            # Check for anisotropy
-            if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
-                width = getattr(sec, 'width', 1.0)
-                if hasattr(sec, 'diameter'): width = sec.diameter
-
-                EA, ES, EI = mat.get_sectional_stiffness(width)
-                rho_total = mat.rho * width * mat.total_thickness
-                # Timoshenko shear stiffness: κ · Gxy · (width × thickness)
-                props = mat.get_effective_properties()
-                GA_s = SHEAR_CORRECTION_FACTOR * props['Gxy'] * (width * mat.total_thickness)
-                element = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
-            else:
-                element = ElementClass(
-                    E=mat.E,
-                    G=mat.G,
-                    I=sec.Iy,
-                    A=sec.A,
-                    L=L,
-                    rho=mat.rho
-                )
-
-            m_local = element.mass_matrix()
+            element = UnifiedBeamElement(
+                EA=stiff['EA'], ES=stiff['ES'], EI=stiff['EI'],
+                L=L, rho_total=rho_lin, GA_s=stiff['GA_s'] * sec.shear_factor,
+                force_euler=is_euler
+            )
 
             dof_indices = np.array([
                 3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
@@ -269,24 +206,35 @@ class BeamSolver:
             ])
             ii, jj = np.meshgrid(dof_indices, dof_indices, indexing='ij')
 
-            M_rows.append(ii.ravel())
-            M_cols.append(jj.ravel())
-            M_data.append(m_local.ravel())
+            if do_k:
+                k_local = element.stiffness_matrix()
+                # Transform to global: K_global = T.T @ K_local @ T
+                k_global = T.T @ k_local @ T
+                K_rows.append(ii.ravel()); K_cols.append(jj.ravel()); K_data.append(k_global.ravel())
+            if do_m:
+                m_local = element.mass_matrix()
+                # Transform to global: M_global = T.T @ M_local @ T
+                m_global = T.T @ m_local @ T
+                M_rows.append(ii.ravel()); M_cols.append(jj.ravel()); M_data.append(m_global.ravel())
 
-        self.M_global = coo_matrix(
-            (np.concatenate(M_data), (np.concatenate(M_rows), np.concatenate(M_cols))),
-            shape=(num_dofs, num_dofs)
-        ).tocsr()
+        if do_k:
+            self.K_global = coo_matrix((np.concatenate(K_data), (np.concatenate(K_rows), np.concatenate(K_cols))),
+                                       shape=(num_dofs, num_dofs)).tocsr()
+        if do_m:
+            self.M_global = coo_matrix((np.concatenate(M_data), (np.concatenate(M_rows), np.concatenate(M_cols))),
+                                       shape=(num_dofs, num_dofs)).tocsr()
+
+    def _assemble_stiffness_matrix(self):
+        """Assemble global stiffness matrix."""
+        self._assemble_system_matrices(assembly_type='stiffness')
+
+    def _assemble_mass_matrix(self):
+        """Assemble global mass matrix."""
+        self._assemble_system_matrices(assembly_type='mass')
 
     def assemble_global_matrices(self):
-        """Assemble both global stiffness and mass matrices.
-
-        Calling this directly assembles both matrices upfront. In normal
-        workflows the solver assembles them lazily: K is built on the first
-        static or modal solve, M is built only when a modal solve is requested.
-        """
-        self._assemble_stiffness_matrix()
-        self._assemble_mass_matrix()
+        """Assemble both global stiffness and mass matrices upfront."""
+        self._assemble_system_matrices(assembly_type='both')
     
     def solve_static(self, load_case: LoadCase, bc_set: BoundaryConditionSet):
         """
@@ -341,6 +289,9 @@ class BeamSolver:
         self.last_bc_set = bc_set
         self.last_frequencies = frequencies
         self.last_mode_shapes = mode_shapes
+
+        # Calculate participation factors
+        self.last_modal_participation = self.modal_solver.get_modal_participation_summary(self.M_global)
 
         return frequencies, mode_shapes
     
@@ -413,7 +364,8 @@ class BeamSolver:
         return res
 
     
-    def generate_report(self, output_path: str, deformation_scale: Union[float, str] = 'auto'):
+    def generate_report(self, output_path: str, deformation_scale: Union[float, str] = 'auto',
+                        failure_criterion: str = 'tsai_wu'):
         """
         Generate a professional markdown report of the analysis.
         Images are saved to a ``<report_name>_images/`` folder alongside the report.
@@ -424,6 +376,9 @@ class BeamSolver:
             Path to save the report (e.g., 'report.md')
         deformation_scale : float or 'auto', optional
             Scale factor for deformed shape plots. Default is 'auto'.
+        failure_criterion : str, optional
+            Failure criterion for composite plies: 'max_stress', 'tsai_hill', or 'tsai_wu'.
+            Default is 'tsai_wu'.
         """
         if self.displacements is None and self.last_frequencies is None:
             raise ValueError("Must run solve_static() or solve_modal() before generating a report")
@@ -438,7 +393,8 @@ class BeamSolver:
             load_case=self.last_load_case,
             bc_set=self.last_bc_set,
             displacements=self.displacements,
-            reactions=self.reactions
+            reactions=self.reactions,
+            failure_criterion=failure_criterion
         )
         
         # Add modal results if available

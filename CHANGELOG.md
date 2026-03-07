@@ -4,10 +4,27 @@ All notable changes to the `beam_fea` project will be documented in this file.
 
 ## [v2.4.11] - 2026-03-07
 
-- **Reporting**: Significantly enhanced ply-by-ply stress reporting.
-- **Reporting**: Added columns for Maximum Shear ($\tau_{xy}$), Von Mises, and Maximum Principal ($\sigma_1$) stresses for each ply.
-- **Reporting**: Updated report logic to aggregate absolute peak stresses across all elements and stations for each ply, providing a true worst-case summary.
-- **Post-Processing**: Updated `StressEngine` to calculate 2D plane stress Von Mises and Principal stresses at ply boundaries.
+- **Analysis**: Implemented high-fidelity **Ply-by-Ply Stress Recovery** at multiple depths (Top, Mid, Bottom) per ply.
+- **Analysis**: Added transformation of stresses to **Local Material Coordinates** ($\sigma_1, \sigma_2, \tau_{12}$) for all composite plies.
+- **Analysis**: Implemented multiple **Failure Criteria** for composites: Maximum Stress, Tsai-Hill, and Tsai-Wu.
+- **Analysis**: Added axial and bending decomposition for longitudinal stress ($\sigma_x$).
+- **Reporting**: Overhauled the ply stress summary table in Markdown reports to include local stresses and selectable failure indices.
+- **API**: Enhanced `BeamSolver.generate_report` to allow user selection of the failure criterion.
+- **Refactor**: Unified the element stiffness and mass matrix architecture under `UnifiedBeamElement`.
+- **Refactor**: Standardized the constitutive interface across `Material` and `Laminate` via `get_sectional_stiffness`.
+- **Refactor**: Unified through-thickness stress recovery logic in `StressEngine` by treating isotropic materials as single-ply laminates.
+- **Cleanup**: Eliminated ad-hoc special casing for composite laminates in the global assembly and post-processing loops.
+- **Docs**: Comprehensive update to `README.md` and `THEORY.md` documenting the unified architecture, advanced CLT recovery, and failure criteria.
+- **Examples**: Updated all example scripts and templates (Static, Modal, Multi-Property) to reflect the latest high-fidelity composite and unified architecture capabilities.
+- **Mesh**: Introduced `MeshGenerator.path_mesh` for creating general 2D angled beam meshes from a list of waypoints.
+- **Mesh**: Updated `multi_span_beam` to use the unified path kernel and support relative 2D coordinate vectors `(dx, dy)`.
+- **Mesh**: Added `waypoint_nodes` to the `Mesh` class to track support/segment boundaries automatically.
+- **Solver**: Implemented general 2D element rotation support, enabling the analysis of angled frames and cranked beams.
+- **Post-Processing**: Updated internal force and stress recovery to handle angled elements via global-to-local coordinate transformations.
+- **Visualization**: Enhanced `BeamVisualizer` and `BeamReportGenerator` to correctly render angled beams, maintaining aspect ratios and using path-length axes for force diagrams.
+- **Modal**: Implemented automatic mass-normalization of mode shapes.
+- **Modal**: Added calculation of effective modal masses and participation factors for both X and Y directions.
+- **Modal**: Enhanced reports with detailed "Modal Properties & Mass Participation" tables including cumulative mass.
 
 ## [v2.4.10] - 2026-03-07
 

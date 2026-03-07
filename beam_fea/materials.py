@@ -75,6 +75,44 @@ class Material:
             and self.ultimate_strength < self.yield_strength):
             raise ValueError(f"Ultimate strength ({self.ultimate_strength}) must be >= yield strength ({self.yield_strength})")
     
+    def get_sectional_stiffness(self, section) -> dict:
+        """
+        Calculate sectional stiffness for isotropic material.
+
+        Parameters:
+        -----------
+        section : SectionProperties
+            Cross-section properties
+
+        Returns:
+        --------
+        stiffness : dict
+            {'EA': float, 'ES': 0.0, 'EI': float, 'GA_s': float}
+        """
+        EA = self.E * section.A
+        ES = 0.0
+        EI = self.E * section.Iy
+        # Note: Shear correction factor (kappa) is applied at the element/solver level
+        GA_s = self.G * section.A
+
+        return {'EA': EA, 'ES': ES, 'EI': EI, 'GA_s': GA_s}
+
+    def get_linear_density(self, section) -> float:
+        """
+        Calculate mass per unit length.
+
+        Parameters:
+        -----------
+        section : SectionProperties
+            Cross-section properties
+
+        Returns:
+        --------
+        rho_lin : float
+            Linear mass density (kg/mm)
+        """
+        return self.rho * section.A
+
     def __str__(self):
         return (f"Material: {self.name}\n"
                 f"  E = {self.E:.2e} MPa\n"
