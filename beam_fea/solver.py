@@ -169,7 +169,7 @@ class BeamSolver:
             'stiffness', 'mass', or 'both'
         """
         from scipy.sparse import coo_matrix
-        from .element_matrices import UnifiedBeamElement
+        from .element_matrices import UnifiedBeamElement, get_rotation_matrix
 
         num_dofs = self.mesh.num_dofs
         K_rows, K_cols, K_data = [], [], []
@@ -182,7 +182,10 @@ class BeamSolver:
 
         for elem in self.mesh.elements:
             p1, p2 = coords[elem.node1], coords[elem.node2]
-            L = np.sqrt(np.sum((p2 - p1)**2))
+            dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+            L = np.sqrt(dx**2 + dy**2)
+            angle = np.arctan2(dy, dx)
+            T = get_rotation_matrix(angle)
 
             # Unified property retrieval
             mat = self.properties.get_material(elem.id)
@@ -204,10 +207,14 @@ class BeamSolver:
 
             if do_k:
                 k_local = element.stiffness_matrix()
-                K_rows.append(ii.ravel()); K_cols.append(jj.ravel()); K_data.append(k_local.ravel())
+                # Transform to global: K_global = T.T @ K_local @ T
+                k_global = T.T @ k_local @ T
+                K_rows.append(ii.ravel()); K_cols.append(jj.ravel()); K_data.append(k_global.ravel())
             if do_m:
                 m_local = element.mass_matrix()
-                M_rows.append(ii.ravel()); M_cols.append(jj.ravel()); M_data.append(m_local.ravel())
+                # Transform to global: M_global = T.T @ M_local @ T
+                m_global = T.T @ m_local @ T
+                M_rows.append(ii.ravel()); M_cols.append(jj.ravel()); M_data.append(m_global.ravel())
 
         if do_k:
             self.K_global = coo_matrix((np.concatenate(K_data), (np.concatenate(K_rows), np.concatenate(K_cols))),

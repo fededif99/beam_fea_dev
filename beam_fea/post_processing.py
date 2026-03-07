@@ -130,18 +130,22 @@ class InternalForceEngine:
 
         element_dist_loads = InternalForceEngine._get_element_dist_loads(solver)
 
-        from .element_matrices import UnifiedBeamElement
+        from .element_matrices import UnifiedBeamElement, get_rotation_matrix
         coords = solver.mesh.get_node_coords()
         is_euler = (solver.element_type == 'euler')
 
         for eid, indices in points_by_element.items():
             elem = solver.mesh.elements[eid]
             p1, p2 = coords[elem.node1], coords[elem.node2]
-            x1, L = p1[0], np.sqrt(np.sum((p2 - p1)**2))
+            dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+            x1, L = p1[0], np.sqrt(dx**2 + dy**2)
+            angle = np.arctan2(dy, dx)
+            T = get_rotation_matrix(angle)
 
             dof_indices = [3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
                            3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2]
-            u_local = solver.displacements[dof_indices]
+            # Transform global displacements to local: u_local = T @ u_global
+            u_local = T @ solver.displacements[dof_indices]
 
             xi = np.clip((positions[indices] - x1) / L, 0, 1) if L > 0 else np.zeros(len(indices))
 
@@ -241,7 +245,16 @@ class StressEngine:
 
         profile_cache = {}
 
+        from .element_matrices import get_rotation_matrix
+        coords = solver.mesh.get_node_coords()
+
         for eid, indices in points_by_element.items():
+            elem = solver.mesh.elements[eid]
+            p1, p2 = coords[elem.node1], coords[elem.node2]
+            dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+            angle = np.arctan2(dy, dx)
+            T = get_rotation_matrix(angle)
+
             mat = solver.properties.get_material(eid)
             sec = solver.properties.get_section(eid)
             sec_id = id(sec)
@@ -251,7 +264,15 @@ class StressEngine:
 
             mask, t_yz, Q_yz = profile_cache[sec_id]
 
-            # --- Unified Through-Thickness Recovery ---
+            # --- Rotate Load Vectors for Angled Beams ---
+            # Midplane resultants (N, V, M) are in global coords.
+            # We need them in local element axes for CLT stress recovery.
+            # Local Force Vector [n_local; m_local] = T @ [n_global; m_global]
+            # Actually, standard beam internal force vectors are already local in our strategy.
+            # But the 'midplane resultants' logic here builds vectors from N_x, V_x, M_x.
+            # Are N_x, V_x local or global?
+            # In InternalForceEngine, they are LOCAL (axial, shear, moment).
+            # So no extra rotation needed here if N_x, V_x are already local.
             # Treat Isotropic as a 1-ply laminate for code unification
             from .composites import Laminate, Ply
             if not hasattr(mat, 'plies'):

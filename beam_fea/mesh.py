@@ -442,21 +442,22 @@ class MeshGenerator:
         return mesh
 
     @staticmethod
-    def multi_span_beam(span_lengths: List[float],
+    def multi_span_beam(span_lengths: List[Union[float, Tuple[float, float]]],
                         elements_per_span: List[int],
                         orientation: str = 'horizontal') -> 'Mesh':
         """
         Generate mesh for a multi-span continuous beam.
-        
+
         Parameters:
         -----------
-        span_lengths : list
-            Length of each span (mm)
-        elements_per_span : list
-            Number of elements in each span
+        span_lengths : list of float or tuple
+            If float: Length of each span (mm). Orientation applies.
+            If tuple: (dx, dy) relative vector for each span.
+        elements_per_span : list of int
+            Number of elements in each span.
         orientation : str
-            'horizontal' or 'vertical'
-            
+            'horizontal' or 'vertical' (only used if span_lengths are floats).
+
         Returns:
         --------
         mesh : Mesh
@@ -464,16 +465,24 @@ class MeshGenerator:
         """
         if len(span_lengths) != len(elements_per_span):
             raise ValueError("span_lengths and elements_per_span must have same length")
-            
-        # Convert span lengths to waypoints
+
+        # Convert span definitions to waypoints
         points = [(0.0, 0.0)]
-        current_val = 0.0
-        for L in span_lengths:
-            current_val += L
-            if orientation.lower() == 'horizontal':
-                points.append((current_val, 0.0))
+        curr_x, curr_y = 0.0, 0.0
+
+        for val in span_lengths:
+            if isinstance(val, (int, float)):
+                if orientation.lower() == 'horizontal':
+                    curr_x += val
+                else:
+                    curr_y += val
+            elif isinstance(val, (tuple, list, np.ndarray)) and len(val) == 2:
+                curr_x += val[0]
+                curr_y += val[1]
             else:
-                points.append((0.0, current_val))
+                raise TypeError(f"Invalid span definition: {val}. Expected float or (dx, dy).")
+
+            points.append((curr_x, curr_y))
 
         return MeshGenerator.path_mesh(points, elements_per_span)
     

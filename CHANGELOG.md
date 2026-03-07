@@ -19,6 +19,9 @@ All notable changes to the `beam_fea` project will be documented in this file.
 - **Mesh**: Introduced `MeshGenerator.path_mesh` for creating general 2D angled beam meshes from a list of waypoints.
 - **Mesh**: Updated `multi_span_beam` to use the unified path kernel and support orientation.
 - **Mesh**: Added `waypoint_nodes` to the `Mesh` class to track support/segment boundaries automatically.
+- **Mesh**: Enhanced `multi_span_beam` to accept relative 2D coordinate vectors `(dx, dy)` for each span.
+- **Solver**: Implemented element rotation support, enabling the analysis of angled frames and cranked beams.
+- **Post-Processing**: Updated internal force and stress recovery to handle angled elements via global-to-local coordinate transformations.
 
 ## [v2.4.10] - 2026-03-07
 

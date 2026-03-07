@@ -521,6 +521,35 @@ class TimoshenkoElement(UnifiedBeamElement):
 AnisotropicBeamElement = UnifiedBeamElement
 
 
+def get_rotation_matrix(angle_rad: float) -> np.ndarray:
+    """
+    Create a 6x6 rotation matrix for a 2D beam element.
+
+    Transforms local DOFs [u1, v1, th1, u2, v2, th2] to global.
+    T = [
+        [ c  s  0  0  0  0 ]
+        [-s  c  0  0  0  0 ]
+        [ 0  0  1  0  0  0 ]
+        [ 0  0  0  c  s  0 ]
+        [ 0  0  0 -s  c  0 ]
+        [ 0  0  0  0  0  1 ]
+    ]
+    """
+    c = np.cos(angle_rad)
+    s = np.sin(angle_rad)
+
+    R = np.array([
+        [ c, s, 0],
+        [-s, c, 0],
+        [ 0, 0, 1]
+    ])
+
+    T = np.zeros((6, 6))
+    T[0:3, 0:3] = R
+    T[3:6, 3:6] = R
+    return T
+
+
 def calculate_shear_correction_factor(section_type: str) -> float:
     """
     Get shear correction factor for common cross-sections.
