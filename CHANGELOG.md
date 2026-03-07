@@ -10,6 +10,7 @@ All notable changes to the `beam_fea` project will be documented in this file.
 - **Reporting**: Overhauled `BeamReportGenerator` to use **Pandas** for all table formatting, significantly improving report layout and maintainability.
 - **API**: Enhanced `Load` classes to support string placeholders for parametric studies.
 - **API**: Added `export_results()` to `BeamSolver` for exporting batch analysis summaries to CSV.
+- **Examples**: Added `examples/ex08_batch_analysis.py` and `examples/template_batch.py` to demonstrate the new batch capabilities.
 - **Dependencies**: Added `pandas` and `tabulate` as required dependencies for enhanced data handling and markdown reporting.
 
 ## [v2.4.11] - 2026-03-07
