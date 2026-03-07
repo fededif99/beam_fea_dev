@@ -2,6 +2,14 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.4.8] - 2026-03-07
+
+- **Visualization**: Major overhaul of `plot_laminate_stackup` for academic and research quality.
+- **Visualization**: Implemented a professional "Muted Engineering" color palette inspired by standard FEM software and scientific publications.
+- **Visualization**: Fixed rosette text clashing by implementing intelligent radial label offsets and unobtrusive axis markers.
+- **Visualization**: Standardized the orientation legend with fixed-size square markers to prevent layout overflow.
+- **Visualization**: Redesigned the laminate summary as a clean "Technical Data" block with a minimalist aesthetic.
+
 ## [v2.4.7] - 2026-03-07
 
 - **Visualization**: Performed an aesthetic overhaul of `plot_laminate_stackup` featuring a vivid, premium color palette for orientations.
