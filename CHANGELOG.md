@@ -17,11 +17,11 @@ All notable changes to the `beam_fea` project will be documented in this file.
 - **Docs**: Comprehensive update to `README.md` and `THEORY.md` documenting the unified architecture, advanced CLT recovery, and failure criteria.
 - **Examples**: Updated all example scripts and templates (Static, Modal, Multi-Property) to reflect the latest high-fidelity composite and unified architecture capabilities.
 - **Mesh**: Introduced `MeshGenerator.path_mesh` for creating general 2D angled beam meshes from a list of waypoints.
-- **Mesh**: Updated `multi_span_beam` to use the unified path kernel and support orientation.
+- **Mesh**: Updated `multi_span_beam` to use the unified path kernel and support relative 2D coordinate vectors `(dx, dy)`.
 - **Mesh**: Added `waypoint_nodes` to the `Mesh` class to track support/segment boundaries automatically.
-- **Mesh**: Enhanced `multi_span_beam` to accept relative 2D coordinate vectors `(dx, dy)` for each span.
-- **Solver**: Implemented element rotation support, enabling the analysis of angled frames and cranked beams.
+- **Solver**: Implemented general 2D element rotation support, enabling the analysis of angled frames and cranked beams.
 - **Post-Processing**: Updated internal force and stress recovery to handle angled elements via global-to-local coordinate transformations.
+- **Visualization**: Enhanced `BeamVisualizer` and `BeamReportGenerator` to correctly render angled beams, maintaining aspect ratios and using path-length axes for force diagrams.
 
 ## [v2.4.10] - 2026-03-07
 

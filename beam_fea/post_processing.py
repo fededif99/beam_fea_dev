@@ -79,31 +79,65 @@ class StationEvaluator:
     def get_evaluation_plan(solver, num_points: int = None) -> dict:
         """
         Groups global evaluation points into element-local stations.
+        Now supports path-length evaluation for angled beams.
 
         Returns:
         --------
         plan : dict
-            {positions, points_by_element}
+            {positions, points_by_element, path_lengths}
         """
         mesh = solver.mesh
         coords = mesh.get_node_coords()
-        x_min, x_max = np.min(coords[:, 0]), np.max(coords[:, 0])
+
+        # Calculate cumulative path length along the beam
+        element_lengths = []
+        path_coords = [0.0]
+        for elem in mesh.elements:
+            p1, p2 = coords[elem.node1], coords[elem.node2]
+            L = np.sqrt(np.sum((p2 - p1)**2))
+            element_lengths.append(L)
+            path_coords.append(path_coords[-1] + L)
+
+        total_length = path_coords[-1]
 
         if num_points is None:
-            positions = np.sort(coords[:, 0])
+            # Use node locations
+            path_positions = np.array(path_coords)
         else:
-            positions = np.linspace(x_min, x_max, num_points)
+            path_positions = np.linspace(0, total_length, num_points)
 
+        # Map path positions back to element IDs and local coordinates
         points_by_element = {}
-        for i, x in enumerate(positions):
-            eid = mesh.find_element_at_x(x)
-            if eid == -1:
-                eid = 0 if x <= x_min else mesh.num_elements - 1
-            if eid not in points_by_element:
-                points_by_element[eid] = []
-            points_by_element[eid].append(i)
+        positions_xyz = np.zeros((len(path_positions), 3))
 
-        return {'positions': positions, 'points_by_element': points_by_element}
+        curr_path_idx = 0
+        for eid, elem in enumerate(mesh.elements):
+            s_start = path_coords[eid]
+            s_end = path_coords[eid+1]
+            L = element_lengths[eid]
+
+            # Find points that fall within this segment
+            if eid == mesh.num_elements - 1:
+                mask = (path_positions >= s_start) & (path_positions <= s_end)
+            else:
+                mask = (path_positions >= s_start) & (path_positions < s_end)
+
+            indices = np.where(mask)[0]
+            if len(indices) > 0:
+                points_by_element[eid] = list(indices)
+
+                # Interpolate global coordinates for these points
+                p1, p2 = coords[elem.node1], coords[elem.node2]
+                xi = (path_positions[indices] - s_start) / L if L > 0 else np.zeros(len(indices))
+                for j, idx in enumerate(indices):
+                    positions_xyz[idx] = p1 + xi[j] * (p2 - p1)
+
+        return {
+            'positions': positions_xyz[:, 0], # X for backward compatibility
+            'positions_xyz': positions_xyz,
+            'path_positions': path_positions,
+            'points_by_element': points_by_element
+        }
 
 
 class InternalForceEngine:
@@ -116,6 +150,7 @@ class InternalForceEngine:
 
         eval_plan = StationEvaluator.get_evaluation_plan(solver, num_points)
         positions = eval_plan['positions']
+        path_positions = eval_plan['path_positions']
         points_by_element = eval_plan['points_by_element']
 
         eval_count = len(positions)
@@ -147,7 +182,15 @@ class InternalForceEngine:
             # Transform global displacements to local: u_local = T @ u_global
             u_local = T @ solver.displacements[dof_indices]
 
-            xi = np.clip((positions[indices] - x1) / L, 0, 1) if L > 0 else np.zeros(len(indices))
+            # Use path coordinates for xi instead of purely X to support angled beams
+            s_start = eval_plan['path_positions'][indices[0]] # Approximate start of stations
+            # Actually better to use the mapped global coords from xyz
+            xi = np.clip((path_positions[indices] - path_positions[indices[0]] + (coords[elem.node1, 0] - coords[elem.node1, 0])) / L, 0, 1)
+            # Re-derive xi correctly from xyz positions
+            stations_xyz = eval_plan['positions_xyz'][indices]
+            # dist from node 1
+            dist_from_n1 = np.sqrt(np.sum((stations_xyz - coords[elem.node1])**2, axis=1))
+            xi = np.clip(dist_from_n1 / L, 0, 1) if L > 0 else np.zeros(len(indices))
 
             mat = solver.properties.get_material(elem.id)
             sec = solver.properties.get_section(elem.id)
@@ -169,6 +212,7 @@ class InternalForceEngine:
 
         return {
             'positions': positions,
+            'path_positions': path_positions,
             'axial_forces': axial_forces,
             'shear_forces': shear_forces,
             'bending_moments': bending_moments
@@ -238,6 +282,7 @@ class StressEngine:
         points_by_element = eval_plan['points_by_element']
 
         eval_x_count = len(x_positions)
+        x_positions = eval_plan['path_positions'] # Use path length for X in stresses too
         shape_3d = (eval_x_count, num_y_points, num_z_points)
 
         sigma_a, sigma_b, tau_s, sigma_vm = [np.zeros(shape_3d) for _ in range(4)]

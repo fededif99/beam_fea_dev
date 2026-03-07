@@ -30,15 +30,21 @@ class BeamVisualizer:
     def _auto_scale_factor(self, displacements: np.ndarray) -> float:
         """Calculate automatic scaling factor."""
         coords = self.mesh.get_node_coords()
-        beam_length = np.max(coords[:, 0]) - np.min(coords[:, 0])
+        # Characteristic dimension for scaling (max span)
+        dx_max = np.max(coords[:, 0]) - np.min(coords[:, 0])
+        dy_max = np.max(coords[:, 1]) - np.min(coords[:, 1])
+        beam_length = max(dx_max, dy_max)
         
-        v_displ = displacements[1::3]
-        max_def = np.max(np.abs(v_displ))
+        # Consider absolute displacement magnitude for general 2D structures
+        u = displacements[0::3]
+        v = displacements[1::3]
+        mag = np.sqrt(u**2 + v**2)
+        max_def = np.max(mag)
         
         if max_def < 1e-10:
             return 1.0
         
-        target = 0.02 * beam_length
+        target = 0.05 * beam_length
         scale = target / max_def
         
         # Round to nice value
@@ -95,6 +101,12 @@ class BeamVisualizer:
         y_scale = x_scale
         y_unit = x_unit
 
+        # Adjust figsize based on beam aspect ratio if default is used
+        dx_max = np.max(coords[:, 0]) - np.min(coords[:, 0])
+        dy_max = np.max(coords[:, 1]) - np.min(coords[:, 1])
+        if dy_max > 1.5 * dx_max and figsize == (12, 6):
+            figsize = (6, 10) # Swap to vertical portrait layout
+
         fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
 
         if show_undeformed:
@@ -127,24 +139,40 @@ class BeamVisualizer:
                         frequency: float, scale: float = 1.0, 
                         figsize: Optional[Tuple] = None, dpi: int = 150,
                         output_path: Optional[str] = None):
-        """Plot a mode shape."""
+        """Plot a mode shape (2D supported)."""
         st = DEFAULT_STYLE
         fs = figsize or st.figsize_wide
         coords = self.mesh.get_node_coords()
+        
+        # Characteristic length for normalization
+        dx_max = np.max(coords[:, 0]) - np.min(coords[:, 0])
+        dy_max = np.max(coords[:, 1]) - np.min(coords[:, 1])
+        ref_length = max(dx_max, dy_max)
+        x_scale, x_unit = smart_units(ref_length, 'length')
+
+        # Modal displacements
+        u_mode = mode_shape[0::3] * scale
         v_mode = mode_shape[1::3] * scale
         
-        beam_length = np.max(coords[:, 0]) - np.min(coords[:, 0])
-        x_scale, x_unit = smart_units(beam_length, 'length')
-        
+        deformed = coords.copy()
+        deformed[:, 0] += u_mode
+        deformed[:, 1] += v_mode
+
         fig, ax = plt.subplots(figsize=fs, dpi=dpi)
         
-        ax.plot(coords[:, 0] / x_scale, v_mode, color=st.colour_deformed, linewidth=st.line_width)
+        # Plot undeformed center-line
+        ax.plot(coords[:, 0] / x_scale, coords[:, 1] / x_scale, '--',
+                color=st.colour_undeformed, alpha=0.3, linewidth=1)
         
-        ax.axhline(0, color=st.colour_zero_line, linewidth=1)
-        ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
-        ax.set_ylabel('Modal Amplitude', fontsize=st.label_fontsize)
+        # Plot mode shape
+        ax.plot(deformed[:, 0] / x_scale, deformed[:, 1] / x_scale,
+                color=st.colour_deformed, linewidth=st.line_width, label=f'Mode {mode_num}')
+
+        ax.set_xlabel(f'X Position ({x_unit})', fontsize=st.label_fontsize)
+        ax.set_ylabel(f'Y Position ({x_unit})', fontsize=st.label_fontsize)
         ax.set_title(f'Mode Shape {mode_num} - {frequency:.2f} Hz', fontsize=st.title_fontsize, weight='bold')
         ax.grid(True, alpha=st.grid_alpha)
+        ax.set_aspect('equal')
         
         plt.tight_layout()
         

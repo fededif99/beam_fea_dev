@@ -33,6 +33,9 @@ def run_angled_frame_demo():
     # Applying a horizontal force at the top of the 'column'
     load.point_load(node=mesh.waypoint_nodes[2], fx=10000) # 10 kN rightward
 
+    # Let's also add a vertical point load at the elbow for variety
+    load.point_load(node=mesh.waypoint_nodes[1], fy=-5000) # 5 kN downward
+
     # 4. Solve
     solver.solve_static(load, bc)
 

@@ -80,6 +80,7 @@ class BeamReportGenerator:
         # Ensure we use high-fidelity recovery for the report diagrams
         results = self.solver.calculate_internal_forces(num_points, strategy='consistent')
         self.positions = results['positions']
+        self.path_positions = results.get('path_positions', self.positions)
         self.shear_forces = results['shear_forces']
         self.bending_moments = results['bending_moments']
     
@@ -287,7 +288,7 @@ class BeamReportGenerator:
 
     def plot_structure_diagram(self, output_path: str, dpi: int = 150):
         """
-        Plot beam structure with boundary conditions and loads.
+        Plot beam structure with boundary conditions and loads (2D supported).
 
         Boundary conditions are drawn as engineering-standard glyphs:
         - Fixed  : hatched wall rectangle
@@ -303,9 +304,11 @@ class BeamReportGenerator:
         """
         st = DEFAULT_STYLE
         coords = self.mesh.get_node_coords()
-        beam_length = coords[:, 0].max() - coords[:, 0].min()
+        dx_max = coords[:, 0].max() - coords[:, 0].min()
+        dy_max = coords[:, 1].max() - coords[:, 1].min()
+        beam_length = max(dx_max, dy_max)
 
-        # Scale things relative to beam length in scaled units
+        # Scale things relative to characteristic beam dimension
         x_scale, x_unit = smart_units(beam_length, 'length')
         L_scaled = beam_length / x_scale
         
@@ -315,9 +318,9 @@ class BeamReportGenerator:
         fig, ax = plt.subplots(figsize=st.figsize_structure, dpi=dpi)
 
         # ---- Beam line -------------------------------------------------
-        ax.plot(coords[:, 0] / x_scale, coords[:, 1], '-',
+        ax.plot(coords[:, 0] / x_scale, coords[:, 1] / x_scale, '-',
                 color=st.colour_primary, linewidth=st.beam_line_width, label='Beam', zorder=2)
-        ax.plot(coords[:, 0] / x_scale, coords[:, 1], 'o',
+        ax.plot(coords[:, 0] / x_scale, coords[:, 1] / x_scale, 'o',
                 color=st.colour_primary, markersize=5, zorder=2)
 
         # ---- Characteristic height for glyph sizing --------------------
@@ -329,7 +332,7 @@ class BeamReportGenerator:
         for bc in self.bc_set.conditions:
             node_id = bc.node
             x = coords[node_id, 0] / x_scale
-            y = coords[node_id, 1]
+            y = coords[node_id, 1] / x_scale
 
             if isinstance(bc, FixedSupport):
                 # Decide which side the wall is on
@@ -374,14 +377,16 @@ class BeamReportGenerator:
             for load in self.load_case.loads:
                 if isinstance(load, PointLoad):
                     if load.node is not None:
-                        x_raw, y_pt = coords[load.node, 0], coords[load.node, 1]
+                        x_raw, y_raw = coords[load.node, 0], coords[load.node, 1]
                     elif load.x is not None:
-                        x_raw, y_pt = load.x, 0.0
+                        # For angled beams, coordinate loads are tricky.
+                        # We resolve x only for horizontal beams.
+                        x_raw, y_raw = load.x, 0.0
                     else:
                         continue
-                    if not (coords[:, 0].min() <= x_raw <= coords[:, 0].max()):
-                        continue
+
                     x_pt = x_raw / x_scale
+                    y_pt = y_raw / x_scale
 
                     x_key = round(x_pt, 4)
 
@@ -478,7 +483,9 @@ class BeamReportGenerator:
         """
         st = DEFAULT_STYLE
         coords = self.mesh.get_node_coords()
-        beam_length = coords[:, 0].max() - coords[:, 0].min()
+        dx_max = coords[:, 0].max() - coords[:, 0].min()
+        dy_max = coords[:, 1].max() - coords[:, 1].min()
+        beam_length = max(dx_max, dy_max)
 
         # Scale relative to scaled beam length
         x_scale, x_unit = smart_units(beam_length, 'length')
@@ -491,9 +498,9 @@ class BeamReportGenerator:
         fig, ax = plt.subplots(figsize=st.figsize_structure, dpi=dpi)
 
         # ---- Beam line -------------------------------------------------
-        ax.plot(coords[:, 0] / x_scale, coords[:, 1], '-',
+        ax.plot(coords[:, 0] / x_scale, coords[:, 1] / x_scale, '-',
                 color=st.colour_primary, linewidth=st.beam_line_width, label='Beam', zorder=2)
-        ax.plot(coords[:, 0] / x_scale, coords[:, 1], 'o',
+        ax.plot(coords[:, 0] / x_scale, coords[:, 1] / x_scale, 'o',
                 color=st.colour_primary, markersize=5, zorder=2)
 
         # ---- Load scaling (per-component) including reactions ----------
@@ -528,7 +535,7 @@ class BeamReportGenerator:
         for i, bc in enumerate(self.bc_set.conditions):
             node_id = bc.node
             x_pt = coords[node_id, 0] / x_scale
-            y_pt = coords[node_id, 1]
+            y_pt = coords[node_id, 1] / x_scale
             x_key = round(x_pt, 4)
 
             if isinstance(bc, (PinnedSupport, RollerSupport, FixedSupport)):
@@ -574,11 +581,11 @@ class BeamReportGenerator:
         if self.load_case:
             for load in self.load_case.loads:
                 if isinstance(load, PointLoad):
-                    if load.node is not None: x_raw, y_pt = coords[load.node, 0], coords[load.node, 1]
-                    elif load.x is not None: x_raw, y_pt = load.x, 0.0
+                    if load.node is not None: x_raw, y_raw = coords[load.node, 0], coords[load.node, 1]
+                    elif load.x is not None: x_raw, y_raw = load.x, 0.0
                     else: continue
-                    if not (coords[:, 0].min() <= x_raw <= coords[:, 0].max()): continue
                     x_pt = x_raw / x_scale
+                    y_pt = y_raw / x_scale
                     x_key = round(x_pt, 4)
 
                     if abs(load.fy) > 1e-10:
@@ -689,12 +696,14 @@ class BeamReportGenerator:
         if self.shear_forces is None:
             self.calculate_internal_forces()
 
-        beam_length = self.positions[-1] - self.positions[0]
+        # Use path positions for angled beams
+        path_pos = getattr(self, 'path_positions', self.positions)
+        beam_length = path_pos[-1] - path_pos[0]
         x_scale, x_unit = smart_units(beam_length, 'length')
         max_abs_V = np.max(np.abs(self.shear_forces))
         v_scale, v_unit = smart_units(max_abs_V, 'force')
 
-        pos_scaled = self.positions / x_scale
+        pos_scaled = path_pos / x_scale
         V_scaled   = self.shear_forces / v_scale
 
         fig, ax = plt.subplots(figsize=st.figsize_wide, dpi=dpi)
@@ -754,12 +763,14 @@ class BeamReportGenerator:
         if self.bending_moments is None:
             self.calculate_internal_forces()
 
-        beam_length = self.positions[-1] - self.positions[0]
+        # Use path positions for angled beams
+        path_pos = getattr(self, 'path_positions', self.positions)
+        beam_length = path_pos[-1] - path_pos[0]
         x_scale, x_unit = smart_units(beam_length, 'length')
         max_abs_M = np.max(np.abs(self.bending_moments))
         m_scale, m_unit = smart_units(max_abs_M, 'moment')
 
-        pos_scaled = self.positions / x_scale
+        pos_scaled = path_pos / x_scale
         M_scaled   = self.bending_moments / m_scale
 
         fig, ax = plt.subplots(figsize=st.figsize_wide, dpi=dpi)
@@ -797,7 +808,8 @@ class BeamReportGenerator:
                 lbl.set_color(st.colour_max)
                 lbl.set_weight('bold')
 
-        ax.set_xlabel(f'Position ({x_unit})', fontsize=st.label_fontsize)
+        ax.set_xlabel(f'Path Position ({x_unit})', fontsize=st.label_fontsize)
+        ax.set_xlabel(f'Path Position ({x_unit})', fontsize=st.label_fontsize)
         ax.set_ylabel(f'Bending Moment ({m_unit})', fontsize=st.label_fontsize)
         ax.set_title('Bending Moment Diagram', fontsize=st.title_fontsize, weight='bold')
         ax.grid(True, alpha=st.grid_alpha)
