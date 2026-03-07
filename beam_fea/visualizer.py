@@ -575,14 +575,23 @@ class BeamVisualizer:
         ax_info.text(1.2, 0, 'x (0°)', ha='left', va='center')
         ax_info.text(0, 1.2, 'y (90°)', ha='center', va='bottom')
 
-        # Draw ply orientation lines
-        for i, (ply, angle) in enumerate(plies):
+        # Draw ply orientation lines in reverse order (top plies first, bottom plies drawn last on top)
+        # We vary the radius so inner plies are shorter and don't hide the outer ones.
+        for i in reversed(range(len(plies))):
+            ply, angle = plies[i]
             theta = np.radians(angle)
-            ax_info.plot([0, np.cos(theta)], [0, np.sin(theta)], color=colors[i],
-                        linewidth=2, label=f"Ply {i+1} ({angle}°)")
-            # Small arrowhead
-            ax_info.annotate('', xy=(np.cos(theta), np.sin(theta)), xytext=(0.9*np.cos(theta), 0.9*np.sin(theta)),
-                            arrowprops=dict(arrowstyle='->', color=colors[i], lw=2))
+            
+            # Radius decreases for bottom plies, creating a "segmented" look for same-angle stacks
+            r = 0.3 + 0.7 * (i + 1) / len(plies)
+            
+            # Plot rosette vector with a Z-order that keeps inner plies on top
+            ax_info.plot([0, r * np.cos(theta)], [0, r * np.sin(theta)], color=colors[i],
+                        linewidth=3, label=f"Ply {i+1} ({angle}°)", zorder=10+i)
+            # Arrowhead at the tip of each segment
+            ax_info.annotate('', xy=(r * np.cos(theta), r * np.sin(theta)), 
+                            xytext=(0.9 * r * np.cos(theta), 0.9 * r * np.sin(theta)),
+                            arrowprops=dict(arrowstyle='->', color=colors[i], lw=1.5),
+                            zorder=10+i)
 
         # Effective properties summary
         props = laminate.get_effective_properties()

@@ -2,6 +2,11 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.4.3] - 2026-03-07
+
+- **Visualization**: Fixed rosette stacking in `plot_laminate_stackup`; orientation lines now use radius-offset segments to ensure all ply colors are visible when angles overlap.
+- **Examples**: Polished the composite sandwich example to ensure integer-type consistency for stress evaluation grids.
+
 ## [v2.4.2] - 2026-03-07
 
 - **Examples**: Updated `examples/ex05_composite_beam.py` to demonstrate composite sandwich panels (Aluminum core + CFRP skins).
