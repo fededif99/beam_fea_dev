@@ -365,7 +365,8 @@ Static utilities for rapid meshing.
 
 - **`beam_mesh_1d(length, num_elements)`**: Creates a simple straight line mesh.
 - **`line_mesh(start_xy, end_xy, num_elements)`**: Meshes a line between two points.
-- **`multi_span_beam(lengths, elements_per_span)`**: Creates a continuous beam mesh over multiple supports.
+- **`path_mesh(points, elements_per_segment)`**: Creates a general 2D angled beam mesh from a list of $(x, y)$ waypoints. Supports segment-wise grading.
+- **`multi_span_beam(lengths, elements_per_span)`**: Creates a continuous beam mesh over multiple supports (supports horizontal/vertical).
 - **`graded_mesh(start, end, n, grading_ratio)`**: Meshes with variable element sizes (Ratio > 1 increases size).
 - **`curved_beam(radius, start_ang, end_ang, n)`**: Meshes a circular arc.
 

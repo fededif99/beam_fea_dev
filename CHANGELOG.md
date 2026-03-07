@@ -16,6 +16,9 @@ All notable changes to the `beam_fea` project will be documented in this file.
 - **Cleanup**: Eliminated ad-hoc special casing for composite laminates in the global assembly and post-processing loops.
 - **Docs**: Comprehensive update to `README.md` and `THEORY.md` documenting the unified architecture, advanced CLT recovery, and failure criteria.
 - **Examples**: Updated all example scripts and templates (Static, Modal, Multi-Property) to reflect the latest high-fidelity composite and unified architecture capabilities.
+- **Mesh**: Introduced `MeshGenerator.path_mesh` for creating general 2D angled beam meshes from a list of waypoints.
+- **Mesh**: Updated `multi_span_beam` to use the unified path kernel and support orientation.
+- **Mesh**: Added `waypoint_nodes` to the `Mesh` class to track support/segment boundaries automatically.
 
 ## [v2.4.10] - 2026-03-07
 
