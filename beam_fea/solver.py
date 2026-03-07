@@ -40,7 +40,7 @@ class BeamSolver:
         section : SectionProperties, optional
             Cross-section properties. Required if material is a Material object.
         element_type : str
-            'euler' or 'timoshenko'
+            'euler' or 'timoshenko' (default: 'euler')
         """
         self.mesh = mesh
         self.element_type = element_type.lower()
@@ -159,16 +159,26 @@ class BeamSolver:
                     # Timoshenko is fine but overkill for very slender beams
                     pass 
     
-    def _assemble_stiffness_matrix(self):
-        """Assemble global stiffness matrix using unified element architecture."""
+    def _assemble_system_matrices(self, assembly_type: str = 'both'):
+        """
+        Unified global matrix assembly for stiffness and mass.
+
+        Parameters:
+        -----------
+        assembly_type : str
+            'stiffness', 'mass', or 'both'
+        """
         from scipy.sparse import coo_matrix
         from .element_matrices import UnifiedBeamElement
 
         num_dofs = self.mesh.num_dofs
         K_rows, K_cols, K_data = [], [], []
+        M_rows, M_cols, M_data = [], [], []
 
         coords = self.mesh.get_node_coords()
         is_euler = (self.element_type == 'euler')
+        do_k = assembly_type in ['stiffness', 'both']
+        do_m = assembly_type in ['mass', 'both']
 
         for elem in self.mesh.elements:
             p1, p2 = coords[elem.node1], coords[elem.node2]
@@ -177,17 +187,8 @@ class BeamSolver:
             # Unified property retrieval
             mat = self.properties.get_material(elem.id)
             sec = self.properties.get_section(elem.id)
-
             stiff = mat.get_sectional_stiffness(sec)
-
-            # Linear mass density (mass per unit length)
-            # For laminates, mat.rho is avg density. Total thickness is mat.total_thickness.
-            # width is extracted within mat.get_sectional_stiffness, we repeat here for mass.
-            width = getattr(sec, 'width', getattr(sec, 'diameter', 1.0))
-            if hasattr(mat, 'total_thickness'):
-                rho_lin = mat.rho * width * mat.total_thickness
-            else:
-                rho_lin = mat.rho * sec.A
+            rho_lin = mat.get_linear_density(sec)
 
             element = UnifiedBeamElement(
                 EA=stiff['EA'], ES=stiff['ES'], EI=stiff['EI'],
@@ -195,80 +196,37 @@ class BeamSolver:
                 force_euler=is_euler
             )
 
-            k_local = element.stiffness_matrix()
-
             dof_indices = np.array([
                 3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
                 3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2
             ])
             ii, jj = np.meshgrid(dof_indices, dof_indices, indexing='ij')
 
-            K_rows.append(ii.ravel())
-            K_cols.append(jj.ravel())
-            K_data.append(k_local.ravel())
+            if do_k:
+                k_local = element.stiffness_matrix()
+                K_rows.append(ii.ravel()); K_cols.append(jj.ravel()); K_data.append(k_local.ravel())
+            if do_m:
+                m_local = element.mass_matrix()
+                M_rows.append(ii.ravel()); M_cols.append(jj.ravel()); M_data.append(m_local.ravel())
 
-        self.K_global = coo_matrix(
-            (np.concatenate(K_data), (np.concatenate(K_rows), np.concatenate(K_cols))),
-            shape=(num_dofs, num_dofs)
-        ).tocsr()
+        if do_k:
+            self.K_global = coo_matrix((np.concatenate(K_data), (np.concatenate(K_rows), np.concatenate(K_cols))),
+                                       shape=(num_dofs, num_dofs)).tocsr()
+        if do_m:
+            self.M_global = coo_matrix((np.concatenate(M_data), (np.concatenate(M_rows), np.concatenate(M_cols))),
+                                       shape=(num_dofs, num_dofs)).tocsr()
+
+    def _assemble_stiffness_matrix(self):
+        """Assemble global stiffness matrix."""
+        self._assemble_system_matrices(assembly_type='stiffness')
 
     def _assemble_mass_matrix(self):
-        """Assemble global mass matrix using unified element architecture."""
-        from scipy.sparse import coo_matrix
-        from .element_matrices import UnifiedBeamElement
-
-        num_dofs = self.mesh.num_dofs
-        M_rows, M_cols, M_data = [], [], []
-
-        coords = self.mesh.get_node_coords()
-        is_euler = (self.element_type == 'euler')
-
-        for elem in self.mesh.elements:
-            p1, p2 = coords[elem.node1], coords[elem.node2]
-            L = np.sqrt(np.sum((p2 - p1)**2))
-
-            mat = self.properties.get_material(elem.id)
-            sec = self.properties.get_section(elem.id)
-            stiff = mat.get_sectional_stiffness(sec)
-
-            width = getattr(sec, 'width', getattr(sec, 'diameter', 1.0))
-            if hasattr(mat, 'total_thickness'):
-                rho_lin = mat.rho * width * mat.total_thickness
-            else:
-                rho_lin = mat.rho * sec.A
-
-            element = UnifiedBeamElement(
-                EA=stiff['EA'], ES=stiff['ES'], EI=stiff['EI'],
-                L=L, rho_total=rho_lin, GA_s=stiff['GA_s'] * SHEAR_CORRECTION_FACTOR,
-                force_euler=is_euler
-            )
-
-            m_local = element.mass_matrix()
-
-            dof_indices = np.array([
-                3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
-                3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2
-            ])
-            ii, jj = np.meshgrid(dof_indices, dof_indices, indexing='ij')
-
-            M_rows.append(ii.ravel())
-            M_cols.append(jj.ravel())
-            M_data.append(m_local.ravel())
-
-        self.M_global = coo_matrix(
-            (np.concatenate(M_data), (np.concatenate(M_rows), np.concatenate(M_cols))),
-            shape=(num_dofs, num_dofs)
-        ).tocsr()
+        """Assemble global mass matrix."""
+        self._assemble_system_matrices(assembly_type='mass')
 
     def assemble_global_matrices(self):
-        """Assemble both global stiffness and mass matrices.
-
-        Calling this directly assembles both matrices upfront. In normal
-        workflows the solver assembles them lazily: K is built on the first
-        static or modal solve, M is built only when a modal solve is requested.
-        """
-        self._assemble_stiffness_matrix()
-        self._assemble_mass_matrix()
+        """Assemble both global stiffness and mass matrices upfront."""
+        self._assemble_system_matrices(assembly_type='both')
     
     def solve_static(self, load_case: LoadCase, bc_set: BoundaryConditionSet):
         """

@@ -72,14 +72,19 @@ class ResultsContainer:
         self.recovery_strategy = "consistent"
         self.num_points = 100
 
-class InternalForceEngine:
-    """Engine to coordinate internal force calculation across the mesh."""
+class StationEvaluator:
+    """Helper to group evaluation stations by element and calculate local kinematics."""
 
     @staticmethod
-    def calculate(solver, num_points: int = None, strategy_name: str = "consistent") -> dict:
-        if solver.displacements is None:
-            raise ValueError("Must run solve_static() first")
+    def get_evaluation_plan(solver, num_points: int = None) -> dict:
+        """
+        Groups global evaluation points into element-local stations.
 
+        Returns:
+        --------
+        plan : dict
+            {positions, points_by_element}
+        """
         mesh = solver.mesh
         coords = mesh.get_node_coords()
         x_min, x_max = np.min(coords[:, 0]), np.max(coords[:, 0])
@@ -89,22 +94,6 @@ class InternalForceEngine:
         else:
             positions = np.linspace(x_min, x_max, num_points)
 
-        eval_count = len(positions)
-        axial_forces = np.zeros(eval_count)
-        shear_forces = np.zeros(eval_count)
-        bending_moments = np.zeros(eval_count)
-
-        # Select strategy
-        if strategy_name == "consistent":
-            strategy = ConsistentRecoveryStrategy()
-        else:
-            strategy = NodalInterpolationStrategy()
-
-        # Pre-calculate distributed loads per element
-        element_dist_loads = InternalForceEngine._get_element_dist_loads(solver)
-
-        # Vectorization optimization: Group points by element
-        # This is faster than the previous station-by-station loop
         points_by_element = {}
         for i, x in enumerate(positions):
             eid = mesh.find_element_at_x(x)
@@ -114,34 +103,52 @@ class InternalForceEngine:
                 points_by_element[eid] = []
             points_by_element[eid].append(i)
 
-        from .element_matrices import UnifiedBeamElement, SHEAR_CORRECTION_FACTOR
+        return {'positions': positions, 'points_by_element': points_by_element}
 
+
+class InternalForceEngine:
+    """Engine to coordinate internal force calculation across the mesh."""
+
+    @staticmethod
+    def calculate(solver, num_points: int = None, strategy_name: str = "consistent") -> dict:
+        if solver.displacements is None:
+            raise ValueError("Must run solve_static() first")
+
+        eval_plan = StationEvaluator.get_evaluation_plan(solver, num_points)
+        positions = eval_plan['positions']
+        points_by_element = eval_plan['points_by_element']
+
+        eval_count = len(positions)
+        axial_forces = np.zeros(eval_count)
+        shear_forces = np.zeros(eval_count)
+        bending_moments = np.zeros(eval_count)
+
+        if strategy_name == "consistent":
+            strategy = ConsistentRecoveryStrategy()
+        else:
+            strategy = NodalInterpolationStrategy()
+
+        element_dist_loads = InternalForceEngine._get_element_dist_loads(solver)
+
+        from .element_matrices import UnifiedBeamElement, SHEAR_CORRECTION_FACTOR
+        coords = solver.mesh.get_node_coords()
         is_euler = (solver.element_type == 'euler')
 
         for eid, indices in points_by_element.items():
-            elem = mesh.elements[eid]
+            elem = solver.mesh.elements[eid]
             p1, p2 = coords[elem.node1], coords[elem.node2]
-            x1 = p1[0]
-            L = np.sqrt(np.sum((p2 - p1)**2))
+            x1, L = p1[0], np.sqrt(np.sum((p2 - p1)**2))
 
             dof_indices = [3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
                            3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2]
             u_local = solver.displacements[dof_indices]
 
-            # Local normalized coordinates for this element
-            xi = np.array([(positions[idx] - x1) / L for idx in indices])
-            xi = np.clip(xi, 0, 1) if L > 0 else np.zeros_like(xi)
+            xi = np.clip((positions[indices] - x1) / L, 0, 1) if L > 0 else np.zeros(len(indices))
 
-            # Element expert (Unified)
             mat = solver.properties.get_material(elem.id)
             sec = solver.properties.get_section(elem.id)
             stiff = mat.get_sectional_stiffness(sec)
-
-            width = getattr(sec, 'width', getattr(sec, 'diameter', 1.0))
-            if hasattr(mat, 'total_thickness'):
-                rho_lin = mat.rho * width * mat.total_thickness
-            else:
-                rho_lin = mat.rho * sec.A
+            rho_lin = mat.get_linear_density(sec)
 
             element_expert = UnifiedBeamElement(
                 EA=stiff['EA'], ES=stiff['ES'], EI=stiff['EI'],
@@ -218,30 +225,19 @@ class StressEngine:
         M_x = forces['bending_moments']
 
         # Build 2D grid for the cross-section
-        # (Logic moved from solver.py and optimized)
         y_min, y_max, z_min, z_max = StressEngine._get_global_bounding_box(solver)
-
         y_coords = np.linspace(y_min, y_max, num_y_points)
         z_coords = np.linspace(z_min, z_max, num_z_points)
         Y, Z = np.meshgrid(y_coords, z_coords, indexing='ij')
 
+        eval_plan = StationEvaluator.get_evaluation_plan(solver, num_x_points)
+        points_by_element = eval_plan['points_by_element']
+
         eval_x_count = len(x_positions)
         shape_3d = (eval_x_count, num_y_points, num_z_points)
 
-        sigma_a = np.zeros(shape_3d)
-        sigma_b = np.zeros(shape_3d)
-        tau_s = np.zeros(shape_3d)
-        sigma_vm = np.zeros(shape_3d)
-        sigma_1 = np.zeros(shape_3d)
-        sigma_2 = np.zeros(shape_3d)
-
-        # Group stations by element for vectorization
-        points_by_element = {}
-        for i, x in enumerate(x_positions):
-            eid = solver.mesh.find_element_at_x(x)
-            if eid == -1: eid = 0 if x <= x_positions[0] else solver.mesh.num_elements - 1
-            if eid not in points_by_element: points_by_element[eid] = []
-            points_by_element[eid].append(i)
+        sigma_a, sigma_b, tau_s, sigma_vm = [np.zeros(shape_3d) for _ in range(4)]
+        sigma_1, sigma_2 = np.zeros(shape_3d), np.zeros(shape_3d)
 
         profile_cache = {}
 

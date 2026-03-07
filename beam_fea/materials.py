@@ -97,6 +97,22 @@ class Material:
 
         return {'EA': EA, 'ES': ES, 'EI': EI, 'GA_s': GA_s}
 
+    def get_linear_density(self, section) -> float:
+        """
+        Calculate mass per unit length.
+
+        Parameters:
+        -----------
+        section : SectionProperties
+            Cross-section properties
+
+        Returns:
+        --------
+        rho_lin : float
+            Linear mass density (kg/mm)
+        """
+        return self.rho * section.A
+
     def __str__(self):
         return (f"Material: {self.name}\n"
                 f"  E = {self.E:.2e} MPa\n"

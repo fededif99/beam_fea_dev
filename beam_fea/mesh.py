@@ -239,7 +239,7 @@ class MeshGenerator:
     
     @staticmethod
     def line_mesh(start: Tuple[float, float], end: Tuple[float, float],
-                  num_elements: int) -> Mesh:
+                  num_elements: int) -> 'Mesh':
         """
         Generate a uniform mesh along a straight line.
         
@@ -274,7 +274,7 @@ class MeshGenerator:
     
     @staticmethod
     def beam_mesh_1d(length: float, num_elements: int,
-                     orientation: str = 'horizontal') -> Mesh:
+                     orientation: str = 'horizontal') -> 'Mesh':
         """
         Generate a 1D beam mesh (horizontal or vertical).
         
@@ -310,7 +310,7 @@ class MeshGenerator:
     
     @staticmethod
     def graded_mesh(start: Tuple[float, float], end: Tuple[float, float],
-                    num_elements: int, grading_ratio: float = 1.0) -> Mesh:
+                    num_elements: int, grading_ratio: float = 1.0) -> 'Mesh':
         """
         Generate a mesh with graded element sizes.
         
@@ -372,7 +372,7 @@ class MeshGenerator:
     
     @staticmethod
     def multi_span_beam(span_lengths: List[float],
-                        elements_per_span: List[int]) -> Mesh:
+                        elements_per_span: List[int]) -> 'Mesh':
         """
         Generate mesh for a multi-span continuous beam.
         
@@ -412,7 +412,7 @@ class MeshGenerator:
     
     @staticmethod
     def curved_beam(radius: float, start_angle: float, end_angle: float,
-                    num_elements: int) -> Mesh:
+                    num_elements: int) -> 'Mesh':
         """
         Generate mesh for a curved beam.
         
@@ -462,7 +462,7 @@ class MeshRefinement:
     """Mesh refinement utilities."""
     
     @staticmethod
-    def refine_uniform(mesh: Mesh, refinement_level: int = 1) -> Mesh:
+    def refine_uniform(mesh: 'Mesh', refinement_level: int = 1) -> 'Mesh':
         """
         Uniformly refine mesh by splitting each element.
         

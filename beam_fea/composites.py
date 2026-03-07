@@ -393,6 +393,11 @@ class Laminate:
 
         return {'EA': EA, 'ES': ES, 'EI': EI, 'GA_s': GA_s}
 
+    def get_linear_density(self, section) -> float:
+        """Calculate mass per unit length for the laminate."""
+        width = getattr(section, 'width', getattr(section, 'diameter', 1.0))
+        return self.rho * width * self.total_thickness
+
     def __str__(self):
         res = f"Laminate: {self.name}\n"
         res += f"  Total Thickness: {self.total_thickness:.3f} mm\n"

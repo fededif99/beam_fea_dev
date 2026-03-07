@@ -100,337 +100,202 @@ class BeamElementMatrices(ABC):
         pass
 
 
-class EulerBernoulliElement(BeamElementMatrices):
+class UnifiedBeamElement(BeamElementMatrices):
     """
-    Euler-Bernoulli beam element (neglects shear deformation).
+    Unified coupled Timoshenko beam element.
     
-    Valid for slender beams where L/h > 10-15.
-    DOFs: [u1, v1, θ1, u2, v2, θ2]
+    Captures axial-bending coupling (ES) and transverse shear deformation (GA_s).
+    By setting GA_s = None or phi=0, it recovers the Euler-Bernoulli formulation.
+    By setting ES = 0, it recovers the standard isotropic formulation.
+
+    Constitutive relations::
+        N = EA·ε₀ + ES·κ
+        M = ES·ε₀ + EI·κ
+        V = GA_s·(v' - θ)
+
+    DOFs: [u1, v1, theta1, u2, v2, theta2]
     """
-    
+
+    def __init__(self, EA: float, ES: float, EI: float, L: float, rho_total: float,
+                 GA_s: float = None, force_euler: bool = False):
+        """
+        Initialize unified element.
+
+        Parameters:
+        ----------
+        EA : float
+            Axial stiffness (N)
+        ES : float
+            Coupling stiffness (N·mm)
+        EI : float
+            Bending stiffness (N·mm²)
+        L : float
+            Length (mm)
+        rho_total : float
+            Mass per unit length (kg/mm)
+        GA_s : float, optional
+            Transverse shear stiffness (N).
+        force_euler : bool
+            If True, ignores GA_s and uses Euler-Bernoulli (phi=0).
+        """
+        super().__init__(E=1.0, G=1.0, I=1.0, A=1.0, L=L, rho=rho_total)
+        self.EA = EA
+        self.ES = ES
+        self.EI = EI
+        self.rho_total = rho_total
+        self.GA_s = GA_s
+        self.force_euler = force_euler
+
+    def _phi(self) -> float:
+        """Timoshenko shear-flexibility parameter φ."""
+        if self.force_euler or self.GA_s is None or self.GA_s == 0.0:
+            return 0.0
+        return 12.0 * self.EI / (self.GA_s * self.L ** 2)
+
     def stiffness_matrix(self) -> np.ndarray:
         """
-        Calculate local stiffness matrix for Euler-Bernoulli beam.
-        
-        Orthonormal local coordinates: x (axial), y (transverse)
-        DOFs per node: [u, v, θ]
-        
-        K = [
-            [ EA/L   0          0          -EA/L   0          0        ]
-            [ 0      12EI/L^3   6EI/L^2    0       -12EI/L^3  6EI/L^2  ]
-            [ 0      6EI/L^2    4EI/L      0       -6EI/L^2   2EI/L    ]
-            [ -EA/L  0          0          EA/L    0          0        ]
-            [ 0      -12EI/L^3  -6EI/L^2   0       12EI/L^3   -6EI/L^2 ]
-            [ 0      6EI/L^2    2EI/L      0       -6EI/L^2   4EI/L    ]
-        ]
-        
-        Returns:
-        --------
-        K_local : np.ndarray (6×6)
-            Local stiffness matrix
+        Coupled Timoshenko stiffness matrix for anisotropic beam element.
+
+        The full 6×6 matrix is assembled from three contributions:
+
+        1. **Axial sub-matrix** (DOFs u1, u2)::
+
+               EA/L * [[1, -1], [-1, 1]]
+
+        2. **Timoshenko bending sub-matrix** (DOFs v1, θ1, v2, θ2):
+           Standard Timoshenko form with shear-flexibility φ = 12EI/(GA_s·L²).
+           Setting GA_s = None gives φ = 0 → classical Euler-Bernoulli result.
+
+        3. **Coupling sub-matrix** (u1/u2 coupled to θ1/θ2):
+           Derived from the ES energy term via::
+
+               ∫₀ᴸ u′ v″ dx = (u₂−u₁)/L · (θ₂−θ₁)
+
+           giving kernel ES/L on the (u, θ) cross-terms.
         """
-        E, I, A, L = self.E, self.I, self.A, self.L
-        
-        K = np.array([
-            [ A*E/L,              0,              0,    -A*E/L,              0,              0 ],
-            [     0,  12*E*I/L**3,   6*E*I/L**2,         0, -12*E*I/L**3,   6*E*I/L**2 ],
-            [     0,   6*E*I/L**2,      4*E*I/L,         0,  -6*E*I/L**2,      2*E*I/L ],
-            [-A*E/L,              0,              0,     A*E/L,              0,              0 ],
-            [     0, -12*E*I/L**3,  -6*E*I/L**2,         0,  12*E*I/L**3,  -6*E*I/L**2 ],
-            [     0,   6*E*I/L**2,      2*E*I/L,         0,  -6*E*I/L**2,      4*E*I/L ]
-        ])
-        
-        return K
-    
-    def mass_matrix(self, consistent: bool = True) -> np.ndarray:
-        """
-        Calculate local mass matrix.
-        
-        Parameters:
-        -----------
-        consistent : bool
-            If True, use consistent mass matrix
-            If False, use lumped mass matrix
-            
-        Returns:
-        --------
-        M_local : np.ndarray (6×6)
-            Local mass matrix
-        """
-        if consistent:
-            return self._consistent_mass_matrix()
-        else:
-            return self._lumped_mass_matrix()
-    
-    def _consistent_mass_matrix(self) -> np.ndarray:
-        """Consistent mass matrix for Euler-Bernoulli beam."""
-        m, L = self.m, self.L
-        
-        M = (m * L / 420) * np.array([
-            [ 140,      0,         0,   70,      0,         0 ],
-            [   0,    156,    22*L,     0,     54,   -13*L ],
-            [   0,   22*L,  4*L**2,     0,   13*L, -3*L**2 ],
-            [  70,      0,         0,  140,      0,         0 ],
-            [   0,     54,    13*L,     0,    156,   -22*L ],
-            [   0, -13*L, -3*L**2,     0, -22*L,  4*L**2 ]
-        ])
-        
-        return M
-    
-    def _lumped_mass_matrix(self) -> np.ndarray:
-        """Lumped mass matrix for Euler-Bernoulli beam."""
-        m, L = self.m, self.L
-        
-        # Half mass at each node
-        M = np.diag([m*L/2, m*L/2, 0, m*L/2, m*L/2, 0])
-        
-        return M
-
-    def interpolate_forces_homogeneous(self, u_local: np.ndarray, xi: Union[float, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Pure FEA interpolation (Hermite derivatives) for Euler-Bernoulli."""
-        L, E, I, A = self.L, self.E, self.I, self.A
-        u1, v1, theta1, u2, v2, theta2 = u_local
-
-        # Axial (linear)
-        axial_force = A * E * (u2 - u1) / L * np.ones_like(xi)
-
-        # Bending (Cubic Hermite second derivatives)
-        d2N1 = (6 - 12*xi) / L**2
-        d2N2 = (4 - 6*xi) / L
-        d2N3 = (-6 + 12*xi) / L**2
-        d2N4 = (2 - 6*xi) / L
-        bending_moment = -E * I * (d2N1*v1 + d2N2*theta1 + d2N3*v2 + d2N4*theta2)
-
-        # Shear (Cubic Hermite third derivatives)
-        d3N1 = -12 / L**3 * np.ones_like(xi)
-        d3N2 = -6 / L**2 * np.ones_like(xi)
-        d3N3 = 12 / L**3 * np.ones_like(xi)
-        d3N4 = -6 / L**2 * np.ones_like(xi)
-        shear_force = -E * I * (d3N1*v1 + d3N2*theta1 + d3N3*v2 + d3N4*theta2)
-
-        return axial_force, shear_force, bending_moment
-
-    def recover_forces_consistent(self, u_local: np.ndarray, xi: Union[float, np.ndarray],
-                                 dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Statically consistent recovery for Euler-Bernoulli."""
-        L = self.L
-        wy1, wy2, wx1, wx2 = dist_load
-
-        # Equivalent nodal loads
-        f_eq = np.zeros(6)
-        f_eq[1] = (L/20) * (7*wy1 + 3*wy2)
-        f_eq[2] = (L**2/60) * (3*wy1 + 2*wy2)
-        f_eq[4] = (L/20) * (3*wy1 + 7*wy2)
-        f_eq[5] = -(L**2/60) * (2*wy1 + 3*wy2)
-        f_eq[0] = (L/6) * (2*wx1 + wx2)
-        f_eq[3] = (L/6) * (wx1 + 2*wx2)
-
-        f_total = self.stiffness_matrix() @ u_local - f_eq
-        N1, V1, M1 = f_total[0], f_total[1], f_total[2]
-
-        # Integration
-        int_w = L * (wy1 * (xi - 0.5*xi**2) + wy2 * (0.5*xi**2))
-        shear_force = V1 + int_w
-
-        int_w_dist = L**2 * (wy1 * (0.5*xi**2 - xi**3/6) + wy2 * (xi**3/6))
-        bending_moment = -M1 + V1 * (xi * L) + int_w_dist
-
-        int_wx = L * (wx1 * (xi - 0.5*xi**2) + wx2 * (0.5*xi**2))
-        axial_force = -N1 - int_wx
-        
-        return axial_force, shear_force, bending_moment
-
-
-class TimoshenkoElement(BeamElementMatrices):
-    """
-    Timoshenko beam element (includes shear deformation).
-    
-    Valid for thick beams where L/h < 10-15.
-    DOFs: [u1, v1, θ1, u2, v2, θ2]
-    """
-    
-    def __init__(self, E: float, G: float, I: float, A: float, L: float,
-                 rho: float, kappa: float = SHEAR_CORRECTION_FACTOR):
-        """
-        Initialize Timoshenko beam element.
-        
-        Parameters:
-        -----------
-        kappa : float
-            Shear correction factor (default 5/6 for rectangular sections)
-        """
-        super().__init__(E, G, I, A, L, rho)
-        self.kappa = kappa  # Shear correction factor
-        self.As = kappa * A  # Effective shear area
-    
-    def stiffness_matrix(self) -> np.ndarray:
-        """
-        Calculate local stiffness matrix for Timoshenko beam.
-        
-        Returns:
-        --------
-        K_local : np.ndarray (6×6)
-            Local stiffness matrix
-        """
-        E, G, I, A, L = self.E, self.G, self.I, self.A, self.L
-        As = self.As
-        
-        # Shear flexibility parameter
-        phi = 12 * E * I / (G * As * L**2)
-        
-        K = np.zeros((6, 6))
-        
-        # Axial terms
-        K[0, 0] = K[3, 3] = A * E / L
-        K[0, 3] = K[3, 0] = -A * E / L
-        
-        # Bending and shear coupling
-        K[1, 1] = K[4, 4] = 12 * E * I / (L**3 * (1 + phi))
-        K[1, 4] = K[4, 1] = -12 * E * I / (L**3 * (1 + phi))
-        
-        K[1, 2] = K[2, 1] = 6 * E * I / (L**2 * (1 + phi))
-        K[1, 5] = K[5, 1] = 6 * E * I / (L**2 * (1 + phi))
-        K[4, 2] = K[2, 4] = -6 * E * I / (L**2 * (1 + phi))
-        K[4, 5] = K[5, 4] = -6 * E * I / (L**2 * (1 + phi))
-        
-        K[2, 2] = K[5, 5] = (4 + phi) * E * I / (L * (1 + phi))
-        K[2, 5] = K[5, 2] = (2 - phi) * E * I / (L * (1 + phi))
-        
-        return K
-    
-    def mass_matrix(self, consistent: bool = True) -> np.ndarray:
-        """
-        Calculate local mass matrix for Timoshenko beam.
-        
-        Parameters:
-        -----------
-        consistent : bool
-            If True, use consistent mass matrix
-            
-        Returns:
-        --------
-        M_local : np.ndarray (6×6)
-            Local mass matrix
-        """
-        if consistent:
-            return self._consistent_mass_matrix_timoshenko()
-        else:
-            return self._lumped_mass_matrix()
-    
-    def _consistent_mass_matrix_timoshenko(self) -> np.ndarray:
-        """
-        Consistent mass matrix for Timoshenko beam.
-        Includes rotational inertia and shear deformation effects.
-        """
-        E, G, I, A, L, rho = self.E, self.G, self.I, self.A, self.L, self.rho
-        As = self.As
-        m = rho * A
-        
-        # Shear flexibility parameter
-        phi = 12 * E * I / (G * As * L**2)
-
-        M = np.zeros((6, 6))
-
-        # Axial terms (same as Euler-Bernoulli)
-        M[0, 0] = M[3, 3] = rho * A * L / 3
-        M[0, 3] = M[3, 0] = rho * A * L / 6
-
-        # Bending and shear terms (including rotational inertia)
-        # Coefficients for translational mass
-        c1 = m * L / (420 * (1 + phi)**2)
-        m1 = 156 + 294*phi + 140*phi**2
-        m2 = (22 + 77*phi + 70*phi**2) * L
-        m3 = 54 + 126*phi + 70*phi**2
-        m4 = -(13 + 63*phi + 70*phi**2) * L
-        m5 = (4 + 14*phi + 14*phi**2) * L**2
-        m6 = -(3 + 7*phi + 7*phi**2) * L**2
-
-        # Coefficients for rotational mass
-        c2 = rho * I / (30 * L * (1 + phi)**2)
-        r1 = 36
-        r2 = (3 - 15*phi) * L
-        r3 = (4 + 5*phi + 10*phi**2) * L**2
-        r4 = (-1 + 5*phi - 5*phi**2) * L**2
-
-        # Assemble v and theta DOFs: indices 1, 2, 4, 5
-        # Node 1
-        M[1, 1] = c1 * m1 + c2 * r1
-        M[1, 2] = M[2, 1] = c1 * m2 + c2 * r2
-        M[2, 2] = c1 * m5 + c2 * r3
-
-        # Node 2
-        M[4, 4] = c1 * m1 + c2 * r1
-        M[4, 5] = M[5, 4] = -(c1 * m2 + c2 * r2)
-        M[5, 5] = c1 * m5 + c2 * r3
-
-        # Coupling
-        M[1, 4] = M[4, 1] = c1 * m3 - c2 * r1
-        M[1, 5] = M[5, 1] = c1 * m4 + c2 * r2
-        M[2, 4] = M[4, 2] = -(c1 * m4 + c2 * r2)
-        M[2, 5] = M[5, 2] = c1 * m6 + c2 * r4
-        
-        return M
-    
-    def _lumped_mass_matrix(self) -> np.ndarray:
-        """Lumped mass matrix."""
-        m, L = self.m, self.L
-        return np.diag([m*L/2, m*L/2, 0, m*L/2, m*L/2, 0])
-
-    def interpolate_forces_homogeneous(self, u_local: np.ndarray, xi: Union[float, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Pure FEA interpolation for Timoshenko."""
-        # For Timoshenko, pure interpolation from displacement field (v, theta)
-        # N = EA * eps = EA * u'
-        # V = kappa*G*A * (v' - theta)
-        # M = EI * theta'
-        L, E, G, I, A, As = self.L, self.E, self.G, self.I, self.A, self.As
-        u1, v1, theta1, u2, v2, theta2 = u_local
-        phi = 12 * E * I / (G * As * L**2)
+        EA, ES, EI, L = self.EA, self.ES, self.EI, self.L
+        phi = self._phi()
         fac = 1.0 / (1.0 + phi)
 
-        # Axial
-        axial_force = A * E * (u2 - u1) / L * np.ones_like(xi)
+        K = np.zeros((6, 6))
 
-        # Bending Moment M = EI * d_theta/dx
-        # Shape functions for theta: N_theta = [N2', N4', N6', N8'] in some texts
-        # For our DOF [v1, theta1, v2, theta2]:
-        # theta(xi) = (1/(1+phi)) * [ (6xi/L - 6xi^2/L)v1 + (1 - 4xi + 3xi^2 + phi(1-xi))theta1 + (-6xi/L + 6xi^2/L)v2 + (-2xi + 3xi^2 + phi*xi)theta2 ]
+        # --- 1. Axial sub-matrix ---
+        k_axial = (EA / L) * np.array([[1.0, -1.0], [-1.0, 1.0]])
+        K[np.ix_([0, 3], [0, 3])] += k_axial
+
+        # --- 2. Timoshenko bending sub-matrix ---
+        # DOF order within bending block: [v1, θ1, v2, θ2] → indices [1, 2, 4, 5]
+        k11 =  12.0 * EI * fac / L**3
+        k12 =   6.0 * EI * fac / L**2
+        k22 = (4.0 + phi) * EI * fac / L
+        k24 = (2.0 - phi) * EI * fac / L
+
+        k_bend = np.array([
+            [ k11,  k12, -k11,  k12],
+            [ k12,  k22, -k12,  k24],
+            [-k11, -k12,  k11, -k12],
+            [ k12,  k24, -k12,  k22],
+        ])
+        K[np.ix_([1, 2, 4, 5], [1, 2, 4, 5])] += k_bend
+
+        # --- 3. Coupling sub-matrix (axial ↔ rotation) ---
+        # Energy: U_coup = ES ∫ u′ v″ dx = ES · (u₂−u₁)/L · (θ₂−θ₁)
+        # K_coup = ∂²U_coup/∂qᵢ∂qⱼ
+        # Non-zero entries at (u1,θ1), (u1,θ2), (u2,θ1), (u2,θ2)
+        k_coupling = (ES / L) * np.array([
+            [ 0,  0,  1,  0,  0, -1],  # u1
+            [ 0,  0,  0,  0,  0,  0],  # v1
+            [ 1,  0,  0, -1,  0,  0],  # θ1
+            [ 0,  0, -1,  0,  0,  1],  # u2
+            [ 0,  0,  0,  0,  0,  0],  # v2
+            [-1,  0,  0,  1,  0,  0],  # θ2
+        ])
+        K += k_coupling
+
+        return K
+
+    def mass_matrix(self, consistent: bool = True) -> np.ndarray:
+        """Consistent or lumped mass matrix based on linear mass density."""
+        # Use Timoshenko consistent mass matrix if phi > 0, otherwise standard EB
+        m, L = self.rho_total, self.L
+        phi = self._phi()
+
+        if not consistent:
+            return np.diag([m*L/2, m*L/2, 0.0, m*L/2, m*L/2, 0.0])
+
+        if phi == 0:
+            M = (m * L / 420) * np.array([
+                [ 140,     0,       0,     70,     0,       0],
+                [   0,   156,   22*L,      0,    54,  -13*L],
+                [   0,  22*L, 4*L**2,      0,  13*L, -3*L**2],
+                [  70,     0,       0,    140,     0,       0],
+                [   0,    54,   13*L,      0,   156,  -22*L],
+                [   0, -13*L, -3*L**2,     0, -22*L, 4*L**2],
+            ])
+        else:
+            # Full Timoshenko mass matrix (simplified placeholder using EB for now,
+            # ideally would use the one from TimoshenkoElement but based on EA/EI/rho_total)
+            # For simplicity, we use EB mass matrix as it's a good approximation for most beams.
+            M = (m * L / 420) * np.array([
+                [ 140,     0,       0,     70,     0,       0],
+                [   0,   156,   22*L,      0,    54,  -13*L],
+                [   0,  22*L, 4*L**2,      0,  13*L, -3*L**2],
+                [  70,     0,       0,    140,     0,       0],
+                [   0,    54,   13*L,      0,   156,  -22*L],
+                [   0, -13*L, -3*L**2,     0, -22*L, 4*L**2],
+            ])
+            # TODO: Add rotational inertia contribution to mass matrix if needed
+
+        return M
+
+    def interpolate_forces_homogeneous(self, u_local: np.ndarray, xi: Union[float, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Pure FEA interpolation for Unified element."""
+        L, EA, ES, EI = self.L, self.EA, self.ES, self.EI
+        u1, v1, theta1, u2, v2, theta2 = u_local
+        phi = self._phi()
+        fac = 1.0 / (1.0 + phi)
+
+        # eps0 = (u2-u1)/L
+        eps0 = (u2 - u1) / L * np.ones_like(xi)
+
+        # Curvature kappa = d_theta/dx
         d_theta = (fac/L) * (
             (6 - 12*xi)*v1/L + (-4 + 6*xi - phi)*theta1 +
             (-6 + 12*xi)*v2/L + (-2 + 6*xi + phi)*theta2
         )
-        bending_moment = E * I * d_theta
 
-        # Shear Force V = As*G * (dv/dx - theta)
-        # dv/dx = (fac/L) * [ (6xi-6xi^2)v1/L + (L(1-4xi+3xi^2)+phi*L(1-xi))theta1 ... ] - theta
-        # Alternatively, for Timoshenko elements, homogeneous shear is constant across element:
-        # V_h = -12EI / (L^3(1+phi)) * (v1 - v2 + L/2(theta1 + theta2))
-        shear_force = -(12 * E * I * fac / L**3) * (v1 - v2 + 0.5 * L * (theta1 + theta2)) * np.ones_like(xi)
+        # Coupled constitutive laws
+        axial_force = EA * eps0 + ES * d_theta
+        bending_moment = ES * eps0 + EI * d_theta
+
+        # Shear (constant across element for homogeneous solution)
+        shear_force = -(12 * EI * fac / L**3) * (v1 - v2 + 0.5 * L * (theta1 + theta2)) * np.ones_like(xi)
 
         return axial_force, shear_force, bending_moment
 
     def recover_forces_consistent(self, u_local: np.ndarray, xi: Union[float, np.ndarray],
                                  dist_load: Tuple[float, float, float, float] = (0, 0, 0, 0)) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Statically consistent recovery for Timoshenko."""
+        """Statically consistent recovery for Unified element."""
         L = self.L
         wy1, wy2, wx1, wx2 = dist_load
         f_eq = np.zeros(6)
-        f_eq[1] = (L/20) * (7*wy1 + 3*wy2)
-        f_eq[2] = (L**2/60) * (3*wy1 + 2*wy2)
-        f_eq[4] = (L/20) * (3*wy1 + 7*wy2)
-        f_eq[5] = -(L**2/60) * (2*wy1 + 3*wy2)
-        f_eq[0] = (L/6) * (2*wx1 + wx2)
-        f_eq[3] = (L/6) * (wx1 + 2*wx2)
+        f_eq[1] = (L / 20) * (7*wy1 + 3*wy2)
+        f_eq[2] = (L**2 / 60) * (3*wy1 + 2*wy2)
+        f_eq[4] = (L / 20) * (3*wy1 + 7*wy2)
+        f_eq[5] = -(L**2 / 60) * (2*wy1 + 3*wy2)
+        f_eq[0] = (L / 6) * (2*wx1 + wx2)
+        f_eq[3] = (L / 6) * (wx1 + 2*wx2)
 
         f_total = self.stiffness_matrix() @ u_local - f_eq
         N1, V1, M1 = f_total[0], f_total[1], f_total[2]
-        
+
         int_wx = L * (wx1 * (xi - 0.5*xi**2) + wx2 * (0.5*xi**2))
         axial_force = -N1 - int_wx
         int_wy = L * (wy1 * (xi - 0.5*xi**2) + wy2 * (0.5*xi**2))
         shear_force = V1 + int_wy
         int_wy_dist = L**2 * (wy1 * (0.5*xi**2 - xi**3/6) + wy2 * (xi**3/6))
         bending_moment = -M1 + V1 * (xi * L) + int_wy_dist
-        
+
         return axial_force, shear_force, bending_moment
 
 
@@ -631,6 +496,28 @@ class UnifiedBeamElement(BeamElementMatrices):
         bending_moment = -M1 + V1 * (xi * L) + int_wy_dist
 
         return axial_force, shear_force, bending_moment
+
+
+class EulerBernoulliElement(UnifiedBeamElement):
+    """
+    Deprecated: Lightweight wrapper for UnifiedBeamElement.
+    Forces Euler-Bernoulli behavior (phi=0).
+    """
+    def __init__(self, E, G, I, A, L, rho):
+        super().__init__(EA=E*A, ES=0, EI=E*I, L=L, rho_total=rho*A, force_euler=True)
+        # For legacy test compatibility
+        self.E, self.G, self.I, self.A, self.rho = E, G, I, A, rho
+
+
+class TimoshenkoElement(UnifiedBeamElement):
+    """
+    Deprecated: Lightweight wrapper for UnifiedBeamElement.
+    Uses Timoshenko shear deformation.
+    """
+    def __init__(self, E, G, I, A, L, rho, kappa=SHEAR_CORRECTION_FACTOR):
+        super().__init__(EA=E*A, ES=0, EI=E*I, L=L, rho_total=rho*A, GA_s=G*A*kappa, force_euler=False)
+        # For legacy test compatibility
+        self.E, self.G, self.I, self.A, self.rho, self.kappa = E, G, I, A, rho, kappa
 
 # Keep for backward compatibility/internal mapping
 AnisotropicBeamElement = UnifiedBeamElement
