@@ -613,14 +613,7 @@ class BeamVisualizer:
                                     color=color, linewidth=2.5, antialiased=True, zorder=10)
             ax_info.add_patch(arrow)
             
-            # Position text at the RIM (Outside 1.0)
-            # Use offset to prevent overlap with X/Y labels
-            r_text = 1.15
-            if abs(np.sin(theta)) < 0.2: # Near 0 or 180
-                r_text = 1.4 # Push further out to clear X labels
-            
-            ax_info.text(r_text*np.cos(theta), r_text*np.sin(theta), f"{angle}°", 
-                        ha='center', va='center', fontsize=10, weight='bold', color=color)
+            # Radial degree labels removed per user request (redundant with legend)
 
         # Centered Orientation Legend (Professional markers)
         # Fix markers going outside: use Square patches
@@ -635,6 +628,7 @@ class BeamVisualizer:
         leg.get_frame().set_linewidth(0.8)
 
         # Effective properties summary (Technical Specs Box)
+        # Positioned relative to ax_info to ensure it stays within figure bounds
         props = laminate.get_effective_properties()
         summary_text = (f"LAMINATE TECHNICAL DATA\n"
                        f"=======================\n"
@@ -648,9 +642,9 @@ class BeamVisualizer:
                        f"Poisson's Ratio:\n"
                        f"  nu_xy:         {props['nu_xy']:7.3f}")
 
-        plt.figtext(0.75, 0.12, summary_text, 
+        ax_info.text(0.5, -0.2, summary_text, transform=ax_info.transAxes,
                     bbox=dict(facecolor='#FFFFFF', alpha=1.0, edgecolor='#AAAAAA', boxstyle='square,pad=1'),
-                    ha='center', va='center', family='monospace', fontsize=9, zorder=20)
+                    ha='center', va='top', family='monospace', fontsize=9, zorder=20)
 
         plt.tight_layout()
         if output_path:

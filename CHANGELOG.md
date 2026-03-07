@@ -2,6 +2,11 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.4.9] - 2026-03-07
+
+- **Visualization**: Refined `plot_laminate_stackup` by removing redundant degree labels from rosette arrows (now solely identified by the legend).
+- **Visualization**: Fixed cropping of the "Laminate Technical Data" box by anchoring it to the orientation sub-plot coordinate system.
+
 ## [v2.4.8] - 2026-03-07
 
 - **Visualization**: Major overhaul of `plot_laminate_stackup` for academic and research quality.
