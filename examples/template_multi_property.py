@@ -57,8 +57,9 @@ def main():
     lc.uniform_load(x_start=0, x_end=2000, wy=-10.0) # 10 N/mm downward
 
     # 4. SOLVE
-    # Solver accepts PropertySet for unified management
-    solver = BeamSolver(mesh, props)
+    # Solver accepts PropertySet for unified management.
+    # Note: element_type='timoshenko' handles both slender and thick beams.
+    solver = BeamSolver(mesh, props, element_type='timoshenko')
     solver.solve_static(lc, bc)
 
     # 6. RESULTS & RECOVERY STRATEGIES

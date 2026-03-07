@@ -114,14 +114,15 @@ def run_composite_analysis():
     
     if ply_stresses:
         print(f"\nPly-by-Ply Stresses near Midspan (Element {peak_element_id}):")
-        print(f"{'Ply':<5} | {'Material':<15} | {'Angle':<5} | {'Sigma_x (Bottom)':<18} | {'Sigma_x (Top)':<18} | {'Tau_xy (Max)':<15}")
-        print("-" * 88)
+        print(f"{'Ply':<4} | {'Material':<13} | {'Angle':<5} | {'Sigma_1':<10} | {'Sigma_2':<10} | {'Tau_12':<10} | {'Tau_xz':<10} | {'FI (TW)':<8}")
+        print("-" * 90)
         for ply in ply_stresses:
-            bot_x = ply['sigma_x_bot']
-            top_x = ply['sigma_x_top']
-            # Find the peak absolute shear in this ply
-            tau_max = max(abs(ply['tau_xy_bot']), abs(ply['tau_xy_top']))
-            print(f"{ply['ply_index']:<5} | {ply['ply_name']:<15} | {ply['angle']:<5.1f} | {bot_x:>15.2f} MPa | {top_x:>15.2f} MPa | {tau_max:>12.2f} MPa")
+            s1 = (ply['sigma_1_bot'] + ply['sigma_1_top']) / 2.0
+            s2 = (ply['sigma_2_bot'] + ply['sigma_2_top']) / 2.0
+            t12 = max(abs(ply['tau_12_bot']), abs(ply['tau_12_top']))
+            txz = max(abs(ply['tau_xz_bot']), abs(ply['tau_xz_top']))
+            fi = ply['fi_tsai_wu']
+            print(f"{ply['ply_index']:<4} | {ply['ply_name']:<13} | {ply['angle']:<5.1f} | {s1:>10.1f} | {s2:>10.1f} | {t12:>10.1f} | {txz:>10.1f} | {fi:>8.3f}")
     else:
         print("Ply stresses not available. Ensure laminate properties are correctly assigned.")
 

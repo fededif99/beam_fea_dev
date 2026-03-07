@@ -44,17 +44,22 @@ def main():
 
     # 5. SOLVE
     print("  Solving...")
+    # element_type='euler' or 'timoshenko'
     solver = BeamSolver(mesh, material, section, element_type='euler')
     solver.solve_static(lc, bc)
     
     # 6. RESULTS (Processed for report)
+    # The unified engine recovers displacements, internal forces,
+    # and 3D stress fields (including axial/bending decomposition and shear)
     solver.get_max_deflection()
     solver.get_max_internal_forces()
     solver.calculate_stresses()
     
     # 7. REPORT
     report_path = os.path.join(os.path.dirname(__file__), "static_template_results.md")
-    solver.generate_report(report_path)
+    # For isotropic materials, failure criteria defaults to Von Mises in plots,
+    # but we can also specify it for the reporting tables.
+    solver.generate_report(report_path, failure_criterion='tsai_wu')
     print(f"[SUCCESS] Template results saved to: {report_path}")
 
 if __name__ == "__main__":

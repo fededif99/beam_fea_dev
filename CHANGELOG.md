@@ -15,7 +15,7 @@ All notable changes to the `beam_fea` project will be documented in this file.
 - **Refactor**: Unified through-thickness stress recovery logic in `StressEngine` by treating isotropic materials as single-ply laminates.
 - **Cleanup**: Eliminated ad-hoc special casing for composite laminates in the global assembly and post-processing loops.
 - **Docs**: Comprehensive update to `README.md` and `THEORY.md` documenting the unified architecture, advanced CLT recovery, and failure criteria.
-- **Examples**: Updated all example scripts and templates to reflect the latest high-fidelity composite capabilities.
+- **Examples**: Updated all example scripts and templates (Static, Modal, Multi-Property) to reflect the latest high-fidelity composite and unified architecture capabilities.
 
 ## [v2.4.10] - 2026-03-07
 
