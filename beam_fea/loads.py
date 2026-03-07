@@ -50,19 +50,19 @@ class PointLoad(Load):
         Node ID where load is applied
     x : float, optional
         Global x-coordinate (mm). Used if node is None.
-    fx : float
+    fx : float or str
         Force in x-direction (N)
-    fy : float
+    fy : float or str
         Force in y-direction (N)
-    mz : float
+    mz : float or str
         Moment about z-axis (N·mm)
     """
     
     node: Optional[int] = None
     x: Optional[float] = None
-    fx: float = 0.0
-    fy: float = 0.0
-    mz: float = 0.0
+    fx: Union[float, str] = 0.0
+    fy: Union[float, str] = 0.0
+    mz: Union[float, str] = 0.0
     
     def apply_to_force_vector(self, F: np.ndarray, mesh) -> np.ndarray:
         """Apply point load to global force vector."""
@@ -140,17 +140,17 @@ class UniformDistributedLoad(Load):
         Element ID(s) where load is applied
     x_start, x_end : float, optional
         Global x-coordinate range (mm). Used if element is None.
-    wy : float
+    wy : float or str
         Distributed force in y-direction (N/mm) - TRANSVERSE
-    wx : float
+    wx : float or str
         Distributed force in x-direction (N/mm) - AXIAL (optional)
     """
     
     element: Optional[Union[int, List[int]]] = None
     x_start: Optional[float] = None
     x_end: Optional[float] = None
-    wy: float = 0.0
-    wx: float = 0.0
+    wy: Union[float, str] = 0.0
+    wx: Union[float, str] = 0.0
     
     def apply_to_force_vector(self, F: np.ndarray, mesh) -> np.ndarray:
         """Convert distributed load to equivalent nodal loads."""
@@ -238,19 +238,19 @@ class TrapezoidalDistributedLoad(Load):
         Element ID
     x_start, x_end : float, optional
         Global x-coordinate range (mm). Used if element is None.
-    wy1, wy2 : float
+    wy1, wy2 : float or str
         y-direction load at start and end (N/mm)
-    wx1, wx2 : float
+    wx1, wx2 : float or str
         x-direction load at start and end (N/mm) - Optional
     """
     
     element: Optional[int] = None
     x_start: Optional[float] = None
     x_end: Optional[float] = None
-    wy1: float = 0.0
-    wy2: float = 0.0
-    wx1: float = 0.0
-    wx2: float = 0.0
+    wy1: Union[float, str] = 0.0
+    wy2: Union[float, str] = 0.0
+    wx1: Union[float, str] = 0.0
+    wx2: Union[float, str] = 0.0
     
     def apply_to_force_vector(self, F: np.ndarray, mesh) -> np.ndarray:
         """Convert linearly varying load to equivalent nodal loads."""
@@ -366,7 +366,7 @@ class TriangularDistributedLoad(Load):
         Element ID
     x_start, x_end : float, optional
         Global x-coordinate range (mm). Used if element is None.
-    w_peak : float
+    w_peak : float or str
         Peak load intensity (N/mm)
     peak_loc : str
         'start' (peak at start of range) or 'end' (peak at end of range)
@@ -374,7 +374,7 @@ class TriangularDistributedLoad(Load):
     element: Optional[int] = None
     x_start: Optional[float] = None
     x_end: Optional[float] = None
-    w_peak: float = 0.0
+    w_peak: Union[float, str] = 0.0
     peak_loc: str = 'start'
 
     def apply_to_force_vector(self, F: np.ndarray, mesh) -> np.ndarray:
@@ -416,21 +416,21 @@ class LoadCase:
         self.loads.append(load)
 
     def point_load(self, node: Optional[int] = None, x: Optional[float] = None, 
-                   fx: float = 0, fy: float = 0, mz: float = 0):
+                   fx: Union[float, str] = 0, fy: Union[float, str] = 0, mz: Union[float, str] = 0):
         """Add a point load to this load case."""
         self.loads.append(PointLoad(node=node, x=x, fx=fx, fy=fy, mz=mz))
     
-    def concentrated_moment(self, node: Optional[int] = None, x: Optional[float] = None, mz: float = 0):
+    def concentrated_moment(self, node: Optional[int] = None, x: Optional[float] = None, mz: Union[float, str] = 0):
         """Add a concentrated moment to this load case."""
         self.loads.append(PointLoad(node=node, x=x, mz=mz))
     
-    def moment(self, node: Optional[int] = None, x: Optional[float] = None, mz: float = 0):
+    def moment(self, node: Optional[int] = None, x: Optional[float] = None, mz: Union[float, str] = 0):
         """Alias for concentrated_moment."""
         self.concentrated_moment(node=node, x=x, mz=mz)
     
     def uniform_load(self, element: Optional[Union[int, List[int]]] = None, 
                      x_start: Optional[float] = None, x_end: Optional[float] = None,
-                     wy: float = 0.0, wx: float = 0.0):
+                     wy: Union[float, str] = 0.0, wx: Union[float, str] = 0.0):
         """
         Add a Uniformly Distributed Load (UDL).
         
@@ -440,17 +440,17 @@ class LoadCase:
             Element ID(s)
         x_start, x_end : float, optional
             Coordinate range (mm)
-        wy : float
+        wy : float or str
             Transverse load intensity (N/mm)
-        wx : float, optional
+        wx : float or str, optional
             Axial load intensity (N/mm), default 0
         """
         self.loads.append(UniformDistributedLoad(element=element, x_start=x_start, x_end=x_end, wy=wy, wx=wx))
     
     def trapezoidal_load(self, element: Optional[int] = None, 
                          x_start: Optional[float] = None, x_end: Optional[float] = None,
-                         wy1: float = 0.0, wy2: float = 0.0, 
-                         wx1: float = 0.0, wx2: float = 0.0):
+                         wy1: Union[float, str] = 0.0, wy2: Union[float, str] = 0.0,
+                         wx1: Union[float, str] = 0.0, wx2: Union[float, str] = 0.0):
         """
         Add a Trapezoidal (linearly varying) load.
         """
@@ -461,7 +461,7 @@ class LoadCase:
     
     def triangular_load(self, element: Optional[int] = None, 
                         x_start: Optional[float] = None, x_end: Optional[float] = None,
-                        w_peak: float = 0.0, peak_loc: str = 'start'):
+                        w_peak: Union[float, str] = 0.0, peak_loc: str = 'start'):
         """
         Add a Triangular load.
         """

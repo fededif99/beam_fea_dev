@@ -20,9 +20,13 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.4.11 *(2026-03-07)*
+### Latest Version: v2.5.0 *(2026-03-10)*
 
-- **Ply-by-Ply Stresses**: High-fidelity stress recovery at multiple depths (Top, Mid, Bottom) per ply.
+- **Batch Analysis**: Perform multiple analyses with a single call using `solve_batch()`.
+- **Workflow Flexibility**: Load cases from CSV load lists or parametric tables via the new `BatchProcessor`.
+- **Batch Reporting**: Summary reports with absolute maximum "Envelope" calculations for all load cases.
+- **Pandas Integration**: Core reporting engine now powered by Pandas for superior table formatting and CSV export.
+- **Parametric Loading**: Define load magnitudes using string placeholders in Python templates.
 - **Local Stress Analysis**: Transformation to material-axis coordinates ($\sigma_1, \sigma_2, \tau_{12}$) for all laminate plies.
 - **Failure Criteria**: Built-in support for **Maximum Stress**, **Tsai-Hill**, and **Tsai-Wu** criteria.
 - **Enhanced Reporting**: Reports now include detailed ply-by-ply stress tables with local stresses and selectable failure indices.

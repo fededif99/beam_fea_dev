@@ -2,6 +2,16 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.5.0] - 2026-03-10
+
+- **Batch Analysis**: Introduced `solve_batch()` in `BeamSolver` for performing multiple analyses efficiently.
+- **Batch Analysis**: Added `BatchProcessor` supporting "Load List" (Workflow 1) and "Parametric Table" (Workflow 2) from CSV files.
+- **Reporting**: Added `BatchReportGenerator` for summary reports across multiple load cases, including absolute maximum "Envelope" calculations.
+- **Reporting**: Overhauled `BeamReportGenerator` to use **Pandas** for all table formatting, significantly improving report layout and maintainability.
+- **API**: Enhanced `Load` classes to support string placeholders for parametric studies.
+- **API**: Added `export_results()` to `BeamSolver` for exporting batch analysis summaries to CSV.
+- **Dependencies**: Added `pandas` and `tabulate` as required dependencies for enhanced data handling and markdown reporting.
+
 ## [v2.4.11] - 2026-03-07
 
 - **Analysis**: Implemented high-fidelity **Ply-by-Ply Stress Recovery** at multiple depths (Top, Mid, Bottom) per ply.
