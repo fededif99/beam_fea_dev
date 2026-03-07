@@ -10,6 +10,10 @@ All notable changes to the `beam_fea` project will be documented in this file.
 - **Analysis**: Added axial and bending decomposition for longitudinal stress ($\sigma_x$).
 - **Reporting**: Overhauled the ply stress summary table in Markdown reports to include local stresses and selectable failure indices.
 - **API**: Enhanced `BeamSolver.generate_report` to allow user selection of the failure criterion.
+- **Refactor**: Unified the element stiffness and mass matrix architecture under `UnifiedBeamElement`.
+- **Refactor**: Standardized the constitutive interface across `Material` and `Laminate` via `get_sectional_stiffness`.
+- **Refactor**: Unified through-thickness stress recovery logic in `StressEngine` by treating isotropic materials as single-ply laminates.
+- **Cleanup**: Eliminated ad-hoc special casing for composite laminates in the global assembly and post-processing loops.
 
 ## [v2.4.10] - 2026-03-07
 

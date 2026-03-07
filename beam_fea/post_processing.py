@@ -114,8 +114,9 @@ class InternalForceEngine:
                 points_by_element[eid] = []
             points_by_element[eid].append(i)
 
-        from .element_matrices import EulerBernoulliElement, TimoshenkoElement, AnisotropicBeamElement, SHEAR_CORRECTION_FACTOR
-        from .composites import Laminate
+        from .element_matrices import UnifiedBeamElement, SHEAR_CORRECTION_FACTOR
+
+        is_euler = (solver.element_type == 'euler')
 
         for eid, indices in points_by_element.items():
             elem = mesh.elements[eid]
@@ -131,23 +132,22 @@ class InternalForceEngine:
             xi = np.array([(positions[idx] - x1) / L for idx in indices])
             xi = np.clip(xi, 0, 1) if L > 0 else np.zeros_like(xi)
 
-            # Element expert
+            # Element expert (Unified)
             mat = solver.properties.get_material(elem.id)
             sec = solver.properties.get_section(elem.id)
+            stiff = mat.get_sectional_stiffness(sec)
 
-            if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
-                width = getattr(sec, 'width', getattr(sec, 'diameter', 1.0))
-                stiff = mat.get_sectional_stiffness(width)
-                EA, ES, EI = stiff['EA'], stiff['ES'], stiff['EI']
-                rho_total = mat.rho * width * mat.total_thickness
-                GA_s = SHEAR_CORRECTION_FACTOR * stiff['GA_s']
-                element_expert = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
+            width = getattr(sec, 'width', getattr(sec, 'diameter', 1.0))
+            if hasattr(mat, 'total_thickness'):
+                rho_lin = mat.rho * width * mat.total_thickness
             else:
-                E, G, I, A, rho = mat.E, mat.G, sec.Iy, sec.A, mat.rho
-                if solver.element_type == 'euler':
-                    element_expert = EulerBernoulliElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
-                else:
-                    element_expert = TimoshenkoElement(E=E, G=G, I=I, A=A, L=L, rho=rho)
+                rho_lin = mat.rho * sec.A
+
+            element_expert = UnifiedBeamElement(
+                EA=stiff['EA'], ES=stiff['ES'], EI=stiff['EI'],
+                L=L, rho_total=rho_lin, GA_s=stiff['GA_s'] * SHEAR_CORRECTION_FACTOR,
+                force_euler=is_euler
+            )
 
             d_load = element_dist_loads.get(eid, (0.0, 0.0, 0.0, 0.0))
             N, V, M = strategy.recover(element_expert, u_local, xi, dist_load=d_load)
@@ -244,7 +244,6 @@ class StressEngine:
             points_by_element[eid].append(i)
 
         profile_cache = {}
-        from .composites import Laminate
 
         for eid, indices in points_by_element.items():
             mat = solver.properties.get_material(eid)
@@ -256,9 +255,23 @@ class StressEngine:
 
             mask, t_yz, Q_yz = profile_cache[sec_id]
 
-            # --- Special Handling for Laminates (Ply-by-Ply) ---
-            if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
+            # --- Unified Through-Thickness Recovery ---
+            # Treat Isotropic as a 1-ply laminate for code unification
+            from .composites import Laminate, Ply
+            if not hasattr(mat, 'plies'):
+                # Convert isotropic Material to a single-ply Laminate
+                lam = Laminate(name=mat.name)
+                # G13/G23 are equal to G for isotropic
+                p = Ply(name=mat.name, E1=mat.E, E2=mat.E, nu12=mat.nu, G12=mat.G,
+                        G13=mat.G, G23=mat.G, thickness=sec.y_top - sec.y_bottom,
+                        rho=mat.rho, Xt=mat.yield_strength or 0.0,
+                        Xc=mat.yield_strength or 0.0, Yt=mat.yield_strength or 0.0,
+                        Yc=mat.yield_strength or 0.0, S=mat.yield_strength / 1.732 if mat.yield_strength else 0.0)
+                lam.add_ply(p, 0.0)
+            else:
                 lam = mat
+
+            if True: # Always use the advanced recovery logic now
                 t_lam = lam.total_thickness
 
                 # Laminate mid-plane strains and curvatures for these stations
@@ -423,13 +436,26 @@ class StressEngine:
                 # Map ply stresses back to Y, Z grid for standard results
                 # In our 1D beam model, Y is the thickness direction for laminates.
                 for idx_in_sub, global_idx in enumerate(indices):
+                    # Transverse beam shear (isotropic sections) fallback
+                    # If this is isotropic, tau_s should match VQ/It
+                    # Our integrated tau_xz should naturally converge to parabolic for isotropic
+
                     for ply_info in ply_stresses:
                         z_b, z_t = ply_info['z_range']
                         # mask_ply identifies points in the grid that belong to this ply
                         mask_ply = mask & (Y >= z_b) & (Y <= z_t)
-                        sigma_a[global_idx, mask_ply] = ply_info['sigma_x'][idx_in_sub]
-                        # We use von_mises slot for peak ply stress for now
-                        sigma_vm[global_idx, mask_ply] = ply_info['peak_sigma_x'][idx_in_sub]
+
+                        # Store in global 3D matrices
+                        sigma_a[global_idx, mask_ply] = ply_info['axial_sigma_x'][idx_in_sub]
+
+                        # For bending, we use the top/bottom averaged bending component
+                        # (Ideally we'd interpolate linearly through ply, but this is for plotting)
+                        y_mid = (z_b + z_t) / 2.0
+                        sig_b_avg = (ply_info['bending_sigma_x_bot'][idx_in_sub] + ply_info['bending_sigma_x_top'][idx_in_sub]) / 2.0
+                        sigma_b[global_idx, mask_ply] = sig_b_avg
+
+                        tau_s[global_idx, mask_ply] = ply_info['tau_xz_mid'][idx_in_sub]
+                        sigma_vm[global_idx, mask_ply] = ply_info['peak_von_mises'][idx_in_sub]
 
                 # Store ply-by-ply data in a separate attribute for querying
                 if not hasattr(solver, 'laminate_results'):
@@ -439,45 +465,6 @@ class StressEngine:
                     'strains_mid': strains_mid,
                     'x_positions': x_positions[indices]
                 }
-                continue # Skip standard isotropic calculation
-            A, Iy = sec.A, sec.Iy
-
-            # Forces for these stations
-            N_sub = N_x[indices, np.newaxis, np.newaxis]
-            V_sub = V_x[indices, np.newaxis, np.newaxis]
-            M_sub = M_x[indices, np.newaxis, np.newaxis]
-
-            # Stress calculation (vectorized across these stations)
-            sig_a_sub = N_sub / A
-            sig_b_sub = -M_sub * Y[np.newaxis, :, :] / Iy
-
-            valid_t = t_yz > 1e-9
-            shear_base = np.zeros_like(Y)
-            shear_base[valid_t] = Q_yz[valid_t] / (Iy * t_yz[valid_t])
-            tau_s_sub = V_sub * shear_base[np.newaxis, :, :]
-
-            sig_x_sub = sig_a_sub + sig_b_sub
-            vm_sub = np.sqrt(sig_x_sub**2 + 3 * tau_s_sub**2)
-
-            # Principal stresses
-            avg_sig = sig_x_sub / 2.0
-            R = np.sqrt(avg_sig**2 + tau_s_sub**2)
-
-            # Masking
-            # mask is (ny, nz), sig_a_sub is (n_stations, ny, nz)
-            # Apply mask using broadcasting for all stations
-            m_3d = mask[np.newaxis, :, :]
-            sig_a_sub = sig_a_sub * m_3d
-            sig_b_sub = sig_b_sub * m_3d
-            tau_s_sub = tau_s_sub * m_3d
-            vm_sub = vm_sub * m_3d
-
-            sigma_a[indices] = sig_a_sub
-            sigma_b[indices] = sig_b_sub
-            tau_s[indices] = tau_s_sub
-            sigma_vm[indices] = vm_sub
-            sigma_1[indices] = avg_sig + R
-            sigma_2[indices] = avg_sig - R
 
         return {
             'x': x_positions, 'y': Y, 'z': Z, 'mask': mask,

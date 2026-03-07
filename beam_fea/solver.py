@@ -160,49 +160,40 @@ class BeamSolver:
                     pass 
     
     def _assemble_stiffness_matrix(self):
-        """Assemble global stiffness matrix only."""
+        """Assemble global stiffness matrix using unified element architecture."""
         from scipy.sparse import coo_matrix
+        from .element_matrices import UnifiedBeamElement
 
         num_dofs = self.mesh.num_dofs
         K_rows, K_cols, K_data = [], [], []
 
-        from .element_matrices import AnisotropicBeamElement
-        from .composites import Laminate
-
-        ElementClass = EulerBernoulliElement if self.element_type == 'euler' else TimoshenkoElement
         coords = self.mesh.get_node_coords()
+        is_euler = (self.element_type == 'euler')
 
         for elem in self.mesh.elements:
             p1, p2 = coords[elem.node1], coords[elem.node2]
             L = np.sqrt(np.sum((p2 - p1)**2))
 
-            # Determine properties for this element via collector
+            # Unified property retrieval
             mat = self.properties.get_material(elem.id)
             sec = self.properties.get_section(elem.id)
 
-            # Check for anisotropy (Laminate override)
-            if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
-                # Detect width from section (standardized sections have 'width')
-                width = getattr(sec, 'width', 1.0)
-                if hasattr(sec, 'diameter'): width = sec.diameter
+            stiff = mat.get_sectional_stiffness(sec)
 
-                stiff = mat.get_sectional_stiffness(width)
-                EA, ES, EI = stiff['EA'], stiff['ES'], stiff['EI']
-                rho_total = mat.rho * width * mat.total_thickness
-
-                # CLT-based Transverse shear stiffness (with shear correction)
-                GA_s = SHEAR_CORRECTION_FACTOR * stiff['GA_s']
-
-                element = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
+            # Linear mass density (mass per unit length)
+            # For laminates, mat.rho is avg density. Total thickness is mat.total_thickness.
+            # width is extracted within mat.get_sectional_stiffness, we repeat here for mass.
+            width = getattr(sec, 'width', getattr(sec, 'diameter', 1.0))
+            if hasattr(mat, 'total_thickness'):
+                rho_lin = mat.rho * width * mat.total_thickness
             else:
-                element = ElementClass(
-                    E=mat.E,
-                    G=mat.G,
-                    I=sec.Iy,
-                    A=sec.A,
-                    L=L,
-                    rho=mat.rho
-                )
+                rho_lin = mat.rho * sec.A
+
+            element = UnifiedBeamElement(
+                EA=stiff['EA'], ES=stiff['ES'], EI=stiff['EI'],
+                L=L, rho_total=rho_lin, GA_s=stiff['GA_s'] * SHEAR_CORRECTION_FACTOR,
+                force_euler=is_euler
+            )
 
             k_local = element.stiffness_matrix()
 
@@ -222,48 +213,35 @@ class BeamSolver:
         ).tocsr()
 
     def _assemble_mass_matrix(self):
-        """Assemble global mass matrix only (called lazily for modal analysis)."""
+        """Assemble global mass matrix using unified element architecture."""
         from scipy.sparse import coo_matrix
+        from .element_matrices import UnifiedBeamElement
 
         num_dofs = self.mesh.num_dofs
         M_rows, M_cols, M_data = [], [], []
 
-        from .element_matrices import AnisotropicBeamElement
-        from .composites import Laminate
-
-        ElementClass = EulerBernoulliElement if self.element_type == 'euler' else TimoshenkoElement
         coords = self.mesh.get_node_coords()
+        is_euler = (self.element_type == 'euler')
 
         for elem in self.mesh.elements:
             p1, p2 = coords[elem.node1], coords[elem.node2]
             L = np.sqrt(np.sum((p2 - p1)**2))
 
-            # Determine properties for this element via collector
             mat = self.properties.get_material(elem.id)
             sec = self.properties.get_section(elem.id)
+            stiff = mat.get_sectional_stiffness(sec)
 
-            # Check for anisotropy
-            if hasattr(mat, '_is_laminate') or isinstance(mat, Laminate):
-                width = getattr(sec, 'width', 1.0)
-                if hasattr(sec, 'diameter'): width = sec.diameter
-
-                stiff = mat.get_sectional_stiffness(width)
-                EA, ES, EI = stiff['EA'], stiff['ES'], stiff['EI']
-                rho_total = mat.rho * width * mat.total_thickness
-
-                # CLT-based Transverse shear stiffness
-                GA_s = SHEAR_CORRECTION_FACTOR * stiff['GA_s']
-
-                element = AnisotropicBeamElement(EA=EA, ES=ES, EI=EI, L=L, rho_total=rho_total, GA_s=GA_s)
+            width = getattr(sec, 'width', getattr(sec, 'diameter', 1.0))
+            if hasattr(mat, 'total_thickness'):
+                rho_lin = mat.rho * width * mat.total_thickness
             else:
-                element = ElementClass(
-                    E=mat.E,
-                    G=mat.G,
-                    I=sec.Iy,
-                    A=sec.A,
-                    L=L,
-                    rho=mat.rho
-                )
+                rho_lin = mat.rho * sec.A
+
+            element = UnifiedBeamElement(
+                EA=stiff['EA'], ES=stiff['ES'], EI=stiff['EI'],
+                L=L, rho_total=rho_lin, GA_s=stiff['GA_s'] * SHEAR_CORRECTION_FACTOR,
+                force_euler=is_euler
+            )
 
             m_local = element.mass_matrix()
 

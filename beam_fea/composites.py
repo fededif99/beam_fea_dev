@@ -345,7 +345,7 @@ class Laminate:
             rho=props['rho']
         )
 
-    def get_sectional_stiffness(self, width: float) -> dict:
+    def get_sectional_stiffness(self, section) -> dict:
         """
         Calculate width-integrated sectional stiffness values for the
         anisotropic 1D beam element.
@@ -364,6 +364,8 @@ class Laminate:
         Also returns Transverse Shear Stiffness (GA_s):
             GA_s = A55 * b
         """
+        width = getattr(section, 'width', getattr(section, 'diameter', 1.0))
+
         try:
             ABD_inv = np.linalg.inv(self.ABD)
             a11_inv = np.linalg.inv(self.A)[0, 0]

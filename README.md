@@ -26,6 +26,7 @@
 - **Local Stress Analysis**: Transformation to material-axis coordinates ($\sigma_1, \sigma_2, \tau_{12}$) for all laminate plies.
 - **Failure Criteria**: Built-in support for **Maximum Stress**, **Tsai-Hill**, and **Tsai-Wu** criteria.
 - **Enhanced Reporting**: Reports now include detailed ply-by-ply stress tables with local stresses and selectable failure indices.
+- **Unified Architecture**: Unified element matrices and stress recovery engines for both isotropic and composite materials.
 - **Explicit Geometry**: Replaced bounding boxes with Matplotlib patches for exact cross-section visualization.
 - **Strategy Pattern**: Decoupled "FEA Interpolation" from "High-Fidelity Recovery" for internal force handling.
 - **Optimization**: Achieve $O(M)$ performance scaling for station evaluations via vectorized grouping.
