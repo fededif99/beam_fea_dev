@@ -62,6 +62,7 @@ from .cross_sections import (
     rectangular, circular, i_beam, box, t_beam, c_channel, hollow_circular, l_section
 )
 from .mesh import Mesh, Node, Element, MeshGenerator, MeshRefinement
+from .batch import BatchProcessor
 from .properties import PropertySet
 from .composites import Ply, Laminate
 from .element_matrices import EulerBernoulliElement, TimoshenkoElement
@@ -71,7 +72,7 @@ from .boundary_conditions import (
 )
 from .loads import (
     LoadCase, LoadCombination, PointLoad, 
-    UniformDistributedLoad, TrapezoidalDistributedLoad
+    UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad
 )
 from .static_analysis import StaticAnalysis, StressAnalysis
 from .modal_analysis import ModalAnalysis
@@ -96,6 +97,9 @@ __all__ = [
     # Mesh
     'Mesh', 'Node', 'Element', 'MeshGenerator', 'MeshRefinement',
     
+    # Batch
+    'BatchProcessor',
+
     # Properties
     'PropertySet',
 
@@ -111,7 +115,7 @@ __all__ = [
     
     # Loads
     'LoadCase', 'LoadCombination',
-    'PointLoad', 'UniformDistributedLoad', 'TrapezoidalDistributedLoad',
+    'PointLoad', 'UniformDistributedLoad', 'TrapezoidalDistributedLoad', 'TriangularDistributedLoad',
     
     # Analysis
     'StaticAnalysis', 'ModalAnalysis', 'StressAnalysis',

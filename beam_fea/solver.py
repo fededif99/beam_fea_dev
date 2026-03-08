@@ -262,9 +262,141 @@ class BeamSolver:
 
         # Reset cache
         self._cached_forces = None
+        self._cached_forces_params = None
         self._cached_stresses = None
+        self._cached_stresses_params = None
 
         return self.displacements
+
+    def solve_batch(self, load_cases: List[LoadCase], bc_set: BoundaryConditionSet, mode: str = 'light'):
+        """
+        Perform static analysis for multiple load cases.
+
+        Parameters:
+        -----------
+        load_cases : list of LoadCase
+            Load cases to analyze
+        bc_set : BoundaryConditionSet
+            Boundary conditions (shared across all cases)
+        mode : str
+            'light' (default) - stores only peak results and summary
+            'full' - stores complete nodal results for every case
+        """
+        if not isinstance(load_cases, list) or len(load_cases) == 0:
+            raise ValueError("load_cases must be a non-empty list of LoadCase objects.")
+
+        if not all(isinstance(lc, LoadCase) for lc in load_cases):
+            raise TypeError("All items in load_cases must be LoadCase objects.")
+
+        import pandas as pd
+        import copy
+        from .post_processing import StressEngine
+
+        self.batch_results = []
+        summary_rows = []
+
+        # Ensure K is assembled once
+        if self.K_global is None:
+            self._assemble_stiffness_matrix()
+
+        for lc in load_cases:
+            # Solve current case
+            self.solve_static(lc, bc_set)
+
+            # Extract internal forces and stresses
+            forces = self.calculate_internal_forces()
+            stresses = self.calculate_stresses()
+
+            # Find peaks
+            max_v, max_v_idx = self.get_max_deflection()
+            max_forces = self.get_max_internal_forces()
+
+            # Stress peaks
+            vm_flat = stresses['von_mises'].flatten()
+            max_vm_idx_flat = np.argmax(vm_flat)
+            max_vm_idx = np.unravel_index(max_vm_idx_flat, stresses['von_mises'].shape)
+            max_vm = vm_flat[max_vm_idx_flat]
+
+            peak_x = stresses['x'][max_vm_idx[0]]
+            peak_y = stresses['y'][max_vm_idx[1], max_vm_idx[2]]
+            peak_z = stresses['z'][max_vm_idx[1], max_vm_idx[2]]
+
+            # Factor of Safety
+            yield_strength = getattr(self.material, 'yield_strength', None) or 0.0
+            fos = yield_strength / max_vm if max_vm > 0 and yield_strength > 0 else float('nan')
+
+            summary_row = {
+                'case_name': lc.name,
+                'max_deflection': max_v,
+                'max_deflection_x': self.mesh.nodes[max_v_idx].x,
+                'max_shear': max_forces['shear']['value'],
+                'max_shear_x': max_forces['shear']['x'],
+                'max_moment': max_forces['moment']['value'],
+                'max_moment_x': max_forces['moment']['x'],
+                'max_von_mises': max_vm,
+                'max_vm_x': peak_x,
+                'max_vm_y': peak_y,
+                'max_vm_z': peak_z,
+                'fos': fos
+            }
+
+            # Add ply info if laminate
+            if hasattr(self, 'laminate_results'):
+                # Find which ply has the peak VM
+                # max_vm_idx is (x_idx, y_idx, z_idx)
+                # StationEvaluator etc map x_idx back to element
+                from .post_processing import StationEvaluator
+                plan = StationEvaluator.get_evaluation_plan(self, len(stresses['x']))
+                # Find which element the peak x is in
+                eid_peak = -1
+                for eid, indices in plan['points_by_element'].items():
+                    if max_vm_idx[0] in indices:
+                        eid_peak = eid
+                        break
+
+                if eid_peak != -1 and eid_peak in self.laminate_results:
+                    ply_data = self.laminate_results[eid_peak]['ply_data']
+                    # y coord of peak is peak_y. Find which ply contains it.
+                    for ply in ply_data:
+                        z_b, z_t = ply['z_range']
+                        if z_b - 1e-6 <= peak_y <= z_t + 1e-6:
+                            summary_row['peak_ply'] = ply['name']
+                            break
+
+            summary_rows.append(summary_row)
+
+            if mode == 'full':
+                self.batch_results.append({
+                    'name': lc.name,
+                    'displacements': self.displacements.copy(),
+                    'reactions': self.reactions.copy(),
+                    'forces': copy.deepcopy(forces),
+                    'stresses': copy.deepcopy(stresses)
+                })
+
+        self.batch_summary = pd.DataFrame(summary_rows)
+        return self.batch_summary
+
+    def export_results(self, filepath: str):
+        """
+        Export batch analysis results to CSV.
+        """
+        if not hasattr(self, 'batch_summary'):
+            raise ValueError("No batch results to export. Run solve_batch() first.")
+
+        self.batch_summary.to_csv(filepath, index=False)
+        return filepath
+
+    def generate_batch_report(self, output_path: str):
+        """
+        Generate a summary report for batch analysis.
+        """
+        if not hasattr(self, 'batch_summary'):
+            raise ValueError("No batch results to report. Run solve_batch() first.")
+
+        from .report_generator import BatchReportGenerator
+        report_gen = BatchReportGenerator(self)
+        return report_gen.generate_report(output_path)
 
     def solve_modal(self, bc_set: BoundaryConditionSet, num_modes: int = 10):
         """

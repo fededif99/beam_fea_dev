@@ -20,9 +20,13 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.4.11 *(2026-03-07)*
+### Latest Version: v2.5.0 *(2026-03-10)*
 
-- **Ply-by-Ply Stresses**: High-fidelity stress recovery at multiple depths (Top, Mid, Bottom) per ply.
+- **Batch Analysis**: Perform multiple analyses with a single call using `solve_batch()`.
+- **Workflow Flexibility**: Load cases from CSV load lists or parametric tables via the new `BatchProcessor`.
+- **Batch Reporting**: Summary reports with absolute maximum "Envelope" calculations for all load cases.
+- **Pandas Integration**: Core reporting engine now powered by Pandas for superior table formatting and CSV export.
+- **Parametric Loading**: Define load magnitudes using string placeholders in Python templates.
 - **Local Stress Analysis**: Transformation to material-axis coordinates ($\sigma_1, \sigma_2, \tau_{12}$) for all laminate plies.
 - **Failure Criteria**: Built-in support for **Maximum Stress**, **Tsai-Hill**, and **Tsai-Wu** criteria.
 - **Enhanced Reporting**: Reports now include detailed ply-by-ply stress tables with local stresses and selectable failure indices.
@@ -60,8 +64,9 @@
    - 3.5 [Loads](#35-loads-beam_fealoads)
    - 3.6 [Boundary Conditions](#36-boundary-conditions-beam_feaboundary_conditions)
    - 3.7 [Solver & Analysis](#37-solver--analysis-beam_feasolver)
-   - 3.8 [Visualization](#38-visualization-beam_feavisualizer--beam_feaplot_style)
-   - 3.9 [Report Generation](#39-report-generation-beam_feareport_generator)
+   - 3.8 [Batch Analysis](#38-batch-analysis-beam_feabatch)
+   - 3.9 [Visualization](#39-visualization-beam_feavisualizer--beam_feaplot_style)
+   - 3.10 [Report Generation](#310-report-generation-beam_feareport_generator)
 4. [Validation & Theory](#-validation--theory)
 
 ---
@@ -508,12 +513,33 @@ solver = BeamSolver(mesh, material, section, element_type='euler')
 - **`calculate_internal_forces(num_points=100)`**: Returns dictionary of `axial_forces`, `shear_forces`, and `bending_moments`.
 - **`calculate_stresses(num_x, num_y, num_z)`**: Generates 3D stress matrices (Axial, Bending, Shear, von Mises, Principal).
 - **`visualize(analysis_type, **kwargs)`**: Orchestrates plots (see 3.7).
-- **`generate_report(filepath, failure_criterion='tsai_wu', ...)`**: Generates professional engineering report (see 3.8).
+- **`generate_report(filepath, failure_criterion='tsai_wu', ...)`**: Generates professional engineering report (see 3.10).
   - *Criteria*: `'max_stress'`, `'tsai_hill'`, `'tsai_wu'`
 
 ---
 
-### 3.8 Visualization (`beam_fea.visualizer` & `beam_fea.plot_style`)
+### 3.8 Batch Analysis (`beam_fea.batch`)
+
+Efficiently run multiple static load cases and generate summary reports.
+
+#### `BatchProcessor` Class
+
+Utilities for loading multiple load cases.
+
+- **`load_from_list(filepath)`**: Loads unique load cases from a CSV list.
+- **`load_from_table(template_lc, filepath)`**: Substitutes parameters from a CSV into a template load case.
+
+#### `BeamSolver` Batch Methods
+
+- **`solve_batch(load_cases, bc_set, mode='light')`**: Executes analysis on all provided cases.
+  - `mode='light'`: Stores only peak results (default).
+  - `mode='full'`: Stores complete results for every node in every case.
+- **`generate_batch_report(filepath)`**: Generates a summary Markdown report with an **Envelope** (absolute worst-case) calculation.
+- **`export_results(filepath)`**: Saves the batch summary to a CSV file.
+
+---
+
+### 3.9 Visualization (`beam_fea.visualizer` & `beam_fea.plot_style`)
 
 Professional visualization suite for structural results, powered by a centralized `PlotStyle` engine.
 
@@ -539,7 +565,7 @@ DEFAULT_STYLE.colour_primary = '#FF0000' # Change beam lines to red
 
 ---
 
-### 3.9 Report Generation (`beam_fea.report_generator`)
+### 3.10 Report Generation (`beam_fea.report_generator`)
 
 Generates comprehensive engineering reports in Markdown format, which can be easily converted to PDF or HTML.
 
