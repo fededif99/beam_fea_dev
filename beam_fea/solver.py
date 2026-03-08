@@ -282,6 +282,12 @@ class BeamSolver:
             'light' (default) - stores only peak results and summary
             'full' - stores complete nodal results for every case
         """
+        if not isinstance(load_cases, list) or len(load_cases) == 0:
+            raise ValueError("load_cases must be a non-empty list of LoadCase objects.")
+
+        if not all(isinstance(lc, LoadCase) for lc in load_cases):
+            raise TypeError("All items in load_cases must be LoadCase objects.")
+
         import pandas as pd
         import copy
         from .post_processing import StressEngine

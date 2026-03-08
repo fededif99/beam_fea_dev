@@ -8,6 +8,7 @@ Supports loading load cases from CSV/TXT files and parametric studies.
 import pandas as pd
 import numpy as np
 import copy
+import os
 from typing import List, Union, Dict, Any
 from .loads import LoadCase
 
@@ -27,7 +28,16 @@ class BatchProcessor:
         target_type: 'node', 'element', or 'range'
         load_type: 'point', 'fy', 'fx', 'mz', 'udl', 'trap', 'tri'
         """
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Batch load file not found: {filepath}")
+
         df = pd.read_csv(filepath)
+
+        required_cols = ['case_name', 'target_id', 'target_type', 'load_type']
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            raise ValueError(f"Batch CSV missing required columns: {missing}")
+
         load_cases = {}
 
         for _, row in df.iterrows():
@@ -95,6 +105,12 @@ class BatchProcessor:
         Each row in the table (CSV) represents a load case.
         Columns match the string placeholders in the template_lc.
         """
+        if not isinstance(template_lc, LoadCase):
+            raise TypeError(f"template_lc must be a LoadCase object, got {type(template_lc)}")
+
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Batch parameter file not found: {filepath}")
+
         df = pd.read_csv(filepath)
         load_cases = []
 
@@ -108,6 +124,10 @@ class BatchProcessor:
             for load in lc.loads:
                 BatchProcessor._substitute_placeholders(load, row)
 
+            unresolved = BatchProcessor._get_unresolved_placeholders(lc)
+            if unresolved:
+                raise ValueError(f"Case '{case_name}' has unresolved placeholders: {unresolved}")
+
             load_cases.append(lc)
 
         return load_cases
@@ -119,5 +139,21 @@ class BatchProcessor:
         for attr in ['fx', 'fy', 'mz', 'wy', 'wx', 'wy1', 'wy2', 'wx1', 'wx2', 'w_peak']:
             if hasattr(load, attr):
                 val = getattr(load, attr)
-                if isinstance(val, str) and val in parameters:
-                    setattr(load, attr, float(parameters[val]))
+                if isinstance(val, str):
+                    if val in parameters:
+                        setattr(load, attr, float(parameters[val]))
+                    else:
+                        # Placeholder not found in CSV
+                        pass
+
+    @staticmethod
+    def _get_unresolved_placeholders(load_case: LoadCase) -> List[str]:
+        """Find any remaining string placeholders in a LoadCase."""
+        unresolved = []
+        for load in load_case.loads:
+            for attr in ['fx', 'fy', 'mz', 'wy', 'wx', 'wy1', 'wy2', 'wx1', 'wx2', 'w_peak']:
+                if hasattr(load, attr):
+                    val = getattr(load, attr)
+                    if isinstance(val, str):
+                        unresolved.append(val)
+        return unresolved
