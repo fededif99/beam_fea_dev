@@ -83,7 +83,8 @@ def test_coordinate_parametric_consistency():
     bc2.fixed_support(0)
     solver2 = BeamSolver(mesh2, material, section)
     solver2.solve_static(lc2, bc2)
-    disp2, _ = solver2.get_max_deflection()
+    max_rec2 = solver2.get_max_deflection()
+    disp2 = max_rec2['res']
     
     # Case 2: 10 elements (load at node 7.5)
     mesh10 = MeshGenerator.beam_mesh_1d(L, 10)
@@ -93,7 +94,8 @@ def test_coordinate_parametric_consistency():
     bc10.fixed_support(0)
     solver10 = BeamSolver(mesh10, material, section)
     solver10.solve_static(lc10, bc10)
-    disp10, _ = solver10.get_max_deflection()
+    max_rec10 = solver10.get_max_deflection()
+    disp10 = max_rec10['res']
     
     assert np.isclose(disp2, disp10, rtol=1e-5)
 

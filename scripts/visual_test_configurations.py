@@ -56,8 +56,8 @@ def run_config(name: str, mesh, material, section, lc, bc,
         solver.generate_report(report_path, deformation_scale=deformation_scale)
 
         # Quick sanity: max deflection should be finite
-        d_max, _ = solver.get_max_deflection()
-        print(f"  [PASS] {name:55s}  d_max = {abs(d_max):.4f} mm")
+        max_rec = solver.get_max_deflection()
+        print(f"  [PASS] {name:55s}  d_max = {max_rec['res']:.4f} mm")
         return True
     except Exception:
         print(f"  [FAIL] {name}")

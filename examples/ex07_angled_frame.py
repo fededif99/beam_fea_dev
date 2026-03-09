@@ -19,8 +19,8 @@ def run_angled_frame_demo():
     print(f"Waypoints: {mesh.waypoint_nodes}")
 
     # 2. Properties
-    material = get_material('steel')
-    section = rectangular(100, 200)
+    material = get_material('aluminium')
+    section = rectangular(height=100, width=200)
     solver = BeamSolver(mesh, material, section)
 
     # 3. Boundary Conditions & Loads
@@ -40,9 +40,9 @@ def run_angled_frame_demo():
     solver.solve_static(load, bc)
 
     # 5. Results
-    max_def, _ = solver.get_max_deflection()
+    max_rec = solver.get_max_deflection()
     print(f"\nSolve complete.")
-    print(f"Max displacement magnitude: {abs(max_def):.4f} mm")
+    print(f"Max displacement magnitude: {max_rec['res']:.4f} mm at Node {int(max_rec['node_id'])}")
 
     # 6. Report
     report_path = os.path.join(os.path.dirname(__file__), "angled_frame_report.md")

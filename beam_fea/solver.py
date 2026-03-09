@@ -308,7 +308,7 @@ class BeamSolver:
             stresses = self.calculate_stresses()
 
             # Find peaks
-            max_v, max_v_idx = self.get_max_deflection()
+            max_defl = self.get_max_deflection()
             max_forces = self.get_max_internal_forces()
 
             # Stress peaks
@@ -327,8 +327,9 @@ class BeamSolver:
 
             summary_row = {
                 'case_name': lc.name,
-                'max_deflection': max_v,
-                'max_deflection_x': self.mesh.nodes[max_v_idx].x,
+                'max_deflection': max_defl['res'],
+                'max_deflection_x': max_defl['x'],
+                'max_deflection_node': max_defl['node_id'],
                 'max_shear': max_forces['shear']['value'],
                 'max_shear_x': max_forces['shear']['x'],
                 'max_moment': max_forces['moment']['value'],
@@ -427,14 +428,45 @@ class BeamSolver:
 
         return frequencies, mode_shapes
     
-    def get_max_deflection(self):
-        """Get maximum deflection and location."""
+    def get_max_deflection(self) -> 'pd.Series':
+        """
+        Calculate resultant displacement at all nodes and find the maximum.
+        
+        Returns:
+        --------
+        max_record : pd.Series
+            Series containing node_id, x, y, u, v, and res (resultant)
+        """
+        import pandas as pd
         if self.displacements is None:
             raise ValueError("Must solve first")
         
+        if self.results is None:
+            self.results = {}
+
+        # 1. Extract components
+        u = self.displacements[0::3]
         v = self.displacements[1::3]
-        max_idx = np.argmax(np.abs(v))
-        return v[max_idx], max_idx
+        
+        # 2. Compute resultant (2D for now, easily extendable to 3D)
+        res = np.sqrt(u**2 + v**2)
+        
+        # 3. Build DataFrame
+        coords = self.mesh.get_node_coords()
+        df = pd.DataFrame({
+            'node_id': np.arange(self.mesh.num_nodes),
+            'x': coords[:, 0],
+            'y': coords[:, 1],
+            'u': u,
+            'v': v,
+            'res': res
+        })
+        
+        # 4. Store in results
+        self.results['displacements'] = df
+        
+        # 5. Return the record with max resultant
+        return df.iloc[df['res'].idxmax()]
     
     def get_max_internal_forces(self, num_points: int = 100) -> dict:
         """

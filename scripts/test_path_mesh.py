@@ -32,8 +32,8 @@ def test_cranked_beam():
     load.point_load(node=mesh.waypoint_nodes[2], fy=-1000)
 
     solver.solve_static(load, bc)
-    max_def, _ = solver.get_max_deflection()
-    print(f"Solve complete. Max deflection: {abs(max_def):.4f} mm")
+    max_rec = solver.get_max_deflection()
+    print(f"Solve complete. Max deflection: {max_rec['res']:.4f} mm")
 
 if __name__ == "__main__":
     test_cranked_beam()

@@ -1,0 +1,5 @@
+case_name,P_mid,W_dist
+Nominal,-5000,-2.0
+Heavy_Point,-10000,-2.0
+Heavy_UDL,-5000,-10.0
+Extreme,-15000,-12.0

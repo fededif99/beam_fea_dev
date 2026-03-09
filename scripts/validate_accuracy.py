@@ -62,7 +62,8 @@ def validate_static_cases():
     lc_point.point_load(100, fy=P) # Node 100 is at tip
     
     solver.solve_static(lc_point, bc_cantilever)
-    max_def, _ = solver.get_max_deflection()
+    max_rec = solver.get_max_deflection()
+    max_def = max_rec['res']
     
     # Exact: P L^3 / (3 E I)
     deflection_exact = abs(P * L**3 / (3 * E * I))
@@ -93,7 +94,8 @@ def validate_static_cases():
     lc_udl.uniform_load(list(range(100)), wy=w)
     
     solver.solve_static(lc_udl, bc_pinned)
-    max_def, _ = solver.get_max_deflection()
+    max_rec = solver.get_max_deflection()
+    max_def = max_rec['res']
     
     # Exact: 5 w L^4 / (384 E I)
     deflection_exact = abs(5 * w * L**4 / (384 * E * I))
@@ -120,7 +122,8 @@ def validate_static_cases():
     bc_fixed.fixed_support(100)
     
     solver.solve_static(lc_udl, bc_fixed)
-    max_def, _ = solver.get_max_deflection()
+    max_rec = solver.get_max_deflection()
+    max_def = max_rec['res']
     
     # Exact: w L^4 / (384 E I)
     deflection_exact = abs(w * L**4 / (384 * E * I))

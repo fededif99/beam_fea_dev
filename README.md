@@ -20,8 +20,10 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.5.0 *(2026-03-10)*
+### Latest Version: v2.6.0 *(2026-03-09)*
 
+- **Deflection Analysis**: `get_max_deflection()` now reports true resultant magnitude and returns structured Pandas data.
+- **Equilibrium Fix**: Resolved erroneous residual moment reporting in 2D angled frames.
 - **Batch Analysis**: Perform multiple analyses with a single call using `solve_batch()`.
 - **Workflow Flexibility**: Load cases from CSV load lists or parametric tables via the new `BatchProcessor`.
 - **Batch Reporting**: Summary reports with absolute maximum "Envelope" calculations for all load cases.
@@ -104,6 +106,8 @@ beam_fea_optimized/
 - **NumPy**: For high-performance matrix operations
 - **SciPy**: For sparse solver backend and eigenvalue extraction
 - **Matplotlib**: For generating analysis plots and reports
+- **Pandas**: For structured result extraction and batch processing
+- **Tabulate**: For formatting professional Markdown tables in reports
 
 ### Installation
 
@@ -113,6 +117,17 @@ To enable a professional development workflow, it is recommended to install the 
 # Clone the repository and install in development mode
 pip install -e .
 ```
+
+### 🧹 Environment Hygiene & Troubleshooting
+
+If you are switching between many versions or branches and encounter versioning conflicts (e.g., `pip` reporting an old version despite being on a new branch), use the provided cleanup utility:
+
+```bash
+# Purges stale metadata and performs a fresh editable install
+python scripts/clean_install.py
+```
+
+This is especially recommended for **Reviewers** to ensure their environment is perfectly synced with the current source tree.
 
 ### Quick Example: Cantilever Beam
 
@@ -371,9 +386,56 @@ Static utilities for rapid meshing.
 - **`beam_mesh_1d(length, num_elements)`**: Creates a simple straight line mesh.
 - **`line_mesh(start_xy, end_xy, num_elements)`**: Meshes a line between two points.
 - **`path_mesh(points, elements_per_segment)`**: Creates a general 2D angled beam mesh from a list of $(x, y)$ waypoints. Supports segment-wise grading.
-- **`multi_span_beam(lengths, elements_per_span)`**: Creates a continuous beam mesh over multiple supports (supports horizontal/vertical).
-- **`graded_mesh(start, end, n, grading_ratio)`**: Meshes with variable element sizes (Ratio > 1 increases size).
+- **`multi_span_beam(lengths, elements_per_span)`**: Creates a continuous beam mesh over multiple supports.
+- **`graded_mesh(start, end, n, grading_ratio)`**: Meshes with variable element sizes.
 - **`curved_beam(radius, start_ang, end_ang, n)`**: Meshes a circular arc.
+
+#### 3.4.1 Advanced Meshing (Waypoints & Angled Beams)
+
+For complex structures like angled frames or multi-span beams, the `MeshGenerator` provides automatic waypoint tracking.
+
+**1. Point-to-Point Waypoints (`path_mesh`)**
+Define a series of $(x, y)$ coordinates. The generator handles node merging at the "elbows" automatically.
+
+```python
+points = [(0, 0), (1000, 0), (1000, 1000)] # L-Frame
+mesh = MeshGenerator.path_mesh(points, elements_per_segment=[10, 10])
+```
+
+**2. Relative Vectors (`multi_span_beam`)**
+Define spans using relative offsets `(dx, dy)`. This is often more intuitive than absolute coordinates.
+
+```python
+# 1m horizontal span, followed by 1m vertical span
+spans = [1000.0, (0.0, 1000.0)] 
+mesh = MeshGenerator.multi_span_beam(spans, elements_per_span=[10, 10])
+```
+
+**3. Automatic Support Tracking**
+The `mesh.waypoint_nodes` attribute stores the node IDs created at each waypoint (junction). This list is **automatically populated by all mesh generators** (including single-beam ones like `beam_mesh_1d`) and is always indexed as `[Start, Junction 1, ..., End]`.
+
+| Index | Location | Description |
+| :--- | :--- | :--- |
+| `[0]` | **Start** | Start of the first beam segment. |
+| `[1]` | **Junction 1** | Junction between Beam 1 and Beam 2. |
+| `[i]` | **Junction i** | Junction between Beam i and Beam i+1. |
+| `[-1]` | **Final End** | The absolute far end of the structure. |
+
+```python
+bc = BoundaryConditionSet("Frame Supports")
+
+# Fixed at the start of the structure
+bc.fixed_support(mesh.waypoint_nodes[0]) 
+
+# Roller support at the first junction (between spans 1 and 2)
+bc.roller_support(mesh.waypoint_nodes[1])
+
+# Tip load at the very end of the structure
+load.point_load(node=mesh.waypoint_nodes[-1], fx=5000) 
+```
+
+> [!TIP]
+> **Pro Tip**: Use `mesh.waypoint_nodes[-1]` to always refer to the end of the structure, regardless of how many spans it contains!
 
 #### `MeshRefinement` Class
 
@@ -509,7 +571,8 @@ solver = BeamSolver(mesh, material, section, element_type='euler')
 **Methods:**
 
 - **`solve_static(load_case, bc_set)`**: Runs linear static analysis. Performs automatic model validation (mesh, materials, stability, slenderness checks) before solving.
-- **`solve_modal(bc_set, num_modes)`**: Runs eigenvalue analysis (Frequencies & Mode Shapes). Performs automatic model validation before solving.
+- **`solve_modal(bc_set, num_modes)`**: Runs eigenvalue analysis (Frequencies & Mode Shapes).
+- **`get_max_deflection()`**: Returns a **Pandas Series** with the node of maximum **resultant displacement** ($\sqrt{U_x^2 + U_y^2}$), including $u, v$ components and coordinates.
 - **`calculate_internal_forces(num_points=100)`**: Returns dictionary of `axial_forces`, `shear_forces`, and `bending_moments`.
 - **`calculate_stresses(num_x, num_y, num_z)`**: Generates 3D stress matrices (Axial, Bending, Shear, von Mises, Principal).
 - **`visualize(analysis_type, **kwargs)`**: Orchestrates plots (see 3.7).

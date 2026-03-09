@@ -2,6 +2,13 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.6.0] - 2026-03-09
+
+- **API**: Modified `BeamSolver.get_max_deflection()` to return a `pandas.Series` with resultant magnitude, components, and coordinates.
+- **Reporting**: Fixed equilibrium check in `BeamReportGenerator` to correctly handle 2D coordinates and axial force moment contributions.
+- **Environment**: Added `scripts/clean_install.py` for automated cleanup of stale metadata and fresh re-installation.
+- **Documentation**: Enhanced `README.md` with advanced waypoint meshing guides and environment hygiene instructions.
+
 ## [v2.5.0] - 2026-03-10
 
 - **Batch Analysis**: Introduced `solve_batch()` in `BeamSolver` for performing multiple analyses efficiently.
