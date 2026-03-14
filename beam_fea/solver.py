@@ -6,7 +6,11 @@ Main FEA solver that coordinates all modules.
 
 import numpy as np
 import warnings
-from typing import Optional, Union, Tuple, List
+from typing import Optional, Union, Tuple, List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pandas as pd
+
 from .mesh import Mesh, MeshGenerator
 from .materials import Material, get_material
 from .cross_sections import CrossSection, SectionProperties
