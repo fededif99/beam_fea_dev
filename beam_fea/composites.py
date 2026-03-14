@@ -348,47 +348,61 @@ class Laminate:
     def get_sectional_stiffness(self, section) -> dict:
         """
         Calculate width-integrated sectional stiffness values for the
-        anisotropic 1D beam element.
+        anisotropic 1D beam element (Jones 1999; Reddy 2003).
 
-        For narrow beams (Jones 1999), we use the inverse of compliance terms
-        to account for the zero-stress condition on free edges:
-            EA = (1/a11) * b
-            EI = (1/d11) * b
-            ES = Coupling (via ABD inverse)
+        Theory
+        ------
+        **Narrow beam** (free transverse edges → N_y = 0):
+        Effective stiffnesses are derived from the full 6×6 ABD compliance
+        [a, b; c, d] = [A B; B^T D]^{-1}, NOT from A/B/D directly.
+        This correctly captures how the stress-free lateral edge modifies coupling:
 
-        For wide beams, we use stiffness terms directly:
-            EA = A11 * b
-            ES = B11 * b
-            EI = D11 * b
+          EA_eff = width / a11     where a11 = ABD_inv[0, 0]  (axial compliance)
+          EI_eff = width / d11     where d11 = ABD_inv[3, 3]  (bending compliance)
+          ES_eff = -a13 * width    where a13 = ABD_inv[0, 3]  (coupling compliance)
 
-        Also returns Transverse Shear Stiffness (GA_s):
-            GA_s = A55 * b
+        For symmetric laminates ([B] = 0) a13 = 0 → ES_eff = 0 as expected.
+        Using B[0,0] directly overestimates coupling for asymmetric narrow beams
+        because it ignores the free-edge constraint on N_y (sigma_y = 0).
+
+        **Wide beam** (constrained transverse edges → ε_y = 0, plate-strip):
+        Stiffness terms are used directly:
+
+          EA_eff = A11 * width
+          ES_eff = B11 * width
+          EI_eff = D11 * width
+
+        References
+        ----------
+        - Jones, R.M. (1999). Mechanics of Composite Materials, 2nd ed. §4.5
+        - Reddy, J.N. (2004). Mechanics of Laminated Composite Plates, §4.2
         """
         width = getattr(section, 'width', getattr(section, 'diameter', 1.0))
 
-        try:
-            ABD_inv = np.linalg.inv(self.ABD)
-            a11_inv = np.linalg.inv(self.A)[0, 0]
-            d11_inv = ABD_inv[3, 3]
-            # Equivalent ES via ABD compliance for narrow beams
-            # B11_eff = -ABD_inv[0, 3] / (ABD_inv[0, 0] * ABD_inv[3, 3] - ABD_inv[0, 3]**2)
-            # Actually simplified as:
-            B11_eff = self.B[0, 0]
-        except np.linalg.LinAlgError:
-            a11_inv = 1.0/self.A[0,0]
-            d11_inv = 1.0/self.D[0,0]
-            B11_eff = self.B[0,0]
-
         if self.beam_type == 'narrow':
-            EA = (1.0 / a11_inv) * width
-            EI = (12.0 / (d11_inv * self.total_thickness**3)) * (width * self.total_thickness**3 / 12.0)
-            ES = B11_eff * width
+            try:
+                ABD_inv = np.linalg.inv(self.ABD)
+                a11 = ABD_inv[0, 0]   # axial compliance
+                d11 = ABD_inv[3, 3]   # bending compliance
+                a13 = ABD_inv[0, 3]   # extension-bending coupling compliance
+                if abs(a11) < 1e-30 or abs(d11) < 1e-30:
+                    raise np.linalg.LinAlgError("Near-singular compliance")
+                EA = width / a11
+                EI = width / d11
+                # a13 < 0 for laminates where tension induces hogging (positive curvature)
+                ES = -a13 * width
+            except np.linalg.LinAlgError:
+                # Fallback for degenerate laminates
+                EA = self.A[0, 0] * width
+                EI = self.D[0, 0] * width
+                ES = self.B[0, 0] * width
         else:
+            # Wide beam: use ABD stiffness terms directly
             EA = self.A[0, 0] * width
             ES = self.B[0, 0] * width
             EI = self.D[0, 0] * width
 
-        # Transverse Shear Stiffness (A55 term)
+        # Transverse Shear Stiffness (out-of-plane shear, A55 component)
         GA_s = self.A_shear[1, 1] * width
 
         return {'EA': EA, 'ES': ES, 'EI': EI, 'GA_s': GA_s}

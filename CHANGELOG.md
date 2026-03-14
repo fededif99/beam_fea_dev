@@ -2,6 +2,14 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.7.0] - 2026-03-15
+
+- **Physics**: Replaced placeholder Timoshenko mass matrix in `UnifiedBeamElement` with the exact Friedman & Kosmatka (1993) consistent mass matrix, including rotatory inertia terms scaled by $r^2 = EI/(EA \cdot L^2)$.
+- **Architecture**: Removed duplicate `UnifiedBeamElement` class definition in `element_matrices.py` — now defined exactly once.
+- **Numerics**: Replaced fixed `DEFAULT_PENALTY = 1e15` in `boundary_conditions.py` with a relative penalty scaled to `max(diag(K)) * 1e10`, preventing ill-conditioning across different unit systems.
+- **Composites**: Corrected `Laminate.get_sectional_stiffness` for narrow beams — coupling stiffness `ES` now uses `ABD_inv[0,3]` (compliance-based), not `B[0,0]`, correctly accounting for the free transverse-edge ($N_y=0$) constraint.
+- **Tests**: Updated `test_bend_extension_coupling` threshold to reflect the physically correct (smaller) compliance-based coupling magnitude.
+
 ## [v2.6.0] - 2026-03-09
 
 - **API**: Modified `BeamSolver.get_max_deflection()` to return a `pandas.Series` with resultant magnitude, components, and coordinates.

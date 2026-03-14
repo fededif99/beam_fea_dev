@@ -16,8 +16,13 @@ from typing import List, Set, Optional, Tuple
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
  
-# Default penalty value for sparse constraints
-DEFAULT_PENALTY = 1e15
+# Default penalty *multiplier* for relative penalty method.
+# The actual penalty applied is: DEFAULT_PENALTY_MULTIPLIER * max(diag(K))
+# This keeps the penalty numerically consistent regardless of the problem scale
+# (unit system, material stiffness, structure size).
+DEFAULT_PENALTY_MULTIPLIER = 1e10
+# Minimum absolute fallback penalty if max(diag(K)) is near-zero
+_PENALTY_ABS_MIN = 1e6
 
 
 @dataclass
@@ -336,33 +341,24 @@ class BoundaryConditionSet:
         from scipy.sparse import issparse
         
         if issparse(K_bc):
-            # For sparse matrices, use Penalty Method to preserve sparsity structure
-            # and avoid expensive slicing.
-            # Adding a large value to the diagonal effectively constrains the DOF.
-            # NOTE: For non-zero prescribed values, off-diagonal coupling terms remain
-            # in the stiffness matrix, meaning the prescribed value is satisfied
-            # accurately but not strictly (solution ~ prescribed_value).
-            penalty = DEFAULT_PENALTY
-            
-            # Convert to LIL or CSR if needed, but assuming input is compatible
-            # Accessing diagonal efficiently depends on format
-            
-            # Add penalty to stiffness diagonal
-            # For CSR/CSC, this is reasonably efficient if structure allows, 
-            # or it will update data array
-            K_bc = K_bc.tolil() # Convert to LIL for efficient modification
-            
+            # For sparse matrices use the Penalty Method to preserve sparsity.
+            # The penalty is scaled RELATIVE to the maximum stiffness diagonal entry.
+            # This avoids ill-conditioning when problem units or section sizes vary
+            # by many orders of magnitude (e.g., micro-scale vs. offshore structures).
+            K_diag = K_bc.diagonal()
+            K_max = float(np.max(np.abs(K_diag)))
+            penalty = max(K_max * DEFAULT_PENALTY_MULTIPLIER, _PENALTY_ABS_MIN)
+
+            K_bc = K_bc.tolil()  # Convert to LIL for efficient modification
+
             for dof in constrained_dofs:
                 K_bc[dof, dof] += penalty
-                
-                # Update force vector
+
+                # Update force vector for prescribed (non-zero) displacements
                 if dof in prescribed_values:
                     F_bc[dof] += penalty * prescribed_values[dof]
-                else:
-                    # For fixed/pinned, prescribed value is 0
-                    pass
-            
-            K_bc = K_bc.tocsr() # Convert back for solver
+
+            K_bc = K_bc.tocsr()  # Convert back for solver
             
         else:
             # For dense matrices, use the exact "Identity Method"

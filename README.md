@@ -20,10 +20,12 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.6.0 *(2026-03-09)*
+### Latest Version: v2.7.0 *(2026-03-15)*
 
-- **Deflection Analysis**: `get_max_deflection()` now reports true resultant magnitude and returns structured Pandas data.
-- **Equilibrium Fix**: Resolved erroneous residual moment reporting in 2D angled frames.
+- **Physics**: Correct Timoshenko consistent mass matrix (Friedman & Kosmatka 1993) with rotatory inertia terms.
+- **Architecture**: Removed duplicate `UnifiedBeamElement` class definition.
+- **Numerics**: Relative penalty scaling in boundary conditions for numerical stability across unit systems.
+- **Composites**: Corrected coupling stiffness `ES` derivation for narrow beams using ABD compliance.
 - **Batch Analysis**: Perform multiple analyses with a single call using `solve_batch()`.
 - **Workflow Flexibility**: Load cases from CSV load lists or parametric tables via the new `BatchProcessor`.
 - **Batch Reporting**: Summary reports with absolute maximum "Envelope" calculations for all load cases.
