@@ -1,7 +1,7 @@
 
 import pandas as pd
 import numpy as np
-from beam_fea import BeamSolver, Mesh, get_material, rectangular, LoadCase, BoundaryConditionSet
+from beam_fea import BeamSolver, Mesh, get_material, rectangular, LoadCase, BoundaryConditionSet, BatchProcessor
 
 def run_batch_demo():
     print("Beam FEA - Batch Analysis Demo")
