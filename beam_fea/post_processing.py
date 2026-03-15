@@ -108,6 +108,7 @@ class StationEvaluator:
 
         # Map path positions back to element IDs and local coordinates
         points_by_element = {}
+        # Keep 3D for backward compatibility in results, but build it safely
         positions_xyz = np.zeros((len(path_positions), 3))
 
         curr_path_idx = 0
@@ -130,7 +131,9 @@ class StationEvaluator:
                 p1, p2 = coords[elem.node1], coords[elem.node2]
                 xi = (path_positions[indices] - s_start) / L if L > 0 else np.zeros(len(indices))
                 for j, idx in enumerate(indices):
-                    positions_xyz[idx] = p1 + xi[j] * (p2 - p1)
+                    # We interpolate the 2D position, then store it in the 3D array
+                    pos_2d = p1 + xi[j] * (p2 - p1)
+                    positions_xyz[idx, :2] = pos_2d
 
         return {
             'positions': positions_xyz[:, 0], # X for backward compatibility
@@ -189,7 +192,7 @@ class InternalForceEngine:
             # Re-derive xi correctly from xyz positions
             stations_xyz = eval_plan['positions_xyz'][indices]
             # dist from node 1
-            dist_from_n1 = np.sqrt(np.sum((stations_xyz - coords[elem.node1])**2, axis=1))
+            dist_from_n1 = np.sqrt(np.sum((stations_xyz[:, :2] - coords[elem.node1])**2, axis=1))
             xi = np.clip(dist_from_n1 / L, 0, 1) if L > 0 else np.zeros(len(indices))
 
             mat = solver.properties.get_material(elem.id)

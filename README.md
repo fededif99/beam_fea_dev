@@ -20,7 +20,10 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.7.0 *(2026-03-15)*
+### Latest Version: v2.8.0 *(2026-03-15)*
+
+- **API**: Removed redundant global `z` coordinate from standard Node representation.
+- **Mesh**: `Mesh.add_node()` and coordinate getter functions now use strictly 2D `(x, y)` matrices.
 
 - **Physics**: Correct Timoshenko consistent mass matrix (Friedman & Kosmatka 1993) with rotatory inertia terms.
 - **Architecture**: Removed duplicate `UnifiedBeamElement` class definition.
@@ -351,7 +354,7 @@ solver = BeamSolver(mesh, material=lam, section=rectangular(width=25, height=lam
 
 Manages nodes and elements.
 
-- **`add_node(x, y, z=0)`**: Adds a node, returns ID.
+- **`add_node(x, y)`**: Adds a node, returns ID.
 
 #### `PropertySet` Class
 

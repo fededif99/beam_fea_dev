@@ -2,6 +2,13 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.8.0] - 2026-03-15
+
+- **API**: Removed redundant global `z` coordinate from `Node`, `Mesh`, and `MeshGenerator` classes, standardizing the engine purely on 2D `(x, y)` global coordinates.
+- **Mesh**: `Node.coordinates()` and `Mesh.get_node_coords()` now return $2$-dimensional arrays instead of $3$-dimensional arrays.
+- **Mesh**: Removed `z` parameter from `Mesh.add_node()` and path-generation methods.
+- **Post-Processing**: Updated numpy broadcasting dimensions internally to gracefully handle the shift to $(N, 2)$ nodal arrays without breaking existing $(N, 3)$ fallback loops.
+
 ## [v2.7.0] - 2026-03-15
 
 - **Physics**: Replaced placeholder Timoshenko mass matrix in `UnifiedBeamElement` with the exact Friedman & Kosmatka (1993) consistent mass matrix, including rotatory inertia terms scaled by $r^2 = EI/(EA \cdot L^2)$.

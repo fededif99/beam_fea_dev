@@ -12,17 +12,16 @@ class TestNode:
     
     def test_node_creation(self):
         """Test creating a node"""
-        node = Node(id=0, x=10.0, y=20.0, z=30.0)
+        node = Node(id=0, x=10.0, y=20.0)
         assert node.id == 0
         assert node.x == 10.0
         assert node.y == 20.0
-        assert node.z == 30.0
     
     def test_node_coordinates(self):
         """Test getting node coordinates"""
-        node = Node(id=0, x=10.0, y=20.0, z=30.0)
+        node = Node(id=0, x=10.0, y=20.0)
         coords = node.coordinates()
-        assert np.allclose(coords, [10.0, 20.0, 30.0])
+        assert np.allclose(coords, [10.0, 20.0])
 
 
 class TestElement:

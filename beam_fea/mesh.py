@@ -30,11 +30,10 @@ class Node:
     id: int
     x: float
     y: float
-    z: float = 0.0
     
     def coordinates(self) -> np.ndarray:
         """Return coordinates as array."""
-        return np.array([self.x, self.y, self.z])
+        return np.array([self.x, self.y])
 
 
 @dataclass
@@ -73,8 +72,7 @@ class Element:
         n2 = nodes[self.node2]
         dx = n2.x - n1.x
         dy = n2.y - n1.y
-        dz = n2.z - n1.z
-        return np.sqrt(dx**2 + dy**2 + dz**2)
+        return np.sqrt(dx**2 + dy**2)
 
 
 class Mesh:
@@ -94,13 +92,13 @@ class Mesh:
         self._elem_starts = None  # Cache for element search
         self._node_coords = None  # Cache for node coordinates
     
-    def add_node(self, x: float, y: float, z: float = 0.0) -> int:
+    def add_node(self, x: float, y: float) -> int:
         """
         Add a node to the mesh.
         
         Parameters:
         -----------
-        x, y, z : float
+        x, y : float
             Node coordinates
             
         Returns:
@@ -108,7 +106,7 @@ class Mesh:
         node_id : int
             ID of the created node
         """
-        node = Node(id=self._node_counter, x=x, y=y, z=z)
+        node = Node(id=self._node_counter, x=x, y=y)
         self.nodes.append(node)
         node_id = self._node_counter
         self._node_counter += 1
@@ -158,7 +156,7 @@ class Mesh:
             Array of shape (num_nodes, 3)
         """
         if self._node_coords is None:
-            self._node_coords = np.array([[n.x, n.y, n.z] for n in self.nodes])
+            self._node_coords = np.array([[n.x, n.y] for n in self.nodes])
         return self._node_coords
     
     def get_connectivity(self) -> np.ndarray:
@@ -240,8 +238,8 @@ class MeshGenerator:
     """Utilities for generating finite element meshes."""
     
     @staticmethod
-    def line_mesh(start: Union[Tuple[float, float], Tuple[float, float, float]],
-                  end: Union[Tuple[float, float], Tuple[float, float, float]],
+    def line_mesh(start: Tuple[float, float],
+                  end: Tuple[float, float],
                   num_elements: int) -> 'Mesh':
         """
         Generate a uniform mesh along a straight line.
@@ -249,7 +247,7 @@ class MeshGenerator:
         Parameters:
         -----------
         start, end : tuple
-            Starting and ending coordinates (x, y) or (x, y, z)
+            Starting and ending coordinates (x, y)
         num_elements : int
             Number of elements
             
@@ -260,17 +258,16 @@ class MeshGenerator:
         """
         mesh = Mesh()
         
-        # Handle 2D or 3D
-        p1 = np.pad(start, (0, 3 - len(start))) if len(start) < 3 else start
-        p2 = np.pad(end, (0, 3 - len(end))) if len(end) < 3 else end
+        # Handle 2D
+        p1 = np.array(start[:2])
+        p2 = np.array(end[:2])
 
         # Generate nodes
         x_coords = np.linspace(p1[0], p2[0], num_elements + 1)
         y_coords = np.linspace(p1[1], p2[1], num_elements + 1)
-        z_coords = np.linspace(p1[2], p2[2], num_elements + 1)
         
-        for x, y, z in zip(x_coords, y_coords, z_coords):
-            mesh.add_node(x, y, z)
+        for x, y in zip(x_coords, y_coords):
+            mesh.add_node(x, y)
         
         # Generate elements
         for i in range(num_elements):
@@ -318,8 +315,8 @@ class MeshGenerator:
         return MeshGenerator.line_mesh(start, end, num_elements)
     
     @staticmethod
-    def graded_mesh(start: Union[Tuple[float, float], Tuple[float, float, float]],
-                    end: Union[Tuple[float, float], Tuple[float, float, float]],
+    def graded_mesh(start: Tuple[float, float],
+                    end: Tuple[float, float],
                     num_elements: int, grading_ratio: float = 1.0) -> 'Mesh':
         """
         Generate a mesh with graded element sizes.
@@ -327,7 +324,7 @@ class MeshGenerator:
         Parameters:
         -----------
         start, end : tuple
-            Starting and ending coordinates (x, y) or (x, y, z)
+            Starting and ending coordinates (x, y)
         num_elements : int
             Number of elements
         grading_ratio : float
@@ -344,9 +341,9 @@ class MeshGenerator:
             # Uniform mesh
             return MeshGenerator.line_mesh(start, end, num_elements)
         
-        # Handle 2D or 3D
-        p1 = np.pad(start, (0, 3 - len(start))) if len(start) < 3 else start
-        p2 = np.pad(end, (0, 3 - len(end))) if len(end) < 3 else end
+        # Handle 2D
+        p1 = np.array(start[:2])
+        p2 = np.array(end[:2])
 
         # Calculate geometric series spacing
         total_length = np.sqrt(np.sum((p2 - p1)**2))
@@ -366,7 +363,7 @@ class MeshGenerator:
         
         for pos in positions:
             coords = p1 + direction * pos
-            mesh.add_node(coords[0], coords[1], coords[2])
+            mesh.add_node(coords[0], coords[1])
         
         # Generate elements
         for i in range(num_elements):
@@ -420,8 +417,8 @@ class MeshGenerator:
         mesh = Mesh()
 
         # Add first waypoint
-        p0 = np.pad(points[0], (0, 3 - len(points[0]))) if len(points[0]) < 3 else points[0]
-        first_id = mesh.add_node(p0[0], p0[1], p0[2])
+        p0 = tuple(points[0][:2])
+        first_id = mesh.add_node(p0[0], p0[1])
         mesh.waypoint_nodes.append(first_id)
 
         current_node_id = first_id
@@ -439,7 +436,7 @@ class MeshGenerator:
 
             for j in range(1, seg_mesh.num_nodes):
                 n = seg_mesh.nodes[j]
-                node_map[j] = mesh.add_node(n.x, n.y, n.z)
+                node_map[j] = mesh.add_node(n.x, n.y)
 
             for e in seg_mesh.elements:
                 mesh.add_element(node_map[e.node1], node_map[e.node2])
@@ -575,7 +572,7 @@ class MeshRefinement:
             
             # Copy existing nodes
             for node in current_mesh.nodes:
-                new_mesh.add_node(node.x, node.y, node.z)
+                new_mesh.add_node(node.x, node.y)
             
             # Split each element
             for elem in current_mesh.elements:
@@ -585,9 +582,8 @@ class MeshRefinement:
                 # Midpoint
                 mid_x = (n1.x + n2.x) / 2
                 mid_y = (n1.y + n2.y) / 2
-                mid_z = (n1.z + n2.z) / 2
                 
-                mid_node = new_mesh.add_node(mid_x, mid_y, mid_z)
+                mid_node = new_mesh.add_node(mid_x, mid_y)
                 
                 # Create two new elements
                 new_mesh.add_element(elem.node1, mid_node)
