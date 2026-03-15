@@ -20,10 +20,13 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.8.0 *(2026-03-15)*
+### Latest Version: v2.9.0 *(2026-03-15)*
 
-- **API**: Removed redundant global `z` coordinate from standard Node representation.
-- **Mesh**: `Mesh.add_node()` and coordinate getter functions now use strictly 2D `(x, y)` matrices.
+- **Architecture**: Data-oriented mesh refactoring. Removed `Node` and `Element` classes in favor of high-performance NumPy arrays.
+- **API**: Deprecated `beam_mesh_1d` in favor of `line_mesh`.
+- **Performance**: Significant reduction in object instantiation overhead during mesh generation and assembly.
+
+### Previous Version: v2.8.0 *(2026-03-15)*
 
 - **Physics**: Correct Timoshenko consistent mass matrix (Friedman & Kosmatka 1993) with rotatory inertia terms.
 - **Architecture**: Removed duplicate `UnifiedBeamElement` class definition.
@@ -140,7 +143,7 @@ This is especially recommended for **Reviewers** to ensure their environment is 
 from beam_fea import BeamSolver, MeshGenerator, get_material, LoadCase, BoundaryConditionSet, rectangular
 
 # Setup
-mesh = MeshGenerator.beam_mesh_1d(length=2000, num_elements=20)
+mesh = MeshGenerator.line_mesh(start_xy=(0, 0), end_xy=(2000, 0), num_elements=20)
 aluminum = get_material('aluminum_7075_t6')
 section = rectangular(width=50, height=100)
 
@@ -388,8 +391,8 @@ solver = BeamSolver(mesh, material=props)
 
 Static utilities for rapid meshing.
 
-- **`beam_mesh_1d(length, num_elements)`**: Creates a simple straight line mesh.
-- **`line_mesh(start_xy, end_xy, num_elements)`**: Meshes a line between two points.
+- **`line_mesh(start_xy, end_xy, num_elements)`**: Meshes a line between two points. **(Recommended)**
+- **`beam_mesh_1d(length, num_elements)`**: *Deprecated* — calls `line_mesh` internally.
 - **`path_mesh(points, elements_per_segment)`**: Creates a general 2D angled beam mesh from a list of $(x, y)$ waypoints. Supports segment-wise grading.
 - **`multi_span_beam(lengths, elements_per_span)`**: Creates a continuous beam mesh over multiple supports.
 - **`graded_mesh(start, end, n, grading_ratio)`**: Meshes with variable element sizes.

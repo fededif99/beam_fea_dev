@@ -74,67 +74,67 @@ class ResultsContainer:
 
 class StationEvaluator:
     """Helper to group evaluation stations by element and calculate local kinematics."""
-
+    
     @staticmethod
     def get_evaluation_plan(solver, num_points: int = None) -> dict:
         """
         Groups global evaluation points into element-local stations.
         Now supports path-length evaluation for angled beams.
-
+        
         Returns:
         --------
         plan : dict
             {positions, points_by_element, path_lengths}
         """
         mesh = solver.mesh
-        coords = mesh.get_node_coords()
-
-        # Calculate cumulative path length along the beam
-        element_lengths = []
-        path_coords = [0.0]
-        for elem in mesh.elements:
-            p1, p2 = coords[elem.node1], coords[elem.node2]
-            L = np.sqrt(np.sum((p2 - p1)**2))
-            element_lengths.append(L)
-            path_coords.append(path_coords[-1] + L)
-
+        coords = mesh.nodes
+        elements = mesh.elements
+        
+        # Calculate cumulative path length along the beam using vectorized operations
+        n1_coords = coords[elements[:, 0]]
+        n2_coords = coords[elements[:, 1]]
+        element_lengths = np.linalg.norm(n2_coords - n1_coords, axis=1)
+        
+        path_coords = np.zeros(mesh.num_elements + 1)
+        path_coords[1:] = np.cumsum(element_lengths)
+        
         total_length = path_coords[-1]
-
+        
         if num_points is None:
             # Use node locations
-            path_positions = np.array(path_coords)
+            path_positions = path_coords
         else:
             path_positions = np.linspace(0, total_length, num_points)
-
+            
         # Map path positions back to element IDs and local coordinates
         points_by_element = {}
         # Keep 3D for backward compatibility in results, but build it safely
         positions_xyz = np.zeros((len(path_positions), 3))
-
-        curr_path_idx = 0
-        for eid, elem in enumerate(mesh.elements):
+        
+        for eid in range(mesh.num_elements):
             s_start = path_coords[eid]
             s_end = path_coords[eid+1]
             L = element_lengths[eid]
-
+            
             # Find points that fall within this segment
             if eid == mesh.num_elements - 1:
                 mask = (path_positions >= s_start) & (path_positions <= s_end)
             else:
                 mask = (path_positions >= s_start) & (path_positions < s_end)
-
+                
             indices = np.where(mask)[0]
             if len(indices) > 0:
-                points_by_element[eid] = list(indices)
-
+                points_by_element[eid] = indices.tolist()
+                
                 # Interpolate global coordinates for these points
-                p1, p2 = coords[elem.node1], coords[elem.node2]
+                p1 = coords[elements[eid, 0]]
+                p2 = coords[elements[eid, 1]]
                 xi = (path_positions[indices] - s_start) / L if L > 0 else np.zeros(len(indices))
-                for j, idx in enumerate(indices):
-                    # We interpolate the 2D position, then store it in the 3D array
-                    pos_2d = p1 + xi[j] * (p2 - p1)
-                    positions_xyz[idx, :2] = pos_2d
-
+                
+                # Vectorized coordinate interpolation
+                pos_2d = p1[None, :] + xi[:, None] * (p2 - p1)[None, :]
+                positions_xyz[indices, :2] = pos_2d
+                
         return {
             'positions': positions_xyz[:, 0], # X for backward compatibility
             'positions_xyz': positions_xyz,
@@ -169,34 +169,35 @@ class InternalForceEngine:
         element_dist_loads = InternalForceEngine._get_element_dist_loads(solver)
 
         from .element_matrices import UnifiedBeamElement, get_rotation_matrix
-        coords = solver.mesh.get_node_coords()
+        coords = solver.mesh.nodes
+        elements = solver.mesh.elements
         is_euler = (solver.element_type == 'euler')
 
         for eid, indices in points_by_element.items():
-            elem = solver.mesh.elements[eid]
-            p1, p2 = coords[elem.node1], coords[elem.node2]
+            node1, node2 = elements[eid]
+            p1, p2 = coords[node1], coords[node2]
             dx, dy = p2[0] - p1[0], p2[1] - p1[1]
             x1, L = p1[0], np.sqrt(dx**2 + dy**2)
             angle = np.arctan2(dy, dx)
             T = get_rotation_matrix(angle)
 
-            dof_indices = [3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
-                           3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2]
+            dof_indices = [3*node1, 3*node1 + 1, 3*node1 + 2,
+                           3*node2, 3*node2 + 1, 3*node2 + 2]
             # Transform global displacements to local: u_local = T @ u_global
             u_local = T @ solver.displacements[dof_indices]
 
             # Use path coordinates for xi instead of purely X to support angled beams
             s_start = eval_plan['path_positions'][indices[0]] # Approximate start of stations
             # Actually better to use the mapped global coords from xyz
-            xi = np.clip((path_positions[indices] - path_positions[indices[0]] + (coords[elem.node1, 0] - coords[elem.node1, 0])) / L, 0, 1)
+            xi = np.clip((path_positions[indices] - path_positions[indices[0]] + (coords[node1, 0] - coords[node1, 0])) / L, 0, 1)
             # Re-derive xi correctly from xyz positions
             stations_xyz = eval_plan['positions_xyz'][indices]
             # dist from node 1
-            dist_from_n1 = np.sqrt(np.sum((stations_xyz[:, :2] - coords[elem.node1])**2, axis=1))
+            dist_from_n1 = np.sqrt(np.sum((stations_xyz[:, :2] - coords[node1])**2, axis=1))
             xi = np.clip(dist_from_n1 / L, 0, 1) if L > 0 else np.zeros(len(indices))
 
-            mat = solver.properties.get_material(elem.id)
-            sec = solver.properties.get_section(elem.id)
+            mat = solver.properties.get_material(eid)
+            sec = solver.properties.get_section(eid)
             stiff = mat.get_sectional_stiffness(sec)
             rho_lin = mat.get_linear_density(sec)
 
@@ -229,7 +230,8 @@ class InternalForceEngine:
             return element_dist_loads
 
         from .loads import UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad
-        coords = solver.mesh.get_node_coords()
+        coords = solver.mesh.nodes
+        elements = solver.mesh.elements
 
         for load in solver.last_load_case.loads:
             wy1 = wy2 = wx1 = wx2 = 0.0
@@ -248,8 +250,9 @@ class InternalForceEngine:
                     element_dist_loads[eid] = (curr[0] + wy1, curr[1] + wy2, curr[2] + wx1, curr[3] + wx2)
             elif load.x_start is not None:
                 x_s, x_e = min(load.x_start, load.x_end), max(load.x_start, load.x_end)
-                for eid, elem in enumerate(solver.mesh.elements):
-                    p1, p2 = coords[elem.node1, 0], coords[elem.node2, 0]
+                for eid in range(solver.mesh.num_elements):
+                    node1, node2 = elements[eid]
+                    p1, p2 = coords[node1, 0], coords[node2, 0]
                     e_min, e_max = min(p1, p2), max(p1, p2)
                     i_min, i_max = max(e_min, x_s), min(e_max, x_e)
                     if i_max > i_min:
@@ -294,11 +297,12 @@ class StressEngine:
         profile_cache = {}
 
         from .element_matrices import get_rotation_matrix
-        coords = solver.mesh.get_node_coords()
+        coords = solver.mesh.nodes
+        elements = solver.mesh.elements
 
         for eid, indices in points_by_element.items():
-            elem = solver.mesh.elements[eid]
-            p1, p2 = coords[elem.node1], coords[elem.node2]
+            node1, node2 = elements[eid]
+            p1, p2 = coords[node1], coords[node2]
             dx, dy = p2[0] - p1[0], p2[1] - p1[1]
             angle = np.arctan2(dy, dx)
             T = get_rotation_matrix(angle)

@@ -4,45 +4,8 @@ Unit tests for beam_fea.mesh module
 
 import pytest
 import numpy as np
-from beam_fea.mesh import Node, Element, Mesh, MeshGenerator, MeshRefinement
-
-
-class TestNode:
-    """Test Node class"""
-    
-    def test_node_creation(self):
-        """Test creating a node"""
-        node = Node(id=0, x=10.0, y=20.0)
-        assert node.id == 0
-        assert node.x == 10.0
-        assert node.y == 20.0
-    
-    def test_node_coordinates(self):
-        """Test getting node coordinates"""
-        node = Node(id=0, x=10.0, y=20.0)
-        coords = node.coordinates()
-        assert np.allclose(coords, [10.0, 20.0])
-
-
-class TestElement:
-    """Test Element class"""
-    
-    def test_element_creation(self):
-        """Test creating an element"""
-        elem = Element(id=0, node1=0, node2=1)
-        assert elem.id == 0
-        assert elem.node1 == 0
-        assert elem.node2 == 1
-    
-    def test_element_length(self):
-        """Test calculating element length"""
-        nodes = [
-            Node(id=0, x=0.0, y=0.0),
-            Node(id=1, x=3.0, y=4.0)
-        ]
-        elem = Element(id=0, node1=0, node2=1)
-        length = elem.length(nodes)
-        assert abs(length - 5.0) < 1e-6  # 3-4-5 triangle
+import warnings
+from beam_fea.mesh import Mesh, MeshGenerator, MeshRefinement
 
 
 class TestMesh:
@@ -110,37 +73,45 @@ class TestMeshGenerator:
         assert mesh.num_elements == 10
         
         # Check first and last node positions
-        assert mesh.nodes[0].x == 0
-        assert mesh.nodes[-1].x == 100
+        assert mesh.nodes[0, 0] == 0
+        assert mesh.nodes[-1, 0] == 100
     
     def test_beam_mesh_1d_horizontal(self):
         """Test generating horizontal beam mesh"""
-        mesh = MeshGenerator.beam_mesh_1d(length=1000, num_elements=20)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            mesh = MeshGenerator.beam_mesh_1d(length=1000, num_elements=20)
         assert mesh.num_nodes == 21
         assert mesh.num_elements == 20
-        assert mesh.nodes[-1].x == 1000
-        assert mesh.nodes[-1].y == 0
+        assert mesh.nodes[-1, 0] == 1000
+        assert mesh.nodes[-1, 1] == 0
     
     def test_beam_mesh_1d_vertical(self):
         """Test generating vertical beam mesh"""
-        mesh = MeshGenerator.beam_mesh_1d(
-            length=500, 
-            num_elements=10, 
-            orientation='vertical'
-        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            mesh = MeshGenerator.beam_mesh_1d(
+                length=500, 
+                num_elements=10, 
+                orientation='vertical'
+            )
         assert mesh.num_nodes == 11
-        assert mesh.nodes[-1].x == 0
-        assert mesh.nodes[-1].y == 500
+        assert mesh.nodes[-1, 0] == 0
+        assert mesh.nodes[-1, 1] == 500
     
     def test_beam_mesh_negative_length(self):
         """Test that negative length raises error"""
-        with pytest.raises(ValueError, match="Length must be positive"):
-            MeshGenerator.beam_mesh_1d(length=-100, num_elements=10)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with pytest.raises(ValueError, match="Length must be positive"):
+                MeshGenerator.beam_mesh_1d(length=-100, num_elements=10)
     
     def test_beam_mesh_zero_elements(self):
         """Test that zero elements raises error"""
-        with pytest.raises(ValueError, match="Number of elements must be at least 1"):
-            MeshGenerator.beam_mesh_1d(length=100, num_elements=0)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with pytest.raises(ValueError, match="Number of elements must be at least 1"):
+                MeshGenerator.beam_mesh_1d(length=100, num_elements=0)
     
     def test_beam_mesh_invalid_orientation(self):
         """Test that invalid orientation raises error"""

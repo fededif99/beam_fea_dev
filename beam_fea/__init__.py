@@ -61,7 +61,7 @@ from .cross_sections import (
     BoxSection, TBeamSection, CChannelSection, HollowCircularSection, LSection,
     rectangular, circular, i_beam, box, t_beam, c_channel, hollow_circular, l_section
 )
-from .mesh import Mesh, Node, Element, MeshGenerator, MeshRefinement
+from .mesh import Mesh, MeshGenerator, MeshRefinement
 from .batch import BatchProcessor
 from .properties import PropertySet
 from .composites import Ply, Laminate
@@ -95,7 +95,7 @@ __all__ = [
     'rectangular', 'circular', 'i_beam', 'box', 't_beam', 'c_channel', 'hollow_circular', 'l_section',
     
     # Mesh
-    'Mesh', 'Node', 'Element', 'MeshGenerator', 'MeshRefinement',
+    'Mesh', 'MeshGenerator', 'MeshRefinement',
     
     # Batch
     'BatchProcessor',

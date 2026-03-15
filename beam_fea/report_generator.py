@@ -1028,7 +1028,7 @@ class BeamReportGenerator:
             v_displacements = self.displacements[1::3]
             max_deflection = abs(min(v_displacements))
             max_deflection_node = v_displacements.argmin()
-            max_deflection_pos = self.mesh.nodes[max_deflection_node].x
+            max_deflection_pos = self.mesh.nodes[max_deflection_node, 0]
             
             # Stress highlights
             if self.stresses is None:
@@ -1176,8 +1176,9 @@ class BeamReportGenerator:
                 total_fx_reaction += fx
                 total_fy_reaction += fy
                 
-                node = self.mesh.nodes[node_id]
-                total_mz_res += mz + (fy * node.x) - (fx * getattr(node, 'y', 0.0))
+                n_x = self.mesh.nodes[node_id, 0]
+                n_y = self.mesh.nodes[node_id, 1] if self.mesh.nodes.shape[1] > 1 else 0.0
+                total_mz_res += mz + (fy * n_x) - (fx * n_y)
                 
         # 2. Load contributions
         total_fy_load = 0.0
@@ -1193,8 +1194,8 @@ class BeamReportGenerator:
                 
                 if isinstance(load, PointLoad):
                     if load.node is not None:
-                        node = self.mesh.nodes[load.node]
-                        lx, ly = node.x, getattr(node, 'y', 0.0)
+                        lx = self.mesh.nodes[load.node, 0]
+                        ly = self.mesh.nodes[load.node, 1] if self.mesh.nodes.shape[1] > 1 else 0.0
                     else:
                         lx, ly = load.x, 0.0
                     total_mz_res += mz_l + (fy_l * lx) - (fx_l * ly)
@@ -1203,17 +1204,20 @@ class BeamReportGenerator:
                     if hasattr(load, 'element') and load.element is not None:
                         elements = [load.element] if isinstance(load.element, int) else load.element
                         for elem_id in elements:
-                            elem = self.mesh.elements[elem_id]
-                            n1, n2 = self.mesh.nodes[elem.node1], self.mesh.nodes[elem.node2]
+                            node1, node2 = self.mesh.elements[elem_id]
+                            n1_x, n2_x = self.mesh.nodes[node1, 0], self.mesh.nodes[node2, 0]
+                            n1_y = self.mesh.nodes[node1, 1] if self.mesh.nodes.shape[1] > 1 else 0.0
+                            n2_y = self.mesh.nodes[node2, 1] if self.mesh.nodes.shape[1] > 1 else 0.0
+                            
                             # Use integration over the element
                             # For a linear segment, moment about origin is Int(w_vec x r_vec ds)
                             # Vector w = (wx, wy), Vector r = (x, y)
                             # dm = (wy*x - wx*y) ds
                             # Since w is constant and r is linear:
                             # M_el = wy * x_avg * L_el - wx * y_avg * L_el
-                            L_el = elem.length()
-                            x_avg = (n1.x + n2.x) / 2
-                            y_avg = (getattr(n1, 'y', 0.0) + getattr(n2, 'y', 0.0)) / 2
+                            L_el = np.linalg.norm((n2_x - n1_x, n2_y - n1_y))
+                            x_avg = (n1_x + n2_x) / 2
+                            y_avg = (n1_y + n2_y) / 2
                             
                             # Note: wy in UDL is usually transverse. 
                             # Need to be careful if wy/wx are in global or local.
@@ -1236,7 +1240,7 @@ class BeamReportGenerator:
         v_displacements = self.displacements[1::3]
         max_deflection = abs(min(v_displacements))
         max_deflection_node = v_displacements.argmin()
-        max_deflection_pos = self.mesh.nodes[max_deflection_node].x
+        max_deflection_pos = self.mesh.nodes[max_deflection_node, 0]
 
         if deformation_scale == 'auto':
             from .visualizer import BeamVisualizer

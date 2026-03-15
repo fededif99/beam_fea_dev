@@ -140,8 +140,8 @@ class BeamSolver:
             raise ValueError("No Y-direction constraints found. The beam is unstable in the transverse direction.")
 
         # 4. Slenderness Ratio Check (L/h)
-        coords = self.mesh.get_node_coords()
-        if len(coords) > 0:
+        if self.mesh.num_nodes > 0:
+            coords = self.mesh.nodes
             L_total = np.max(coords[:, 0]) - np.min(coords[:, 0])
             
             # Section height (depth)
@@ -180,21 +180,23 @@ class BeamSolver:
         K_rows, K_cols, K_data = [], [], []
         M_rows, M_cols, M_data = [], [], []
 
-        coords = self.mesh.get_node_coords()
+        coords = self.mesh.nodes
+        elements = self.mesh.elements
         is_euler = (self.element_type == 'euler')
         do_k = assembly_type in ['stiffness', 'both']
         do_m = assembly_type in ['mass', 'both']
 
-        for elem in self.mesh.elements:
-            p1, p2 = coords[elem.node1], coords[elem.node2]
+        for elem_idx in range(self.mesh.num_elements):
+            node1, node2 = elements[elem_idx]
+            p1, p2 = coords[node1], coords[node2]
             dx, dy = p2[0] - p1[0], p2[1] - p1[1]
             L = np.sqrt(dx**2 + dy**2)
             angle = np.arctan2(dy, dx)
             T = get_rotation_matrix(angle)
 
             # Unified property retrieval
-            mat = self.properties.get_material(elem.id)
-            sec = self.properties.get_section(elem.id)
+            mat = self.properties.get_material(elem_idx)
+            sec = self.properties.get_section(elem_idx)
             stiff = mat.get_sectional_stiffness(sec)
             rho_lin = mat.get_linear_density(sec)
 
@@ -205,8 +207,8 @@ class BeamSolver:
             )
 
             dof_indices = np.array([
-                3*elem.node1, 3*elem.node1 + 1, 3*elem.node1 + 2,
-                3*elem.node2, 3*elem.node2 + 1, 3*elem.node2 + 2
+                3*node1, 3*node1 + 1, 3*node1 + 2,
+                3*node2, 3*node2 + 1, 3*node2 + 2
             ])
             ii, jj = np.meshgrid(dof_indices, dof_indices, indexing='ij')
 
@@ -456,7 +458,7 @@ class BeamSolver:
         res = np.sqrt(u**2 + v**2)
         
         # 3. Build DataFrame
-        coords = self.mesh.get_node_coords()
+        coords = self.mesh.nodes
         df = pd.DataFrame({
             'node_id': np.arange(self.mesh.num_nodes),
             'x': coords[:, 0],
