@@ -145,6 +145,22 @@ class PropertySet:
                 return True
         return False
 
+    def has_multiple_materials(self, num_elements: int) -> bool:
+        """Check if different material objects are used across the structure."""
+        if num_elements <= 1:
+            return False
+            
+        first_mat = self.get_material(0)
+        for i in range(1, num_elements):
+            if self.get_material(i) is not first_mat:
+                return True
+        return False
+
+    def is_uniform(self, num_elements: int) -> bool:
+        """Check if the structure has uniform properties everywhere."""
+        return not (self.has_multiple_sections(num_elements) or 
+                    self.has_multiple_materials(num_elements))
+
     @property
     def default_material(self):
         # Compatibility helper (returns material of first element)

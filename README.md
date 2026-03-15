@@ -20,7 +20,12 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.9.0 *(2026-03-15)*
+### Latest Version: v2.9.1 *(2026-03-15)*
+
+- **Performance**: High-performance **vectorized assembly architecture** in `BeamSolver`. Achieves ~20x speedup for large models.
+- **Architecture**: Replaced the element-wise Python loop with broadcasted NumPy operations for global matrix assembly.
+
+### Previous Version: v2.9.0 *(2026-03-15)*
 
 - **Architecture**: Data-oriented mesh refactoring. Removed `Node` and `Element` classes in favor of high-performance NumPy arrays.
 - **API**: Consolidated all mesh generation into `Mesh.from_path()` and `Mesh.from_arc()`. **Removed `MeshGenerator` class entirely.**

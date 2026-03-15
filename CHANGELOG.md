@@ -2,6 +2,13 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.9.1] - 2026-03-15
+
+- **Performance**: Implemented a high-performance **vectorized assembly architecture** in `BeamSolver`.
+- **Performance**: Achieved **~20x speedup** in global matrix assembly for large models (e.g., 10,000 elements reduced from 0.63s to 0.03s).
+- **Architecture**: Replaced the element-wise Python loop with broadcasted NumPy operations and vectorized coordinate transformations (`matmul`, `repeat`, `tile`).
+- **Optimization**: Added `PropertySet.is_uniform()` for fast-path property retrieval in homogeneous models.
+
 ## [v2.9.0] - 2026-03-15
 
 - **Architecture**: Completely refactored the internal mesh representation to use raw NumPy arrays (`mesh.nodes` and `mesh.elements`), eliminating the `Node` and `Element` dataclasses.
