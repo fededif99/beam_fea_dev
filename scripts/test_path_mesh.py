@@ -1,5 +1,5 @@
 
-from beam_fea import MeshGenerator, BeamSolver, get_material, rectangular, BoundaryConditionSet, LoadCase
+from beam_fea import Mesh, BeamSolver, get_material, rectangular, BoundaryConditionSet, LoadCase
 import os
 
 def test_cranked_beam():
@@ -10,7 +10,7 @@ def test_cranked_beam():
     points = [(0, 0), (1000, 0), (1500, 500)]
     elems = [20, 10]
 
-    mesh = MeshGenerator.path_mesh(points, elems)
+    mesh = Mesh.from_path(points, elements_per_segment=elems)
     print(f"Mesh generated with {mesh.num_nodes} nodes.")
     print(f"Waypoints: {mesh.waypoint_nodes}")
 

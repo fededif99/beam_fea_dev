@@ -14,7 +14,7 @@ Workflow:
 
 
 from beam_fea import (
-    BeamSolver, MeshGenerator, get_material, 
+    BeamSolver, Mesh, get_material, 
     LoadCase, BoundaryConditionSet, circular
 )
 
@@ -25,7 +25,7 @@ def main():
 
     # 2. MESH GENERATION
     length = 1000.0
-    mesh = MeshGenerator.beam_mesh_1d(length, num_elements=50)
+    mesh = Mesh.from_path([(0, 0), (length, 0)], elements_per_segment=50)
 
     import os
     print(f"[*] Running {os.path.basename(__file__)}...")

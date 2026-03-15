@@ -4,7 +4,7 @@ examples/ex05_composite_beam.py
 Example of using Classical Laminate Theory (CLT) to model a composite beam.
 """
 
-from beam_fea import BeamSolver, MeshGenerator, BoundaryConditionSet, LoadCase, rectangular
+from beam_fea import BeamSolver, Mesh, BoundaryConditionSet, LoadCase, rectangular
 from beam_fea.composites import Ply, Laminate
 import numpy as np
 
@@ -59,7 +59,7 @@ def run_composite_analysis():
     # A 1000mm beam. Ends are wider (100mm) for supports, middle is standard (50mm).
     L = 1000
     h = props['thickness']
-    mesh = MeshGenerator.beam_mesh_1d(length=L, num_elements=50)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=50)
 
     # Define sections
     sec_wide = rectangular(width=100, height=h)

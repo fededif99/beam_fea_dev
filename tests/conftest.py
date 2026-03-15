@@ -10,8 +10,8 @@ from pathlib import Path
 @pytest.fixture
 def simple_mesh():
     """Fixture providing a simple beam mesh"""
-    from beam_fea.mesh import MeshGenerator
-    return MeshGenerator.beam_mesh_1d(length=1000, num_elements=10)
+    from beam_fea.mesh import Mesh
+    return Mesh.from_path([(0, 0), (1000, 0)], elements_per_segment=10)
 
 
 @pytest.fixture

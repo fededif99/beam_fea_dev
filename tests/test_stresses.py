@@ -1,6 +1,6 @@
 import numpy as np
 
-from beam_fea.mesh import MeshGenerator
+from beam_fea.mesh import Mesh
 from beam_fea.materials import Material
 from beam_fea.cross_sections import IBeamSection
 from beam_fea.boundary_conditions import BoundaryConditionSet
@@ -11,7 +11,7 @@ def test_3d_stress_field_generation():
     print("Testing 3D Stress Field Generation...")
     
     # Create mesh
-    mesh = MeshGenerator.beam_mesh_1d(1000.0, 10)
+    mesh = Mesh.from_path([(0, 0), (1000.0, 0)], elements_per_segment=10)
     
     # Create material and section
     mat = Material(name='steel', E=200000, nu=0.3, rho=7850)

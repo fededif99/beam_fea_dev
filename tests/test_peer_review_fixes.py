@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from beam_fea.cross_sections import rectangular, c_channel, t_beam, TBeamSection
 from beam_fea.modal_analysis import ModalAnalysis
-from beam_fea.mesh import MeshGenerator
+from beam_fea.mesh import Mesh
 from beam_fea.materials import get_material
 
 def test_rectangular_h_cubed_fix():
@@ -54,7 +54,7 @@ def test_element_lookup_binary_search():
     """Verify solver binary search optimization for internal forces."""
     from beam_fea.solver import BeamSolver
     
-    mesh = MeshGenerator.beam_mesh_1d(length=1000, num_elements=100)
+    mesh = Mesh.from_path([(0, 0), (1000, 0)], elements_per_segment=100)
     mat = get_material('steel')
     sect = rectangular(10, 10)
     solver = BeamSolver(mesh, mat, sect)

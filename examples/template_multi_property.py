@@ -16,7 +16,7 @@ Workflow:
 import os
 import numpy as np
 from beam_fea import (
-    BeamSolver, MeshGenerator, get_material,
+    BeamSolver, Mesh, get_material,
     LoadCase, BoundaryConditionSet, rectangular, circular,
     PropertySet
 )
@@ -44,7 +44,7 @@ def main():
     # 2. MESH GENERATION
     # We use a very coarse mesh (only 2 elements) to demonstrate intra-element recovery
     length = 2000.0
-    mesh = MeshGenerator.beam_mesh_1d(length, num_elements=2)
+    mesh = Mesh.from_path([(0, 0), (length, 0)], elements_per_segment=2)
 
     # 3. LOADS & BOUNDARY CONDITIONS
     # Simply supported beam

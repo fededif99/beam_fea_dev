@@ -25,7 +25,7 @@ This example demonstrates:
 """
 
 from beam_fea import (
-    BeamSolver, MeshGenerator, get_material, 
+    BeamSolver, Mesh, get_material, 
     BoundaryConditionSet, circular
 )
 
@@ -45,7 +45,7 @@ def run_example():
     
     # 2. Mesh
     num_elems = 30
-    mesh = MeshGenerator.beam_mesh_1d(L, num_elems)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=num_elems)
     solver = BeamSolver(mesh, material, section)
     
     # 3. Supports: Simply supported (bearings at ends)

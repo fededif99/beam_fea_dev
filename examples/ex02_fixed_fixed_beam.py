@@ -21,7 +21,7 @@ This example demonstrates:
 import os
 
 from beam_fea import (
-    BeamSolver, MeshGenerator, get_material, 
+    BeamSolver, Mesh, get_material, 
     LoadCase, BoundaryConditionSet, hollow_circular
 )
 
@@ -42,7 +42,7 @@ def run_example():
     # 2. Create Model
     # Coarse mesh (5 elements) demonstrating high-accuracy force recovery
     num_elems = 5
-    mesh = MeshGenerator.beam_mesh_1d(L, num_elems)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=num_elems)
     solver = BeamSolver(mesh, titanium, props)
     
     # 3. Boundary Conditions: Fixed at both ends

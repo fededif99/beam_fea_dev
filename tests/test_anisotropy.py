@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from beam_fea import BeamSolver, MeshGenerator, BoundaryConditionSet, LoadCase, rectangular
+from beam_fea import BeamSolver, Mesh, BoundaryConditionSet, LoadCase, rectangular
 from beam_fea.composites import Ply, Laminate
 from beam_fea.element_matrices import AnisotropicBeamElement
 
@@ -21,7 +21,7 @@ def test_bend_extension_coupling():
     # 2. Model: Cantilever beam
     L = 1000
     w = 20
-    mesh = MeshGenerator.beam_mesh_1d(length=L, num_elements=10)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=10)
     section = rectangular(width=w, height=2.0)
 
     solver = BeamSolver(mesh, lam, section)
@@ -63,7 +63,7 @@ def test_symmetric_no_coupling():
     assert abs(lam.B[0,0]) < 1e-10
 
     L = 1000
-    mesh = MeshGenerator.beam_mesh_1d(length=L, num_elements=10)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=10)
     section = rectangular(width=20, height=4.0)
     solver = BeamSolver(mesh, lam, section)
 
@@ -122,7 +122,7 @@ def test_anisotropic_udl_force_recovery():
     w = 20.0
     q = -2.0  # N/mm (downward UDL)
 
-    mesh = MeshGenerator.beam_mesh_1d(length=L, num_elements=20)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=20)
     section = rectangular(width=w, height=lam.total_thickness)
     solver = BeamSolver(mesh, lam, section)
 

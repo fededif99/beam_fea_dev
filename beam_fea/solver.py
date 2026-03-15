@@ -11,7 +11,7 @@ from typing import Optional, Union, Tuple, List, TYPE_CHECKING
 if TYPE_CHECKING:
     import pandas as pd
 
-from .mesh import Mesh, MeshGenerator
+from .mesh import Mesh
 from .materials import Material, get_material
 from .cross_sections import CrossSection, SectionProperties
 from .properties import PropertySet

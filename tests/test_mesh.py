@@ -5,7 +5,7 @@ Unit tests for beam_fea.mesh module
 import pytest
 import numpy as np
 import warnings
-from beam_fea.mesh import Mesh, MeshGenerator, MeshRefinement
+from beam_fea.mesh import Mesh, MeshRefinement
 
 
 class TestMesh:
@@ -63,12 +63,12 @@ class TestMesh:
         assert mesh.num_dofs == 6  # 2 nodes * 3 DOFs per node
 
 
-class TestMeshGenerator:
-    """Test MeshGenerator class"""
+class TestMeshConstructors:
+    """Test Mesh static constructors (from_path, from_arc)"""
     
-    def test_line_mesh(self):
-        """Test generating line mesh"""
-        mesh = MeshGenerator.line_mesh((0, 0), (100, 0), num_elements=10)
+    def test_from_path_single_line(self):
+        """Test generating line mesh via from_path"""
+        mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=10)
         assert mesh.num_nodes == 11
         assert mesh.num_elements == 10
         
@@ -76,55 +76,28 @@ class TestMeshGenerator:
         assert mesh.nodes[0, 0] == 0
         assert mesh.nodes[-1, 0] == 100
     
-    def test_beam_mesh_1d_horizontal(self):
-        """Test generating horizontal beam mesh"""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            mesh = MeshGenerator.beam_mesh_1d(length=1000, num_elements=20)
+    def test_from_path_multi_segment(self):
+        """Test multi-segment path mesh"""
+        points = [(0, 0), (100, 0), (100, 100)]
+        mesh = Mesh.from_path(points, elements_per_segment=[10, 10])
         assert mesh.num_nodes == 21
         assert mesh.num_elements == 20
-        assert mesh.nodes[-1, 0] == 1000
-        assert mesh.nodes[-1, 1] == 0
+        assert mesh.waypoint_nodes == [0, 10, 20]
     
-    def test_beam_mesh_1d_vertical(self):
-        """Test generating vertical beam mesh"""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            mesh = MeshGenerator.beam_mesh_1d(
-                length=500, 
-                num_elements=10, 
-                orientation='vertical'
-            )
-        assert mesh.num_nodes == 11
-        assert mesh.nodes[-1, 0] == 0
-        assert mesh.nodes[-1, 1] == 500
+    def test_from_path_invalid_points(self):
+        """Test error for too few points"""
+        with pytest.raises(ValueError, match="Path must have at least 2 points"):
+            Mesh.from_path([(0,0)], elements_per_segment=1)
     
-    def test_beam_mesh_negative_length(self):
-        """Test that negative length raises error"""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            with pytest.raises(ValueError, match="Length must be positive"):
-                MeshGenerator.beam_mesh_1d(length=-100, num_elements=10)
+    def test_from_path_grading(self):
+        """Test graded mesh via from_path"""
+        mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=10, grading_ratios=2.0)
+        sizes = MeshRefinement.get_element_sizes(mesh)
+        assert sizes[0] < sizes[-1]
     
-    def test_beam_mesh_zero_elements(self):
-        """Test that zero elements raises error"""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            with pytest.raises(ValueError, match="Number of elements must be at least 1"):
-                MeshGenerator.beam_mesh_1d(length=100, num_elements=0)
-    
-    def test_beam_mesh_invalid_orientation(self):
-        """Test that invalid orientation raises error"""
-        with pytest.raises(ValueError, match="Orientation must be"):
-            MeshGenerator.beam_mesh_1d(
-                length=100, 
-                num_elements=10, 
-                orientation='diagonal'
-            )
-    
-    def test_curved_beam(self):
+    def test_from_arc(self):
         """Test generating curved beam mesh"""
-        mesh = MeshGenerator.curved_beam(
+        mesh = Mesh.from_arc(
             radius=100,
             start_angle=0,
             end_angle=90,
@@ -133,24 +106,15 @@ class TestMeshGenerator:
         assert mesh.num_nodes == 11
         assert mesh.num_elements == 10
     
-    def test_curved_beam_negative_radius(self):
+    def test_from_arc_negative_radius(self):
         """Test that negative radius raises error"""
         with pytest.raises(ValueError, match="Radius must be positive"):
-            MeshGenerator.curved_beam(
+            Mesh.from_arc(
                 radius=-100,
                 start_angle=0,
                 end_angle=90,
                 num_elements=10
             )
-    
-    def test_multi_span_beam(self):
-        """Test generating multi-span beam"""
-        mesh = MeshGenerator.multi_span_beam(
-            span_lengths=[500, 800, 500],
-            elements_per_span=[5, 8, 5]
-        )
-        assert mesh.num_nodes == 19  # 5+1 + 8 + 5
-        assert mesh.num_elements == 18  # 5 + 8 + 5
 
 
 class TestMeshRefinement:
@@ -158,7 +122,7 @@ class TestMeshRefinement:
     
     def test_uniform_refinement(self):
         """Test uniform mesh refinement"""
-        mesh = MeshGenerator.beam_mesh_1d(length=100, num_elements=5)
+        mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=5)
         refined = MeshRefinement.refine_uniform(mesh, refinement_level=1)
         
         assert refined.num_elements == 10  # Each element split in 2
@@ -166,14 +130,14 @@ class TestMeshRefinement:
     
     def test_multiple_refinements(self):
         """Test multiple refinement levels"""
-        mesh = MeshGenerator.beam_mesh_1d(length=100, num_elements=5)
+        mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=5)
         refined = MeshRefinement.refine_uniform(mesh, refinement_level=2)
         
         assert refined.num_elements == 20  # 5 * 2^2
     
     def test_get_element_sizes(self):
         """Test getting element sizes"""
-        mesh = MeshGenerator.beam_mesh_1d(length=100, num_elements=10)
+        mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=10)
         sizes = MeshRefinement.get_element_sizes(mesh)
         
         assert len(sizes) == 10

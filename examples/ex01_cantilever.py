@@ -22,7 +22,7 @@ This example demonstrates:
 import os
 
 from beam_fea import (
-    BeamSolver, MeshGenerator, get_material, 
+    BeamSolver, Mesh, get_material, 
     LoadCase, BoundaryConditionSet, i_beam
 )
 
@@ -46,7 +46,7 @@ def run_example():
     
     # 2. Create Model
     # 20 elements provides good accuracy
-    mesh = MeshGenerator.beam_mesh_1d(L, num_elements=20)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=20)
     
     solver = BeamSolver(mesh, aluminum, props)
     

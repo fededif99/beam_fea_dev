@@ -4,12 +4,12 @@ ex04_combined_analysis.py
 Example demonstrating a combined static and modal report.
 """
 
-from beam_fea import BeamSolver, MeshGenerator, LoadCase, BoundaryConditionSet, get_material
+from beam_fea import BeamSolver, Mesh, LoadCase, BoundaryConditionSet, get_material
 
 def run_combined_example():
     # 1. Setup Model
     # 2000mm beam, 40 elements
-    mesh = MeshGenerator.beam_mesh_1d(length=2000, num_elements=40)
+    mesh = Mesh.from_path([(0, 0), (2000, 0)], elements_per_segment=40)
     material = get_material("Steel")
     
     # Rectangular Section 50x100 mm using convenience helper

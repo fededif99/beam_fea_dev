@@ -1,10 +1,10 @@
 import pytest
 import numpy as np
-from beam_fea import MeshGenerator, get_material, rectangular, BeamSolver, PropertySet
+from beam_fea import Mesh, get_material, rectangular, BeamSolver, PropertySet
 
 def test_single_propertyset_global():
     # Test that a single PropertySet with no elements applies to all
-    mesh = MeshGenerator.beam_mesh_1d(length=100, num_elements=5)
+    mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=5)
     steel = get_material('steel_a36')
     sec = rectangular(10, 20)
     
@@ -17,7 +17,7 @@ def test_single_propertyset_global():
 
 def test_multiple_propertysets_precedence():
     # Test that later assignments override earlier ones
-    mesh = MeshGenerator.beam_mesh_1d(length=100, num_elements=10)
+    mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=10)
     steel = get_material('steel_a36')
     alum = get_material('aluminum_7075')
     sec1 = rectangular(10, 20)
@@ -40,7 +40,7 @@ def test_multiple_propertysets_precedence():
 
 def test_list_merging_logic():
     # Test that passing a list of sets to the solver works (merging)
-    mesh = MeshGenerator.beam_mesh_1d(length=100, num_elements=10)
+    mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=10)
     steel = get_material('steel_a36')
     sec1 = rectangular(10, 20)
     sec2 = rectangular(20, 40)
@@ -55,7 +55,7 @@ def test_list_merging_logic():
 
 def test_validation_incomplete_coverage():
     # Test that missing assignments raise a ValueError
-    mesh = MeshGenerator.beam_mesh_1d(length=100, num_elements=10)
+    mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=10)
     steel = get_material('steel_a36')
     sec = rectangular(10, 20)
     
@@ -66,7 +66,7 @@ def test_validation_incomplete_coverage():
 
 def test_legacy_compatibility():
     # Test that passing material/section directly still works
-    mesh = MeshGenerator.beam_mesh_1d(length=100, num_elements=5)
+    mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=5)
     steel = get_material('steel_a36')
     sec = rectangular(10, 20)
     
@@ -79,7 +79,7 @@ def test_legacy_compatibility():
 def test_partial_overrides_mismatch():
     # Test a set that only provides material for some elements, 
     # relying on a global set for section
-    mesh = MeshGenerator.beam_mesh_1d(length=100, num_elements=5)
+    mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=5)
     steel = get_material('steel_a36')
     alum = get_material('aluminum_7075')
     sec = rectangular(10, 20)

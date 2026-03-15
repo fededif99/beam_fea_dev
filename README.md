@@ -23,7 +23,7 @@
 ### Latest Version: v2.9.0 *(2026-03-15)*
 
 - **Architecture**: Data-oriented mesh refactoring. Removed `Node` and `Element` classes in favor of high-performance NumPy arrays.
-- **API**: Deprecated `beam_mesh_1d` in favor of `line_mesh`.
+- **API**: Consolidated all mesh generation into `Mesh.from_path()` and `Mesh.from_arc()`. **Removed `MeshGenerator` class entirely.**
 - **Performance**: Significant reduction in object instantiation overhead during mesh generation and assembly.
 
 ### Previous Version: v2.8.0 *(2026-03-15)*
@@ -140,10 +140,10 @@ This is especially recommended for **Reviewers** to ensure their environment is 
 ### Quick Example: Cantilever Beam
 
 ```python
-from beam_fea import BeamSolver, MeshGenerator, get_material, LoadCase, BoundaryConditionSet, rectangular
+from beam_fea import BeamSolver, Mesh, get_material, LoadCase, BoundaryConditionSet, rectangular
 
 # Setup
-mesh = MeshGenerator.line_mesh(start_xy=(0, 0), end_xy=(2000, 0), num_elements=20)
+mesh = Mesh.from_path([(0, 0), (2000, 0)], elements_per_segment=20)
 aluminum = get_material('aluminum_7075_t6')
 section = rectangular(width=50, height=100)
 
@@ -355,11 +355,12 @@ solver = BeamSolver(mesh, material=lam, section=rectangular(width=25, height=lam
 
 #### `Mesh` Class
 
-Manages nodes and elements.
+Manages nodes and elements. Mesh creation is handled via high-performance static constructors:
 
-- **`add_node(x, y)`**: Adds a node, returns ID.
-
-#### `PropertySet` Class
+- **`Mesh.from_path(points, elements_per_segment, grading_ratio=None)`**: Creates a general 2D mesh from a list of $(x, y)$ waypoints. Handles straight beams, piecewise paths, and multi-span layouts. **(Recommended)**
+- **`Mesh.from_arc(radius, start_angle, end_angle, num_elements)`**: Meshes a circular arc for curved beam analysis.
+- **`add_node(x, y)`**: Manual node addition (NumPy-backed).
+- **`add_element(node1, node2)`**: Manual element connectivity.
 
 A collector for material and cross-section properties across the beam.
 
@@ -387,36 +388,24 @@ props.add(material=aluminum, elements=5)     # Local material override
 solver = BeamSolver(mesh, material=props)
 ```
 
-#### `MeshGenerator` Class
-
-Static utilities for rapid meshing.
-
-- **`line_mesh(start_xy, end_xy, num_elements)`**: Meshes a line between two points. **(Recommended)**
-- **`beam_mesh_1d(length, num_elements)`**: *Deprecated* — calls `line_mesh` internally.
-- **`path_mesh(points, elements_per_segment)`**: Creates a general 2D angled beam mesh from a list of $(x, y)$ waypoints. Supports segment-wise grading.
-- **`multi_span_beam(lengths, elements_per_span)`**: Creates a continuous beam mesh over multiple supports.
-- **`graded_mesh(start, end, n, grading_ratio)`**: Meshes with variable element sizes.
-- **`curved_beam(radius, start_ang, end_ang, n)`**: Meshes a circular arc.
-
 #### 3.4.1 Advanced Meshing (Waypoints & Angled Beams)
 
-For complex structures like angled frames or multi-span beams, the `MeshGenerator` provides automatic waypoint tracking.
+For complex structures like angled frames or multi-span beams, the `Mesh` static constructors provide automatic waypoint tracking.
 
-**1. Point-to-Point Waypoints (`path_mesh`)**
+**1. Point-to-Point Waypoints (`from_path`)**
 Define a series of $(x, y)$ coordinates. The generator handles node merging at the "elbows" automatically.
 
 ```python
 points = [(0, 0), (1000, 0), (1000, 1000)] # L-Frame
-mesh = MeshGenerator.path_mesh(points, elements_per_segment=[10, 10])
+mesh = Mesh.from_path(points, elements_per_segment=[10, 10])
 ```
 
-**2. Relative Vectors (`multi_span_beam`)**
-Define spans using relative offsets `(dx, dy)`. This is often more intuitive than absolute coordinates.
+**2. Multi-Span Beams (`from_path`)**
+Define multiple spans by including intermediate coordinates.
 
 ```python
-# 1m horizontal span, followed by 1m vertical span
-spans = [1000.0, (0.0, 1000.0)] 
-mesh = MeshGenerator.multi_span_beam(spans, elements_per_span=[10, 10])
+points = [(0, 0), (1000, 0), (2500, 0)] # 1000mm and 1500mm spans
+mesh = Mesh.from_path(points, elements_per_segment=[10, 15])
 ```
 
 **3. Automatic Support Tracking**

@@ -164,94 +164,19 @@ class Mesh:
         return f"Mesh: {self.num_nodes} nodes, {self.num_elements} elements"
 
 
-class MeshGenerator:
-    """Utilities for generating finite element meshes."""
-    
     @staticmethod
-    def line_mesh(start: Tuple[float, float],
-                  end: Tuple[float, float],
-                  num_elements: int) -> 'Mesh':
-        """
-        Generate a uniform mesh along a straight line.
-        """
-        if num_elements < 1:
-            raise ValueError(f"Number of elements must be at least 1, got {num_elements}")
-            
-        mesh = Mesh()
-        p1 = np.array(start[:2], dtype=float)
-        p2 = np.array(end[:2], dtype=float)
-
-        # Vectorized coordinate generation
-        t = np.linspace(0, 1, num_elements + 1)
-        mesh.nodes = p1[None, :] + t[:, None] * (p2 - p1)[None, :]
-        
-        # Vectorized connectivity generation
-        mesh.elements = np.vstack((np.arange(num_elements), np.arange(1, num_elements + 1))).T
-        mesh.waypoint_nodes = [0, num_elements]
-        
-        return mesh
-    
-    @staticmethod
-    def beam_mesh_1d(length: float, num_elements: int,
-                     orientation: str = 'horizontal') -> 'Mesh':
-        """
-        Generate a 1D beam mesh (horizontal or vertical).
-        DEPRECATED: Use line_mesh((0,0), (L,0), N) instead.
-        """
-        import warnings
-        warnings.warn("beam_mesh_1d is deprecated. Use line_mesh instead.", DeprecationWarning)
-        
-        if length <= 0:
-            raise ValueError(f"Length must be positive, got {length}")
-        if num_elements < 1:
-            raise ValueError(f"Number of elements must be at least 1, got {num_elements}")
-        
-        if orientation.lower() == 'horizontal':
-            start = (0.0, 0.0)
-            end = (length, 0.0)
-        elif orientation.lower() == 'vertical':
-            start = (0.0, 0.0)
-            end = (0.0, length)
-        else:
-            raise ValueError("Orientation must be 'horizontal' or 'vertical'")
-        
-        return MeshGenerator.line_mesh(start, end, num_elements)
-
-    
-    @staticmethod
-    def graded_mesh(start: Tuple[float, float],
-                    end: Tuple[float, float],
-                    num_elements: int, grading_ratio: float = 1.0) -> 'Mesh':
-        mesh = Mesh()
-        
-        if grading_ratio == 1.0:
-            return MeshGenerator.line_mesh(start, end, num_elements)
-        
-        p1 = np.array(start[:2], dtype=float)
-        p2 = np.array(end[:2], dtype=float)
-
-        # Geometric series positioning
-        L_total = np.linalg.norm(p2 - p1)
-        L1 = L_total * (grading_ratio - 1) / (grading_ratio**num_elements - 1)
-        
-        positions = np.zeros(num_elements + 1)
-        for i in range(1, num_elements + 1):
-            positions[i] = positions[i-1] + L1 * (grading_ratio**(i-1))
-        
-        positions *= (L_total / positions[-1]) # Normalize precision
-        direction = (p2 - p1) / L_total
-        
-        # Vectorized coordinate mapping
-        mesh.nodes = p1[None, :] + direction[None, :] * positions[:, None]
-        mesh.elements = np.vstack((np.arange(num_elements), np.arange(1, num_elements + 1))).T
-        mesh.waypoint_nodes = [0, num_elements]
-        
-        return mesh
-    
-    @staticmethod
-    def path_mesh(points: List[Tuple[float, float]],
+    def from_path(points: List[Tuple[float, float]],
                   elements_per_segment: Union[int, List[int]],
                   grading_ratios: Optional[Union[float, List[float]]] = None) -> 'Mesh':
+        """
+        Generate a mesh along a path defined by a series of points.
+        
+        This is the primary way to create meshes in beam_fea. It handles:
+        - Single straight lines (2 points)
+        - Piecewise linear paths / Angled frames (multiple points)
+        - Multi-span continuous beams
+        - Graded elements for local refinement
+        """
         if len(points) < 2:
             raise ValueError("Path must have at least 2 points.")
 
@@ -269,70 +194,41 @@ class MeshGenerator:
         mesh.waypoint_nodes.append(0)
 
         for i in range(num_segments):
-            seg_mesh = MeshGenerator.graded_mesh(points[i], points[i+1], elements_per_segment[i], grading_ratios[i])
+            # Internal logic for graded segments
+            p1 = np.array(points[i][:2], dtype=float)
+            p2 = np.array(points[i+1][:2], dtype=float)
+            num_elements = elements_per_segment[i]
+            ratio = grading_ratios[i]
             
-            # Assemble native matrices rapidly
+            L_total = np.linalg.norm(p2 - p1)
+            direction = (p2 - p1) / L_total if L_total > 0 else np.zeros(2)
+            
+            if ratio == 1.0:
+                t = np.linspace(0, 1, num_elements + 1)
+                seg_nodes = p1[None, :] + t[:, None] * (p2 - p1)[None, :]
+            else:
+                L1 = L_total * (ratio - 1) / (ratio**num_elements - 1)
+                positions = np.zeros(num_elements + 1)
+                for j in range(1, num_elements + 1):
+                    positions[j] = positions[j-1] + L1 * (ratio**(j-1))
+                positions *= (L_total / positions[-1])
+                seg_nodes = p1[None, :] + direction[None, :] * positions[:, None]
+            
+            # Assemble into global mesh
             start_num = mesh.nodes.shape[0] - 1
+            mesh.nodes = np.vstack([mesh.nodes, seg_nodes[1:]])
             
-            # Append nodes (skip first node of segment to avoid dupes)
-            mesh.nodes = np.vstack([mesh.nodes, seg_mesh.nodes[1:]])
-            
-            # Map elements
-            new_elements = seg_mesh.elements + start_num
-            mesh.elements = np.vstack([mesh.elements, new_elements]) if mesh.elements.size else new_elements
+            new_elems = np.vstack((np.arange(num_elements), np.arange(1, num_elements + 1))).T + start_num
+            mesh.elements = np.vstack([mesh.elements, new_elems]) if mesh.elements.size else new_elems
             
             mesh.waypoint_nodes.append(mesh.nodes.shape[0] - 1)
 
         return mesh
 
     @staticmethod
-    def multi_span_beam(span_lengths: List[Union[float, Tuple[float, float]]],
-                        elements_per_span: List[int],
-                        orientation: str = 'horizontal') -> 'Mesh':
-        """
-        Generate mesh for a multi-span continuous beam.
-
-        Parameters:
-        -----------
-        span_lengths : list of float or tuple
-            If float: Length of each span (mm). Orientation applies.
-            If tuple: (dx, dy) relative vector for each span.
-        elements_per_span : list of int
-            Number of elements in each span.
-        orientation : str
-            'horizontal' or 'vertical' (only used if span_lengths are floats).
-
-        Returns:
-        --------
-        mesh : Mesh
-            Generated mesh. `mesh.waypoint_nodes` contains support IDs.
-        """
-        if len(span_lengths) != len(elements_per_span):
-            raise ValueError("span_lengths and elements_per_span must have same length")
-
-        # Convert span definitions to waypoints
-        points = [(0.0, 0.0)]
-        curr_x, curr_y = 0.0, 0.0
-
-        for val in span_lengths:
-            if isinstance(val, (int, float)):
-                if orientation.lower() == 'horizontal':
-                    curr_x += val
-                else:
-                    curr_y += val
-            elif isinstance(val, (tuple, list, np.ndarray)) and len(val) == 2:
-                curr_x += val[0]
-                curr_y += val[1]
-            else:
-                raise TypeError(f"Invalid span definition: {val}. Expected float or (dx, dy).")
-
-            points.append((curr_x, curr_y))
-
-        return MeshGenerator.path_mesh(points, elements_per_span)
-    
-    @staticmethod
-    def curved_beam(radius: float, start_angle: float, end_angle: float,
-                    num_elements: int) -> 'Mesh':
+    def from_arc(radius: float, start_angle: float, end_angle: float,
+                 num_elements: int) -> 'Mesh':
+        """Generate a circular arc mesh."""
         if radius <= 0:
             raise ValueError(f"Radius must be positive, got {radius}")
             
@@ -346,6 +242,9 @@ class MeshGenerator:
         
         mesh.waypoint_nodes = [0, num_elements]
         return mesh
+
+    def __str__(self):
+        return f"Mesh: {self.num_nodes} nodes, {self.num_elements} elements"
 
 
 class MeshRefinement:
@@ -390,7 +289,6 @@ class MeshRefinement:
             new_mesh.elements[1::2] = elems_part2
             
             # Update waypoint IDs if they exist. 
-            # Note: The structural IDs of original nodes did not change.
             new_mesh.waypoint_nodes = list(current_mesh.waypoint_nodes)
             
             current_mesh = new_mesh
@@ -411,33 +309,28 @@ class MeshRefinement:
 if __name__ == "__main__":
     # Demonstration
     print("\n" + "="*70)
-    print("MESH GENERATION EXAMPLES (NUMPY BACKEND)")
+    print("MESH GENERATION EXAMPLES (REFACTORED UNIFIED MESH)")
     print("="*70)
     
     # Example 1: Simple beam
-    print("\n1. Simple horizontal beam:")
-    mesh1 = MeshGenerator.line_mesh((0,0), (1000,0), num_elements=10)
+    print("\n1. Simple horizontal beam (from_path):")
+    mesh1 = Mesh.from_path([(0, 0), (1000, 0)], elements_per_segment=10)
     print(f"   {mesh1}")
     
-    # Example 2: Multi-span beam
-    print("\n2. Multi-span continuous beam:")
-    mesh2 = MeshGenerator.multi_span_beam(
-        span_lengths=[500, 800, 500],
-        elements_per_span=[5, 8, 5]
-    )
+    # Example 2: Angled frame
+    print("\n2. Angled Frame (from_path):")
+    mesh2 = Mesh.from_path([(0, 0), (1000, 0), (1000, 1000)], elements_per_segment=[10, 10])
     print(f"   {mesh2}")
-    print(f"   Total length: {mesh2.nodes[-1, 0]} mm")
     
     # Example 3: Graded mesh
     print("\n3. Graded mesh (fine at start):")
-    mesh3 = MeshGenerator.graded_mesh((0, 0), (1000, 0), num_elements=10, grading_ratio=2.0)
+    mesh3 = Mesh.from_path([(0, 0), (1000, 0)], elements_per_segment=10, grading_ratios=2.0)
     sizes = MeshRefinement.get_element_sizes(mesh3)
     print(f"   {mesh3}")
     print(f"   Element sizes: {sizes[0]:.2f} to {sizes[-1]:.2f} mm")
     
-    # Example 4: Uniform refinement
-    print("\n4. Uniform refinement:")
-    mesh4 = MeshGenerator.line_mesh((0,0), (100,0), num_elements=5)
-    print(f"   Original: {mesh4}")
-    mesh4_refined = MeshRefinement.refine_uniform(mesh4, refinement_level=2)
-    print(f"   After 2 refinements: {mesh4_refined}")
+    # Example 4: Curved Beam
+    print("\n4. Curved beam (from_arc):")
+    mesh4 = Mesh.from_arc(radius=100, start_angle=0, end_angle=90, num_elements=10)
+    print(f"   {mesh4}")
+

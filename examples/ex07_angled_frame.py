@@ -1,5 +1,5 @@
 
-from beam_fea import BeamSolver, MeshGenerator, get_material, rectangular, BoundaryConditionSet, LoadCase
+from beam_fea import BeamSolver, Mesh, get_material, rectangular, BoundaryConditionSet, LoadCase
 import os
 import numpy as np
 
@@ -10,10 +10,9 @@ def run_angled_frame_demo():
 
     # 1. Mesh Generation
     # Define a frame: (0,0) -> (1000, 0) -> (1000, 1000)
-    # Using the new relative vector support in multi_span_beam
-    spans = [1000.0, (0.0, 1000.0)]
+    points = [(0, 0), (1000, 0), (1000, 1000)]
     elems = [20, 20]
-    mesh = MeshGenerator.multi_span_beam(spans, elems, orientation='horizontal')
+    mesh = Mesh.from_path(points, elems)
 
     print(f"Mesh created with {mesh.num_nodes} nodes and {mesh.num_elements} elements.")
     print(f"Waypoints: {mesh.waypoint_nodes}")

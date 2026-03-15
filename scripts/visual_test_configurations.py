@@ -24,7 +24,7 @@ import numpy as np
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 from beam_fea import (
-    BeamSolver, MeshGenerator, Material, get_material,
+    BeamSolver, Mesh, Material, get_material,
     LoadCase, BoundaryConditionSet
 )
 from beam_fea.cross_sections import (
@@ -72,7 +72,7 @@ def run_config(name: str, mesh, material, section, lc, bc,
 # ---------------------------------------------------------------------------
 def config_1():
     L, n = 500.0, 5
-    mesh = MeshGenerator.beam_mesh_1d(L, n)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=n)
     section = rectangular(width=30.0, height=50.0)
 
     lc = LoadCase("Central point load")
@@ -92,7 +92,7 @@ def config_1():
 # ---------------------------------------------------------------------------
 def config_2():
     L, n = 10_000.0, 40
-    mesh = MeshGenerator.beam_mesh_1d(L, n)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=n)
     section = i_beam(flange_width=150, total_height=300,
                      web_thickness=7, flange_thickness=10.7)
 
@@ -113,7 +113,7 @@ def config_2():
 # ---------------------------------------------------------------------------
 def config_3():
     L, n = 2_000.0, 20
-    mesh = MeshGenerator.beam_mesh_1d(L, n)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=n)
     section = c_channel(height=160, flange_width=80,
                         web_thickness=6, flange_thickness=9)
 
@@ -133,7 +133,7 @@ def config_3():
 # ---------------------------------------------------------------------------
 def config_4():
     L, n = 3_000.0, 30
-    mesh = MeshGenerator.beam_mesh_1d(L, n)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=n)
     section = box_section(width=120, height=180, thickness=8)
 
     lc = LoadCase("Full UDL propped")
@@ -153,7 +153,7 @@ def config_4():
 # ---------------------------------------------------------------------------
 def config_5():
     L, n = 15_000.0, 50
-    mesh = MeshGenerator.beam_mesh_1d(L, n)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=n)
     section = circular(diameter=100.0)
 
     lc = LoadCase("Tip load extreme")
@@ -173,7 +173,7 @@ def config_5():
 # ---------------------------------------------------------------------------
 def config_6():
     L, n = 4_000.0, 20
-    mesh = MeshGenerator.beam_mesh_1d(L, n)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=n)
     mid_node = n // 2
 
     section = hollow_circular(outer_diameter=100.0, thickness=10.0)
@@ -198,7 +198,7 @@ def config_6():
 # ---------------------------------------------------------------------------
 def config_7():
     L, n = 4_000.0, 25
-    mesh = MeshGenerator.beam_mesh_1d(L, n)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=n)
     section = t_beam(flange_width=150, web_height=185,
                      web_thickness=10, flange_thickness=15)
 
@@ -221,7 +221,7 @@ def config_7():
 # ---------------------------------------------------------------------------
 def config_8():
     L, n = 6_000.0, 20
-    mesh = MeshGenerator.beam_mesh_1d(L, n)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=n)
     section = l_section(leg_vertical=80, leg_horizontal=80, thickness=8)
 
     lc = LoadCase("Trapezoidal UDL")
@@ -243,7 +243,7 @@ def config_8():
 # ---------------------------------------------------------------------------
 def config_9():
     L, n = 5_000.0, 50
-    mesh = MeshGenerator.beam_mesh_1d(L, n)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=n)
     section = rectangular(width=200, height=400)
 
     lc = LoadCase("Fixed-Fixed Axial")

@@ -5,7 +5,7 @@ Integration tests for beam_fea package
 import pytest
 import numpy as np
 from beam_fea import (
-    BeamSolver, MeshGenerator, get_material,
+    BeamSolver, Mesh, get_material,
     rectangular, LoadCase, BoundaryConditionSet
 )
 
@@ -16,7 +16,7 @@ class TestSimpleBeamAnalysis:
     def test_simply_supported_beam_point_load(self):
         """Test simply supported beam with central point load"""
         # Create mesh
-        mesh = MeshGenerator.beam_mesh_1d(length=1000, num_elements=20)
+        mesh = Mesh.from_path([(0, 0), (1000, 0)], elements_per_segment=20)
         
         # Define material and section
         material = get_material('steel')
@@ -53,7 +53,7 @@ class TestSimpleBeamAnalysis:
     def test_cantilever_beam_end_load(self):
         """Test cantilever beam with end load"""
         # Create mesh
-        mesh = MeshGenerator.beam_mesh_1d(length=500, num_elements=10)
+        mesh = Mesh.from_path([(0, 0), (500, 0)], elements_per_segment=10)
         
         # Define material and section
         material = get_material('aluminum')
@@ -85,7 +85,7 @@ class TestSimpleBeamAnalysis:
     def test_modal_analysis(self):
         """Test modal analysis for natural frequencies"""
         # Create mesh
-        mesh = MeshGenerator.beam_mesh_1d(length=1000, num_elements=20)
+        mesh = Mesh.from_path([(0, 0), (1000, 0)], elements_per_segment=20)
         
         # Define material and section
         material = get_material('steel')
@@ -122,7 +122,7 @@ class TestDistributedLoad:
     def test_uniformly_distributed_load(self):
         """Test beam with uniformly distributed load"""
         # Create mesh
-        mesh = MeshGenerator.beam_mesh_1d(length=1000, num_elements=10)
+        mesh = Mesh.from_path([(0, 0), (1000, 0)], elements_per_segment=10)
         
         # Define material and section
         material = get_material('steel')
@@ -159,10 +159,7 @@ class TestMultiSpanBeam:
     def test_two_span_beam(self):
         """Test two-span continuous beam"""
         # Create mesh
-        mesh = MeshGenerator.multi_span_beam(
-            span_lengths=[500, 500],
-            elements_per_span=[10, 10]
-        )
+        mesh = Mesh.from_path([(0, 0), (500, 0), (1000, 0)], elements_per_segment=[10, 10])
         
         # Define material and section
         material = get_material('steel')

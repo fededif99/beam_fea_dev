@@ -18,12 +18,14 @@ Module Organization:
 
 Usage Example:
 --------------
->>> from beam_fea import BeamSolver, MeshGenerator, get_material
+Usage Example:
+--------------
+>>> from beam_fea import BeamSolver, Mesh, get_material
 >>> from beam_fea.cross_sections import rectangular
 >>> from beam_fea.loads import LoadCase
 >>> 
 >>> # Create mesh
->>> mesh = MeshGenerator.beam_mesh_1d(length=1000, num_elements=20)
+>>> mesh = Mesh.from_path([(0, 0), (1000, 0)], elements_per_segment=20)
 >>> 
 >>> # Define material and section
 >>> material = get_material('steel')
@@ -61,7 +63,7 @@ from .cross_sections import (
     BoxSection, TBeamSection, CChannelSection, HollowCircularSection, LSection,
     rectangular, circular, i_beam, box, t_beam, c_channel, hollow_circular, l_section
 )
-from .mesh import Mesh, MeshGenerator, MeshRefinement
+from .mesh import Mesh, MeshRefinement
 from .batch import BatchProcessor
 from .properties import PropertySet
 from .composites import Ply, Laminate
@@ -95,7 +97,7 @@ __all__ = [
     'rectangular', 'circular', 'i_beam', 'box', 't_beam', 'c_channel', 'hollow_circular', 'l_section',
     
     # Mesh
-    'Mesh', 'MeshGenerator', 'MeshRefinement',
+    'Mesh', 'MeshRefinement',
     
     # Batch
     'BatchProcessor',

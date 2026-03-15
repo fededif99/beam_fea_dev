@@ -4,7 +4,7 @@ examples/ex06_anisotropic_coupling.py
 Demonstrates bend-extension coupling in asymmetric composite beams.
 """
 
-from beam_fea import BeamSolver, MeshGenerator, BoundaryConditionSet, LoadCase, rectangular
+from beam_fea import BeamSolver, Mesh, BoundaryConditionSet, LoadCase, rectangular
 from beam_fea.composites import Ply, Laminate
 import numpy as np
 
@@ -36,7 +36,7 @@ def run_coupling_demo():
     # 3. FEA Model
     L = 500
     w = 10
-    mesh = MeshGenerator.beam_mesh_1d(length=L, num_elements=20)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=20)
     section = rectangular(width=w, height=4.0)
 
     # Solve Symmetric Case

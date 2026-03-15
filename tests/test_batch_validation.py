@@ -2,7 +2,7 @@
 import pytest
 import os
 import pandas as pd
-from beam_fea import BeamSolver, MeshGenerator, get_material, rectangular, LoadCase, BoundaryConditionSet
+from beam_fea import BeamSolver, Mesh, get_material, rectangular, LoadCase, BoundaryConditionSet
 from beam_fea.batch import BatchProcessor
 
 def test_batch_file_not_found():
@@ -34,7 +34,7 @@ def test_batch_unresolved_placeholders():
         os.remove(csv_path)
 
 def test_solve_batch_validation():
-    mesh = MeshGenerator.beam_mesh_1d(100, 2)
+    mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=2)
     solver = BeamSolver(mesh, get_material('steel'), rectangular(10, 10))
     bc = BoundaryConditionSet()
 

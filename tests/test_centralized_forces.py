@@ -2,7 +2,7 @@
 import numpy as np
 import os
 
-from beam_fea.mesh import MeshGenerator
+from beam_fea.mesh import Mesh
 from beam_fea.materials import get_material
 from beam_fea.cross_sections import RectangularSection
 from beam_fea.solver import BeamSolver
@@ -14,7 +14,7 @@ def test_centralized_forces():
     
     # 1. Setup a simple cantilever beam
     # Length 1000mm, 10 elements
-    mesh = MeshGenerator.beam_mesh_1d(1000, 10)
+    mesh = Mesh.from_path([(0, 0), (1000, 0)], elements_per_segment=10)
     material = get_material('aluminum')
     section = RectangularSection(width=50, height=100).properties()
     

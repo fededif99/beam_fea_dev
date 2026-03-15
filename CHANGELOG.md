@@ -5,9 +5,9 @@ All notable changes to the `beam_fea` project will be documented in this file.
 ## [v2.9.0] - 2026-03-15
 
 - **Architecture**: Completely refactored the internal mesh representation to use raw NumPy arrays (`mesh.nodes` and `mesh.elements`), eliminating the `Node` and `Element` dataclasses.
-- **Performance**: Improved memory efficiency and vectorized data access across all solver and post-processing modules.
-- **API**: Deprecated `MeshGenerator.beam_mesh_1d` in favor of the more general `line_mesh`.
-- **Refactor**: Updated `loads.py`, `solver.py`, and `report_generator.py` to utilize direct NumPy indexing for mesh geometry.
+- **API**: **Removed the `MeshGenerator` class entirely.** All mesh generation logic has been consolidated into static methods: `Mesh.from_path()` and `Mesh.from_arc()`.
+- **Performance**: Significant performance gains in mesh creation and assembly via vectorized NumPy operations and reduced object instantiation overhead.
+- **Refactor**: Updated all examples, templates, tests, and utility scripts to utilize the new consolidated `Mesh` API.
 
 ## [v2.8.0] - 2026-03-15
 

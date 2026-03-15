@@ -1,15 +1,14 @@
 
 import pandas as pd
 import numpy as np
-from beam_fea import BeamSolver, MeshGenerator, get_material, rectangular, LoadCase, BoundaryConditionSet
-from beam_fea.batch import BatchProcessor
+from beam_fea import BeamSolver, Mesh, get_material, rectangular, LoadCase, BoundaryConditionSet
 
 def run_batch_demo():
     print("Beam FEA - Batch Analysis Demo")
     print("==============================\n")
 
     # Setup Common Model
-    mesh = MeshGenerator.beam_mesh_1d(length=2000, num_elements=20)
+    mesh = Mesh.from_path([(0, 0), (2000, 0)], elements_per_segment=20)
     mat = get_material('aluminum_7075')
     sec = rectangular(50, 100)
     solver = BeamSolver(mesh, mat, sec)

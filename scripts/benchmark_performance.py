@@ -14,7 +14,7 @@ Compares performance across different mesh sizes.
 import time
 import numpy as np
 
-from beam_fea import BeamSolver, MeshGenerator, get_material, rectangular, LoadCase, BoundaryConditionSet
+from beam_fea import BeamSolver, Mesh, get_material, rectangular, LoadCase, BoundaryConditionSet
 
 def run_benchmark(num_elements):
     print(f"\nBenchmark: {num_elements} elements")
@@ -22,7 +22,7 @@ def run_benchmark(num_elements):
     
     # 1. Setup
     start_time = time.perf_counter()
-    mesh = MeshGenerator.beam_mesh_1d(length=1000, num_elements=num_elements)
+    mesh = Mesh.from_path([(0, 0), (1000, 0)], elements_per_segment=num_elements)
     material = get_material('steel')
     section = rectangular(50, 100)
     solver = BeamSolver(mesh, material, section)

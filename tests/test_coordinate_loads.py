@@ -1,7 +1,7 @@
 
 import numpy as np
 import pytest
-from beam_fea.mesh import MeshGenerator
+from beam_fea.mesh import Mesh
 from beam_fea.loads import LoadCase
 from beam_fea.materials import Material
 from beam_fea.cross_sections import rectangular
@@ -10,7 +10,7 @@ from beam_fea.boundary_conditions import BoundaryConditionSet
 
 def test_point_load_coordinate():
     """Verify PointLoad(x=...) is consistent with shape functions."""
-    mesh = MeshGenerator.beam_mesh_1d(1000.0, 1) # Single element [0, 1000]
+    mesh = Mesh.from_path([(0, 0), (1000.0, 0)], elements_per_segment=1) # Single element [0, 1000]
     lc = LoadCase()
     
     # Apply load at mid-span (x=500.0)
@@ -31,7 +31,7 @@ def test_point_load_coordinate():
 
 def test_concentrated_moment_coordinate():
     """Verify concentrated_moment(x=...) matches shape function derivatives."""
-    mesh = MeshGenerator.beam_mesh_1d(1000.0, 1)
+    mesh = Mesh.from_path([(0, 0), (1000.0, 0)], elements_per_segment=1)
     lc = LoadCase()
     
     # Moment at x=500.0 (xi=0.5)
@@ -50,7 +50,7 @@ def test_concentrated_moment_coordinate():
 
 def test_udl_coordinate_range():
     """Verify UDL over a partial coordinate range."""
-    mesh = MeshGenerator.beam_mesh_1d(1000.0, 1)
+    mesh = Mesh.from_path([(0, 0), (1000.0, 0)], elements_per_segment=1)
     lc = LoadCase()
     
     # UDL from x=0 to x=500.0
@@ -76,7 +76,7 @@ def test_coordinate_parametric_consistency():
     P = -1000.0
     
     # Case 1: 2 elements (load at node 1.5... wait)
-    mesh2 = MeshGenerator.beam_mesh_1d(L, 2)
+    mesh2 = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=2)
     lc2 = LoadCase()
     lc2.point_load(x=750.0, fy=P)
     bc2 = BoundaryConditionSet()
@@ -87,7 +87,7 @@ def test_coordinate_parametric_consistency():
     disp2 = max_rec2['res']
     
     # Case 2: 10 elements (load at node 7.5)
-    mesh10 = MeshGenerator.beam_mesh_1d(L, 10)
+    mesh10 = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=10)
     lc10 = LoadCase()
     lc10.point_load(x=750.0, fy=P)
     bc10 = BoundaryConditionSet()
@@ -101,7 +101,7 @@ def test_coordinate_parametric_consistency():
 
 def test_coordinate_consistency_signs():
     """Verify sign convention: +Y load -> +Y deflection, +Mz moment -> CCW rotation."""
-    mesh = MeshGenerator.beam_mesh_1d(1000.0, 10)
+    mesh = Mesh.from_path([(0, 0), (1000.0, 0)], elements_per_segment=10)
     material = Material("Steel", 200000, 0.3, 7.85e-9)
     section = rectangular(50, 100)
     solver = BeamSolver(mesh, material, section)
@@ -122,7 +122,7 @@ def test_coordinate_consistency_signs():
 
 def test_triangular_load_coordinate():
     """Verify TriangularDistributedLoad(x=...) maps correctly."""
-    mesh = MeshGenerator.beam_mesh_1d(1000.0, 1)
+    mesh = Mesh.from_path([(0, 0), (1000.0, 0)], elements_per_segment=1)
     lc = LoadCase()
     
     # Triangular load from 0 to 1000, peak at start (xi=0)

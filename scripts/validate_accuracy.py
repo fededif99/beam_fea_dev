@@ -14,7 +14,7 @@ Cases:
 
 import numpy as np
 
-from beam_fea import BeamSolver, MeshGenerator, Material, rectangular, LoadCase, BoundaryConditionSet
+from beam_fea import BeamSolver, Mesh, Material, rectangular, LoadCase, BoundaryConditionSet
 
 def header(title):
     print(f"\n{'='*70}")
@@ -43,7 +43,7 @@ def validate_static_cases():
     section = rectangular(b, h)
     
     # 100 elements for high accuracy
-    mesh = MeshGenerator.beam_mesh_1d(L, 100)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=100)
     
     # Use Euler-Bernoulli for direct comparison with elementary beam theory
     solver = BeamSolver(mesh, material, section, element_type='euler')
@@ -159,7 +159,7 @@ def validate_modal_cases():
     section = rectangular(b, h)
     
     # Use finer mesh for modal analysis accuracy
-    mesh = MeshGenerator.beam_mesh_1d(L, 200)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=200)
     solver = BeamSolver(mesh, material, section, element_type='euler')
     
     bc_pinned = BoundaryConditionSet("Pinned-Pinned")

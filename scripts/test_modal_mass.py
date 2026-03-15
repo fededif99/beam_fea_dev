@@ -1,5 +1,5 @@
 
-from beam_fea import MeshGenerator, BeamSolver, get_material, rectangular, BoundaryConditionSet
+from beam_fea import Mesh, BeamSolver, get_material, rectangular, BoundaryConditionSet
 import numpy as np
 
 def test_modal_mass_sum():
@@ -7,7 +7,7 @@ def test_modal_mass_sum():
 
     # Simple cantilever beam
     L = 1000.0
-    mesh = MeshGenerator.beam_mesh_1d(L, num_elements=50)
+    mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=50)
     mat = get_material('steel')
     sec = rectangular(50, 50)
 

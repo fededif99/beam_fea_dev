@@ -1,6 +1,6 @@
 import pytest
 import warnings
-from beam_fea import BeamSolver, MeshGenerator, Material, LoadCase, BoundaryConditionSet
+from beam_fea import BeamSolver, Mesh, Material, LoadCase, BoundaryConditionSet
 from beam_fea.cross_sections import RectangularSection
 
 def test_missing_mesh():
@@ -11,7 +11,6 @@ def test_missing_mesh():
         solver.solve_static(LoadCase(), BoundaryConditionSet())
 
 def test_empty_mesh():
-    from beam_fea.mesh import Mesh
     material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
     section = RectangularSection(10, 10).properties()
     mesh = Mesh()
@@ -20,7 +19,7 @@ def test_empty_mesh():
         solver.solve_static(LoadCase(), BoundaryConditionSet())
 
 def test_missing_properties():
-    mesh = MeshGenerator.beam_mesh_1d(100, 1)
+    mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=1)
     material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
     section = RectangularSection(10, 10).properties()
     
@@ -31,7 +30,7 @@ def test_missing_properties():
         solver = BeamSolver(mesh, material, None)
 
 def test_no_bc():
-    mesh = MeshGenerator.beam_mesh_1d(100, 1)
+    mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=1)
     material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
     section = RectangularSection(10, 10).properties()
     solver = BeamSolver(mesh, material, section)
@@ -40,7 +39,7 @@ def test_no_bc():
         solver.solve_static(LoadCase(), BoundaryConditionSet())
 
 def test_instability_y():
-    mesh = MeshGenerator.beam_mesh_1d(100, 1)
+    mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=1)
     material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
     section = RectangularSection(10, 10).properties()
     solver = BeamSolver(mesh, material, section)
@@ -53,7 +52,7 @@ def test_instability_y():
 
 def test_slenderness_warning():
     # Stout beam: L=50, H=20 -> L/H = 2.5
-    mesh = MeshGenerator.beam_mesh_1d(50, 5)
+    mesh = Mesh.from_path([(0, 0), (50, 0)], elements_per_segment=5)
     material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
     section = RectangularSection(10, 20).properties()
     
@@ -67,7 +66,7 @@ def test_slenderness_warning():
         solver.solve_static(LoadCase(), bc)
 
 def test_axial_stability_warning():
-    mesh = MeshGenerator.beam_mesh_1d(100, 1)
+    mesh = Mesh.from_path([(0, 0), (100, 0)], elements_per_segment=1)
     material = Material('Steel', E=210000, nu=0.3, rho=7.85e-6)
     section = RectangularSection(10, 10).properties()
     solver = BeamSolver(mesh, material, section)
