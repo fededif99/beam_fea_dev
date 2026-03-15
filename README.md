@@ -25,43 +25,6 @@
 - **Performance**: High-performance **vectorized assembly architecture** in `BeamSolver`. Achieves ~20x speedup for large models.
 - **Architecture**: Replaced the element-wise Python loop with broadcasted NumPy operations for global matrix assembly.
 
-### Previous Version: v2.9.0 *(2026-03-15)*
-
-- **Architecture**: Data-oriented mesh refactoring. Removed `Node` and `Element` classes in favor of high-performance NumPy arrays.
-- **API**: Consolidated all mesh generation into `Mesh.from_path()` and `Mesh.from_arc()`. **Removed `MeshGenerator` class entirely.**
-- **Performance**: Significant reduction in object instantiation overhead during mesh generation and assembly.
-
-### Previous Version: v2.8.0 *(2026-03-15)*
-
-- **Physics**: Correct Timoshenko consistent mass matrix (Friedman & Kosmatka 1993) with rotatory inertia terms.
-- **Architecture**: Removed duplicate `UnifiedBeamElement` class definition.
-- **Numerics**: Relative penalty scaling in boundary conditions for numerical stability across unit systems.
-- **Composites**: Corrected coupling stiffness `ES` derivation for narrow beams using ABD compliance.
-- **Batch Analysis**: Perform multiple analyses with a single call using `solve_batch()`.
-- **Workflow Flexibility**: Load cases from CSV load lists or parametric tables via the new `BatchProcessor`.
-- **Batch Reporting**: Summary reports with absolute maximum "Envelope" calculations for all load cases.
-- **Pandas Integration**: Core reporting engine now powered by Pandas for superior table formatting and CSV export.
-- **Parametric Loading**: Define load magnitudes using string placeholders in Python templates.
-- **Local Stress Analysis**: Transformation to material-axis coordinates ($\sigma_1, \sigma_2, \tau_{12}$) for all laminate plies.
-- **Failure Criteria**: Built-in support for **Maximum Stress**, **Tsai-Hill**, and **Tsai-Wu** criteria.
-- **Enhanced Reporting**: Reports now include detailed ply-by-ply stress tables with local stresses and selectable failure indices.
-- **Unified Architecture**: Unified element matrices and stress recovery engines for both isotropic and composite materials.
-- **Transverse Shear Recovery**: Implemented layer-wise equilibrium integration for out-of-plane shear stress ($\tau_{xz}$).
-- **Explicit Geometry**: Replaced bounding boxes with Matplotlib patches for exact cross-section visualization.
-- **Strategy Pattern**: Decoupled "FEA Interpolation" from "High-Fidelity Recovery" for internal force handling.
-- **Optimization**: Achieve $O(M)$ performance scaling for station evaluations via vectorized grouping.
-- **Post-Processing Module**: Centralized calculation engines in `beam_fea/post_processing.py`.
-- **API Control**: Users can now explicitly choose between standard and consistent recovery modes.
-- **Physics Verification**: Corrected $E_x$ extraction to use compliance matrix inversion, ensuring accuracy for unbalanced laminates.
-- **Timoshenko Anisotropy**: Upgraded `AnisotropicBeamElement` to include Timoshenko shear deformation.
-- **Consistent Force Recovery**: Implemented distributed load particular solutions for precise internal force diagrams in composite beams.
-- **Audit**: Comprehensive codebase audit and health check
-- **Anisotropy**: Full support for **Anisotropic (Composite) Beam Elements** with bend-extension coupling ($B$ matrix)
-- **API**: Unified `PropertySet` collector for seamless multi-property modeling and validation
-- **Feature**: Classical Laminate Theory (CLT) support for composite materials and ABD matrix extraction
-- **Validation**: Mandatory element coverage checks to ensure physical model consistency
-- **Theory**: Statically consistent force recovery and high-fidelity Timoshenko dynamics
-
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).
 
