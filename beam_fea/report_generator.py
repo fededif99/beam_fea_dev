@@ -501,7 +501,7 @@ class BeamReportGenerator:
                         )
                         stack_mz[x_key] = stack + 1
 
-                elif isinstance(load, (UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad)):
+                elif isinstance(load, DistributedLoad):
                     if hasattr(load, 'element') and load.element is not None:
                         elements = ([load.element] if isinstance(load.element, int) else load.element)
                         x_s = coords[self.mesh.elements[elements[0]].node1, 0]
@@ -510,11 +510,14 @@ class BeamReportGenerator:
                         x_s, x_e = load.x_start, load.x_end
                     else: continue
 
-                    if isinstance(load, UniformDistributedLoad): wy1, wy2 = load.wy, None
-                    elif isinstance(load, TrapezoidalDistributedLoad): wy1, wy2 = load.wy1, load.wy2
-                    else: 
-                        if load.peak_loc == 'start': wy1, wy2 = load.w_peak, 0.0
+                    dist = getattr(load, 'distribution', 'uniform').lower()
+                    if dist == 'uniform': wy1, wy2 = load.wy, None
+                    elif dist == 'linear': wy1, wy2 = load.wy_start, load.wy_end
+                    elif dist == 'triangular': 
+                        if str(load.peak_loc).lower() == 'start': wy1, wy2 = load.w_peak, 0.0
                         else: wy1, wy2 = 0.0, load.w_peak
+                    else:
+                        continue
 
                     if abs(wy1) < 1e-12 and (wy2 is None or abs(wy2) < 1e-12): continue
                     ref_wy = max(abs(wy1), abs(wy2 or wy1))
@@ -681,15 +684,17 @@ class BeamReportGenerator:
                         self._draw_moment_arc(ax, x_pt, y_pt, mz_val, moment_radius, st.colour_moment_load, label_str, is_reaction=False, stack_level=stack)
                         stack_mz[x_key] = stack + 1
 
-                elif isinstance(load, (UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad)):
+                elif isinstance(load, DistributedLoad):
                     if hasattr(load, 'element') and load.element is not None:
                         elements = ([load.element] if isinstance(load.element, int) else load.element)
                         x_s, x_e = coords[self.mesh.elements[elements[0]].node1, 0], coords[self.mesh.elements[elements[-1]].node2, 0]
                     elif hasattr(load, 'x_start') and load.x_start is not None: x_s, x_e = load.x_start, load.x_end
                     else: continue
-                    if isinstance(load, UniformDistributedLoad): wy1, wy2 = load.wy, None
-                    elif isinstance(load, TrapezoidalDistributedLoad): wy1, wy2 = load.wy1, load.wy2
-                    else: wy1, wy2 = (load.w_peak, 0.0) if load.peak_loc == 'start' else (0.0, load.w_peak)
+                    dist = getattr(load, 'distribution', 'uniform').lower()
+                    if dist == 'uniform': wy1, wy2 = load.wy, None
+                    elif dist == 'linear': wy1, wy2 = load.wy_start, load.wy_end
+                    elif dist == 'triangular': wy1, wy2 = (load.w_peak, 0.0) if str(load.peak_loc).lower() == 'start' else (0.0, load.w_peak)
+                    else: continue
                     w_scale, w_unit = smart_units(max(abs(wy1), abs(wy2 or wy1)), 'udl')
                     label_str = f"{wy1/w_scale:.3g} {w_unit}" if wy2 is None else f"{wy1/w_scale:.3g}–{wy2/w_scale:.3g} {w_unit}"
                     self._draw_udl_comb(ax, x_s/x_scale, x_e/x_scale, wy1, glyph_h, st.colour_udl, label_str, wy2=wy2)
@@ -1212,7 +1217,7 @@ class BeamReportGenerator:
                         lx, ly = load.x, 0.0
                     total_mz_res += mz_l + (fy_l * lx) - (fx_l * ly)
                     
-                elif isinstance(load, UniformDistributedLoad):
+                elif isinstance(load, DistributedLoad) and getattr(load, 'distribution', 'uniform').lower() == 'uniform':
                     if hasattr(load, 'element') and load.element is not None:
                         elements = [load.element] if isinstance(load.element, int) else load.element
                         for elem_id in elements:
