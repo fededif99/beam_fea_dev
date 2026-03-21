@@ -229,19 +229,29 @@ class InternalForceEngine:
         if not solver.last_load_case:
             return element_dist_loads
 
-        from .loads import UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad
+        from .loads import DistributedLoad
         coords = solver.mesh.nodes
         elements = solver.mesh.elements
 
         for load in solver.last_load_case.loads:
+            if not isinstance(load, DistributedLoad):
+                continue
+                
             wy1 = wy2 = wx1 = wx2 = 0.0
-            if isinstance(load, UniformDistributedLoad):
-                wy1 = wy2 = load.wy; wx1 = wx2 = load.wx
-            elif isinstance(load, TrapezoidalDistributedLoad):
-                wy1, wy2 = load.wy1, load.wy2; wx1, wx2 = load.wx1, load.wx2
-            elif isinstance(load, TriangularDistributedLoad):
-                wy1, wy2 = (load.w_peak, 0.0) if load.peak_loc == 'start' else (0.0, load.w_peak)
-            else: continue
+            dist = load.distribution.lower()
+            if dist == 'uniform':
+                wy1 = wy2 = float(load.wy)
+                wx1 = wx2 = float(load.wx)
+            elif dist == 'linear':
+                wy1, wy2 = float(load.wy_start), float(load.wy_end)
+                wx1, wx2 = float(load.wx_start), float(load.wx_end)
+            elif dist == 'triangular':
+                if str(load.peak_loc).lower() == 'start':
+                    wy1, wy2 = float(load.w_peak), 0.0
+                else:
+                    wy1, wy2 = 0.0, float(load.w_peak)
+            else:
+                continue
 
             if load.element is not None:
                 elems = [load.element] if isinstance(load.element, int) else load.element

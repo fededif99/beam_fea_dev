@@ -36,7 +36,7 @@ def main():
     # Use string tags (e.g., 'P_tip') as placeholders for magnitudes
     lc_template = LoadCase("Parametric Study")
     lc_template.point_load(node=20, fy="P_tip")
-    lc_template.uniform_load(x_start=0, x_end=1000, wy="snow_load")
+    lc_template.distributed_load(x_start=0, x_end=1000, distribution='uniform', wy="snow_load")
 
     # 3. PARAMETER TABLE
     # In a real workflow, you would load this from a CSV: df = pd.read_csv('params.csv')

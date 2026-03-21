@@ -88,7 +88,7 @@ def run_composite_analysis():
     bc.roller_support(50) # node at x=L
 
     load = LoadCase("UDL Pressure")
-    load.uniform_load(x_start=0, x_end=L, wy=-2.0) # 2 N/mm downward
+    load.distributed_load(x_start=0, x_end=L, distribution='uniform', wy=-2.0) # 2 N/mm downward
 
     # 5. Solve Static
     solver.solve_static(load, bc)

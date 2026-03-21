@@ -37,7 +37,7 @@ def test_concentrated_moment_coordinate():
     # Moment at x=500.0 (xi=0.5)
     # dN1/dx = -1.5/L, dN2/dx = -0.25, dN3/dx = 1.5/L, dN4/dx = -0.25
     mz = 10000.0
-    lc.concentrated_moment(x=500.0, mz=mz)
+    lc.moment(x=500.0, mz=mz)
     F = lc.create_force_vector(mesh.num_dofs, mesh)
     
     # Node 0
@@ -55,7 +55,7 @@ def test_udl_coordinate_range():
     
     # UDL from x=0 to x=500.0
     wy = -10.0
-    lc.uniform_load(x_start=0, x_end=500, wy=wy)
+    lc.distributed_load(x_start=0, x_end=500, distribution='uniform', wy=wy)
     F = lc.create_force_vector(mesh.num_dofs, mesh)
     
     # Analytical integrals of shape functions from 0 to 0.5
@@ -116,7 +116,7 @@ def test_coordinate_consistency_signs():
     
     # Case B: Positive MZ at tip
     lc_m = LoadCase()
-    lc_m.point_load(x=1000.0, mz=100000.0)
+    lc_m.moment(x=1000.0, mz=100000.0)
     solver.solve_static(lc_m, bc)
     assert solver.displacements[32] > 0 # Theta at end (CCW) (DOF 3*10 + 2)
 
@@ -127,7 +127,7 @@ def test_triangular_load_coordinate():
     
     # Triangular load from 0 to 1000, peak at start (xi=0)
     w_peak = -10.0
-    lc.triangular_load(x_start=0, x_end=1000, w_peak=w_peak, peak_loc='start')
+    lc.distributed_load(x_start=0, x_end=1000, distribution='triangular', w_peak=w_peak, peak_loc='start')
     F = lc.create_force_vector(mesh.num_dofs, mesh)
     
     # Analytical: Fy1 = (7*w1+3*w2)*L/20 = (7*-10+0)*1000/20 = -3500

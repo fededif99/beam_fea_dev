@@ -58,9 +58,13 @@ class BatchProcessor:
 
             if ltype == 'point':
                 if target_type == 'node':
-                    lc.point_load(node=int(target_id), fx=float(v1), fy=float(v2), mz=float(v3))
+                    lc.point_load(node=int(target_id), fx=float(v1), fy=float(v2))
+                    if float(v3) != 0.0:
+                        lc.moment(node=int(target_id), mz=float(v3))
                 else:
-                    lc.point_load(x=float(target_id), fx=float(v1), fy=float(v2), mz=float(v3))
+                    lc.point_load(x=float(target_id), fx=float(v1), fy=float(v2))
+                    if float(v3) != 0.0:
+                        lc.moment(x=float(target_id), mz=float(v3))
             elif ltype == 'fy':
                 if target_type == 'node':
                     lc.point_load(node=int(target_id), fy=float(v1))
@@ -73,27 +77,27 @@ class BatchProcessor:
                     lc.point_load(x=float(target_id), fx=float(v1))
             elif ltype == 'mz':
                 if target_type == 'node':
-                    lc.point_load(node=int(target_id), mz=float(v1))
+                    lc.moment(node=int(target_id), mz=float(v1))
                 else:
-                    lc.point_load(x=float(target_id), mz=float(v1))
+                    lc.moment(x=float(target_id), mz=float(v1))
             elif ltype == 'udl':
                 if target_type == 'element':
                     elems = [int(e) for e in str(target_id).split(',')] if ',' in str(target_id) else int(target_id)
-                    lc.uniform_load(element=elems, wy=float(v1), wx=float(v2))
+                    lc.distributed_load(element=elems, distribution='uniform', wy=float(v1), wx=float(v2))
                 else:
-                    lc.uniform_load(x_start=float(v1), x_end=float(v2), wy=float(v3), wx=float(v4))
+                    lc.distributed_load(x_start=float(v1), x_end=float(v2), distribution='uniform', wy=float(v3), wx=float(v4))
             elif ltype == 'trap':
                 if target_type == 'element':
-                    lc.trapezoidal_load(element=int(target_id), wy1=float(v1), wy2=float(v2), wx1=float(v3), wx2=float(v4))
+                    lc.distributed_load(element=int(target_id), distribution='linear', wy_start=float(v1), wy_end=float(v2), wx_start=float(v3), wx_end=float(v4))
                 else:
-                    lc.trapezoidal_load(x_start=float(v1), x_end=float(v2), wy1=float(v3), wy2=float(v4), wx1=float(v5))
+                    lc.distributed_load(x_start=float(v1), x_end=float(v2), distribution='linear', wy_start=float(v3), wy_end=float(v4), wx_start=float(v5))
             elif ltype == 'tri':
                 peak_loc = 'start' if str(v2).lower() in ['0', 'start'] else 'end'
                 if target_type == 'element':
-                    lc.triangular_load(element=int(target_id), w_peak=float(v1), peak_loc=peak_loc)
+                    lc.distributed_load(element=int(target_id), distribution='triangular', w_peak=float(v1), peak_loc=peak_loc)
                 else:
                     # Assuming v1=x_start, v2=x_end, v3=w_peak, v4=peak_loc
-                    lc.triangular_load(x_start=float(v1), x_end=float(v2), w_peak=float(v3), peak_loc=str(v4))
+                    lc.distributed_load(x_start=float(v1), x_end=float(v2), distribution='triangular', w_peak=float(v3), peak_loc=str(v4))
 
         return list(load_cases.values())
 

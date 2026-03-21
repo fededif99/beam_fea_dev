@@ -27,7 +27,7 @@ def run_combined_example():
     # Static Loads: 5000N downward point load + 5 N/mm UDL
     lc = LoadCase("Operational Loads")
     lc.point_load(node=mesh.num_nodes // 2, fy=-5000)
-    lc.uniform_load(wy=-5)
+    lc.distributed_load(distribution='uniform', wy=-5)
     
     # 3. Run Both Analyses
     print("Running static analysis...")

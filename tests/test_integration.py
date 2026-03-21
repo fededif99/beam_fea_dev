@@ -139,7 +139,7 @@ class TestDistributedLoad:
         # Apply distributed load to all elements
         load_case = LoadCase("UDL")
         for i in range(10):
-            load_case.uniform_load(element=i, wy=-10)  # 10 N/mm
+            load_case.distributed_load(element=i, distribution='uniform', wy=-10)  # 10 N/mm
         
         # Solve
         displacements = solver.solve_static(load_case, bc_set)

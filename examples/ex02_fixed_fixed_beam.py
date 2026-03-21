@@ -52,7 +52,7 @@ def run_example():
     
     # 4. Load: Uniform distributed load
     lc = LoadCase("Uniform Load")
-    lc.uniform_load(list(range(num_elems)), wy=w)
+    lc.distributed_load(element=list(range(num_elems)), distribution='uniform', wy=w)
     
     # 5. Solve
     print("  Solving...")

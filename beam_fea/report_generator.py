@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import Optional, Union
 import os
 import pandas as pd
-from .loads import PointLoad, ConcentratedMoment, DistributedLoad, UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad
+from .loads import PointLoad, ConcentratedMoment, DistributedLoad
 from .boundary_conditions import PinnedSupport, RollerSupport, FixedSupport
 from .plot_style import PlotStyle, smart_units, DEFAULT_STYLE
 

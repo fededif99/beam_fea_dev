@@ -97,7 +97,7 @@ def config_2():
                      web_thickness=7, flange_thickness=10.7)
 
     lc = LoadCase("Full UDL")
-    lc.uniform_load(x_start=0.0, x_end=L, wy=-5.0)   # 5 N/mm = 5 kN/m
+    lc.distributed_load(x_start=0.0, x_end=L, distribution='uniform', wy=-5.0)   # 5 N/mm = 5 kN/m
 
     bc = BoundaryConditionSet("Pin-Pin long")
     bc.pinned_support(node=0)
@@ -137,7 +137,7 @@ def config_4():
     section = box_section(width=120, height=180, thickness=8)
 
     lc = LoadCase("Full UDL propped")
-    lc.uniform_load(x_start=0.0, x_end=L, wy=-3.0)   # 3 N/mm
+    lc.distributed_load(x_start=0.0, x_end=L, distribution='uniform', wy=-3.0)   # 3 N/mm
 
     bc = BoundaryConditionSet("Fixed–Roller propped cantilever")
     bc.fixed_support(node=0)
@@ -179,7 +179,7 @@ def config_6():
     section = hollow_circular(outer_diameter=100.0, thickness=10.0)
 
     lc = LoadCase("Multi-span loads")
-    lc.uniform_load(x_start=0.0, x_end=L / 2, wy=-2.0)   # left half UDL
+    lc.distributed_load(x_start=0.0, x_end=L / 2, distribution='uniform', wy=-2.0)   # left half UDL
     lc.point_load(x=L / 2, fy=-6000.0)                    # mid point load
 
     bc = BoundaryConditionSet("Pin–Roller–Pin (3 supports)")
@@ -204,8 +204,8 @@ def config_7():
 
     lc = LoadCase("Combined loads + moment")
     lc.point_load(x=L * 0.3, fy=-10_000.0)               # 10 kN
-    lc.uniform_load(x_start=L * 0.5, x_end=L, wy=-1.5)   # right-half UDL
-    lc.concentrated_moment(x=L * 0.7, mz=5_000_000.0)    # 5 kN·m CCW
+    lc.distributed_load(x_start=L * 0.5, x_end=L, distribution='uniform', wy=-1.5)   # right-half UDL
+    lc.moment(x=L * 0.7, mz=5_000_000.0)    # 5 kN·m CCW
 
     bc = BoundaryConditionSet("Pin–Pin combined")
     bc.pinned_support(node=0)

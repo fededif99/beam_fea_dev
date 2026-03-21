@@ -54,7 +54,7 @@ def main():
 
     # Uniformly Distributed Load over the entire beam
     lc = LoadCase("Uniform Load")
-    lc.uniform_load(x_start=0, x_end=2000, wy=-10.0) # 10 N/mm downward
+    lc.distributed_load(x_start=0, x_end=2000, distribution='uniform', wy=-10.0) # 10 N/mm downward
 
     # 4. SOLVE
     # Solver accepts PropertySet for unified management.

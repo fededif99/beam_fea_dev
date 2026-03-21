@@ -427,7 +427,7 @@ A container for loads applied together.
 ```python
 lc = LoadCase("Aerodynamic Lift")
 lc.point_load(x=1200, fy=5000) # Concentrated force
-lc.uniform_load(x_start=0, x_end=2000, wy=1.5) # Pressure distribution
+lc.distributed_load(x_start=0, x_end=2000, distribution='uniform', wy=1.5) # Pressure distribution
 ```
 
 Supports defining loads by **Node/Element IDs** or by **Global Coordinates**.
@@ -436,11 +436,9 @@ Supports defining loads by **Node/Element IDs** or by **Global Coordinates**.
 
 | Method | Positional Arguments | Coordinate Arguments |
 | :--- | :--- | :--- |
-| **`point_load(...)`** | `node`, `fx`, `fy`, `mz` | `x`, `fx`, `fy`, `mz` |
+| **`point_load(...)`** | `node`, `fx`, `fy` | `x`, `fx`, `fy` |
 | **`moment(...)`** | `node`, `mz` | `x`, `mz` |
-| **`uniform_load(...)`** | `element`, `wy`, `wx` | `x_start`, `x_end`, `wy`, `wx` |
-| **`trapezoidal(...)`** | `element`, `wy1`, `wy2` | `x_start`, `x_end`, `wy1`, `wy2` |
-| **`triangular_load(...)`** | `element`, `w_peak`, `peak_loc` | `x_start`, `x_end`, `w_peak`, `peak_loc` |
+| **`distributed_load(...)`** | `element`, `distribution`, `**kwargs` | `x_start`, `x_end`, `distribution`, `**kwargs` |
 
 ##### Example: Parametric-Safe Loading
 
@@ -448,13 +446,16 @@ Supports defining loads by **Node/Element IDs** or by **Global Coordinates**.
 lc = LoadCase("Structural Loads")
 
 # Dedicated Moment at x=500mm
-lc.concentrated_moment(x=500, mz=100000)
+lc.moment(x=500, mz=100000)
 
 # Point load at tip (even if mesh density changes)
 lc.point_load(x=2000, fy=-5000)
 
-# Distributed load over a specific range
-lc.uniform_load(x_start=0, x_end=1000, wy=-2.0)
+# Uniform Distributed Load over a specific range
+lc.distributed_load(x_start=0, x_end=1000, distribution='uniform', wy=-2.0)
+
+# Custom user-defined equation load
+lc.distributed_load(x_start=0, x_end=1000, distribution='custom', load_fn=lambda x: -x**2 / 1000)
 ```
 
 **Notes:**

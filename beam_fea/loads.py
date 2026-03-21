@@ -11,6 +11,7 @@ Supports:
 """
 
 import numpy as np
+import warnings
 from typing import List, Tuple, Optional, Union, Callable
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
@@ -64,6 +65,12 @@ class PointLoad(Load):
     fx: Union[float, str] = 0.0
     fy: Union[float, str] = 0.0
     
+    def __post_init__(self):
+        if self.node is not None and self.x is not None:
+            warnings.warn("Both 'node' and 'x' specified for PointLoad. 'node' will take precedence.", UserWarning, stacklevel=2)
+        if self.node is None and self.x is None:
+            raise ValueError("Must specify either 'node' or 'x' for PointLoad.")
+
     def apply_to_force_vector(self, F: np.ndarray, mesh) -> np.ndarray:
         """Apply point load to global force vector."""
         if self.node is not None:
@@ -72,16 +79,23 @@ class PointLoad(Load):
         elif self.x is not None:
             elem_idx = mesh.find_element_at_x(self.x)
             if elem_idx == -1:
+                warnings.warn(f"PointLoad at x={self.x} is outside mesh range. Ignored.", UserWarning, stacklevel=2)
                 return F
             
             coords = mesh.nodes
             node1, node2 = mesh.elements[elem_idx]
             p1, p2 = coords[node1], coords[node2]
             
-            x1 = p1[0]
-            L = np.linalg.norm(p2 - p1)
-            xi = (self.x - x1) / L if L > 0 else 0
-            xi = np.clip(xi, 0, 1)
+            dx = p2 - p1
+            length_sq = float(np.dot(dx, dx))
+            L = np.sqrt(length_sq)
+            if length_sq > 0:
+                vec = np.zeros_like(dx)
+                vec[0] = self.x - p1[0]
+                t = np.dot(vec, dx) / length_sq
+                xi = np.clip(t, 0.0, 1.0)
+            else:
+                xi = 0.0
             
             # Axial (linear shape functions)
             F[3 * node1] += self.fx * (1 - xi)
@@ -133,6 +147,12 @@ class ConcentratedMoment(Load):
     x: Optional[float] = None
     mz: Union[float, str] = 0.0
     
+    def __post_init__(self):
+        if self.node is not None and self.x is not None:
+            warnings.warn("Both 'node' and 'x' specified for ConcentratedMoment. 'node' will take precedence.", UserWarning, stacklevel=2)
+        if self.node is None and self.x is None:
+            raise ValueError("Must specify either 'node' or 'x' for ConcentratedMoment.")
+
     def apply_to_force_vector(self, F: np.ndarray, mesh) -> np.ndarray:
         """Apply concentrated moment to global force vector."""
         if self.node is not None:
@@ -140,16 +160,23 @@ class ConcentratedMoment(Load):
         elif self.x is not None:
             elem_idx = mesh.find_element_at_x(self.x)
             if elem_idx == -1:
+                warnings.warn(f"ConcentratedMoment at x={self.x} is outside mesh range. Ignored.", UserWarning, stacklevel=2)
                 return F
             
             coords = mesh.nodes
             node1, node2 = mesh.elements[elem_idx]
             p1, p2 = coords[node1], coords[node2]
             
-            x1 = p1[0]
-            L = np.linalg.norm(p2 - p1)
-            xi = (self.x - x1) / L if L > 0 else 0
-            xi = np.clip(xi, 0, 1)
+            dx = p2 - p1
+            length_sq = float(np.dot(dx, dx))
+            L = np.sqrt(length_sq)
+            if length_sq > 0:
+                vec = np.zeros_like(dx)
+                vec[0] = self.x - p1[0]
+                t = np.dot(vec, dx) / length_sq
+                xi = np.clip(t, 0.0, 1.0)
+            else:
+                xi = 0.0
             
             # Shape function derivatives: dNi/dx = dNi/dxi * (1/L)
             dN = np.array([
@@ -226,6 +253,12 @@ class DistributedLoad(Load):
     
     # Element-based (legacy compat)
     element: Optional[Union[int, List[int]]] = None
+
+    def __post_init__(self):
+        if self.distribution not in ['uniform', 'linear', 'triangular', 'custom']:
+            raise ValueError(f"Unknown distribution: '{self.distribution}'.")
+        if self.element is None and self.x_end < self.x_start:
+            raise ValueError("x_end must be >= x_start for DistributedLoad.")
 
     def _build_waypoints(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -536,10 +569,6 @@ class DistributedLoad(Load):
         return f"Distributed load on {loc}"
 
 
-# Legacy aliases for backward compatibility with direct class instantiation
-UniformDistributedLoad = DistributedLoad
-TrapezoidalDistributedLoad = DistributedLoad
-TriangularDistributedLoad = DistributedLoad
 
 
 class LoadCase:
@@ -562,38 +591,14 @@ class LoadCase:
         self.loads.append(load)
 
     def point_load(self, node: Optional[int] = None, x: Optional[float] = None, 
-                   fx: Union[float, str] = 0, fy: Union[float, str] = 0,
-                   mz: Union[float, str] = 0):
-        """
-        Add a point load to this load case.
-        
-        For moments, prefer using moment() instead.
-        The mz parameter is kept for backward compatibility.
-        """
-        has_force = isinstance(fx, str) or isinstance(fy, str) or \
-                    (isinstance(fx, (int, float)) and abs(fx) > 1e-10) or \
-                    (isinstance(fy, (int, float)) and abs(fy) > 1e-10)
-        has_moment = isinstance(mz, str) or \
-                     (isinstance(mz, (int, float)) and abs(mz) > 1e-10)
-        
-        if has_force:
-            self.loads.append(PointLoad(node=node, x=x, fx=fx, fy=fy))
-        if has_moment:
-            self.loads.append(ConcentratedMoment(node=node, x=x, mz=mz))
-        # If nothing was significant, add a zero PointLoad for compatibility
-        if not has_force and not has_moment:
-            self.loads.append(PointLoad(node=node, x=x, fx=fx, fy=fy))
+                   fx: Union[float, str] = 0, fy: Union[float, str] = 0):
+        """Add a point load (force) to this load case."""
+        self.loads.append(PointLoad(node=node, x=x, fx=fx, fy=fy))
 
     def moment(self, node: Optional[int] = None, x: Optional[float] = None,
                mz: Union[float, str] = 0):
         """Add a concentrated moment to this load case."""
         self.loads.append(ConcentratedMoment(node=node, x=x, mz=mz))
-    
-    # Keep for backward compat
-    def concentrated_moment(self, node: Optional[int] = None, x: Optional[float] = None,
-                            mz: Union[float, str] = 0):
-        """Deprecated: Use moment() instead."""
-        self.moment(node=node, x=x, mz=mz)
 
     def distributed_load(self, x_start: float = 0.0, x_end: float = 0.0,
                          distribution: str = 'uniform', **kwargs):
@@ -613,50 +618,7 @@ class LoadCase:
             x_start=x_start, x_end=x_end, distribution=distribution, **kwargs
         ))
     
-    def uniform_load(self, element=None, 
-                     x_start: Optional[float] = None, x_end: Optional[float] = None,
-                     wy: Union[float, str] = 0.0, wx: Union[float, str] = 0.0):
-        """Deprecated: Use distributed_load() instead."""
-        if element is not None:
-            self.loads.append(DistributedLoad(element=element, distribution='uniform', wy=wy, wx=wx))
-        else:
-            self.loads.append(DistributedLoad(
-                x_start=x_start or 0.0, x_end=x_end or 0.0,
-                distribution='uniform', wy=wy, wx=wx
-            ))
-    
-    def trapezoidal_load(self, element: Optional[int] = None, 
-                         x_start: Optional[float] = None, x_end: Optional[float] = None,
-                         wy1: Union[float, str] = 0.0, wy2: Union[float, str] = 0.0,
-                         wx1: Union[float, str] = 0.0, wx2: Union[float, str] = 0.0):
-        """Deprecated: Use distributed_load(distribution='linear') instead."""
-        if element is not None:
-            self.loads.append(DistributedLoad(
-                element=element, distribution='linear',
-                wy_start=wy1, wy_end=wy2, wx_start=wx1, wx_end=wx2
-            ))
-        else:
-            self.loads.append(DistributedLoad(
-                x_start=x_start or 0.0, x_end=x_end or 0.0,
-                distribution='linear',
-                wy_start=wy1, wy_end=wy2, wx_start=wx1, wx_end=wx2
-            ))
-    
-    def triangular_load(self, element: Optional[int] = None, 
-                        x_start: Optional[float] = None, x_end: Optional[float] = None,
-                        w_peak: Union[float, str] = 0.0, peak_loc: str = 'start'):
-        """Deprecated: Use distributed_load(distribution='triangular') instead."""
-        if element is not None:
-            self.loads.append(DistributedLoad(
-                element=element, distribution='triangular',
-                w_peak=w_peak, peak_loc=peak_loc
-            ))
-        else:
-            self.loads.append(DistributedLoad(
-                x_start=x_start or 0.0, x_end=x_end or 0.0,
-                distribution='triangular',
-                w_peak=w_peak, peak_loc=peak_loc
-            ))
+
 
     def create_force_vector(self, num_dofs: int, mesh) -> np.ndarray:
         """

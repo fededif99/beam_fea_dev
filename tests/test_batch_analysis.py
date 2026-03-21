@@ -51,7 +51,7 @@ def test_batch_workflow_2():
     # Create template
     template = LoadCase("Template")
     template.point_load(node=5, fy="P_mid")
-    template.uniform_load(x_start=0, x_end=1000, wy="W_dist")
+    template.distributed_load(x_start=0, x_end=1000, distribution="uniform", wy="W_dist")
 
     # Create CSV for Workflow 2
     csv_path = "test_batch_table.csv"

@@ -2,6 +2,14 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.11.0] - 2026-03-22
+
+- **Refactoring (Breaking API Change)**: Completely removed deprecated legacy load methods (`uniform_load`, `trapezoidal_load`, `triangular_load`, `concentrated_moment` and the `mz` argument from `point_load`). You must now use `distributed_load()` and `moment()`.
+- **Refactoring**: Completely removed the deprecated legacy aliases `UniformDistributedLoad`, `TrapezoidalDistributedLoad`, and `TriangularDistributedLoad`.
+- **Bug Fix**: Fixed local coordinate (`xi`) calculation for `PointLoad` and `ConcentratedMoment` on inclined beams, ensuring accurate load projection.
+- **Validation**: `point_load` and `moment` coordinates are now rigorously validated; an explicit warning is raised if loads fall outside the element mesh range.
+- **Maintenance**: Migrated all template tests, visual configurations, and batch analysis parsers to the new unified Loads API.
+
 ## [v2.10.0] - 2026-03-21
 
 - **API**: Introduced dedicated `ConcentratedMoment` class, decoupled from `PointLoad`. Moments are now a standalone load type.

@@ -23,7 +23,7 @@ def run_batch_demo():
     # 1. Define Template with Placeholders
     template = LoadCase("Parametric Template")
     template.point_load(node=10, fy="P_mid")      # Center point load
-    template.uniform_load(x_start=0, x_end=2000, wy="W_dist") # UDL
+    template.distributed_load(x_start=0, x_end=2000, distribution='uniform', wy="W_dist") # UDL
 
     # 2. Create Parameter Table (Simulating loading from CSV)
     data = {

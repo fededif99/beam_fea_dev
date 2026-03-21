@@ -131,7 +131,7 @@ def test_anisotropic_udl_force_recovery():
     bc.roller_support(20)
 
     load = LoadCase()
-    load.uniform_load(x_start=0, x_end=L, wy=q)
+    load.distributed_load(x_start=0, x_end=L, distribution='uniform', wy=q)
 
     solver.solve_static(load, bc)
 

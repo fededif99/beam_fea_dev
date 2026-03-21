@@ -91,7 +91,7 @@ def validate_static_cases():
     bc_pinned.pinned_support(100)
     
     lc_udl = LoadCase("UDL")
-    lc_udl.uniform_load(list(range(100)), wy=w)
+    lc_udl.distributed_load(element=list(range(100)), distribution='uniform', wy=w)
     
     solver.solve_static(lc_udl, bc_pinned)
     max_rec = solver.get_max_deflection()
