@@ -2,6 +2,16 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.10.0] - 2026-03-21
+
+- **API**: Introduced dedicated `ConcentratedMoment` class, decoupled from `PointLoad`. Moments are now a standalone load type.
+- **API**: Unified all distributed load classes (`UniformDistributedLoad`, `TrapezoidalDistributedLoad`, `TriangularDistributedLoad`) into a single `DistributedLoad` class with waypoint-based profiles.
+- **Feature**: New `distribution='custom'` mode — users can define arbitrary load functions evaluated via Gauss-Legendre quadrature.
+- **Feature**: Isosceles triangular distributions via `peak_loc=float` (e.g., `peak_loc=500.0` for peak at x=500mm).
+- **Performance**: Vectorized element overlap detection and shape function integration in the distributed load engine.
+- **API**: New `LoadCase.distributed_load()` and `LoadCase.moment()` methods as the preferred API.
+- **Compat**: Legacy methods (`uniform_load`, `trapezoidal_load`, `triangular_load`, `concentrated_moment`) retained as deprecated shims.
+
 ## [v2.9.1] - 2026-03-15
 
 - **Performance**: Implemented a high-performance **vectorized assembly architecture** in `BeamSolver`.

@@ -20,10 +20,12 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.9.1 *(2026-03-15)*
+### Latest Version: v2.10.0 *(2026-03-21)*
 
-- **Performance**: High-performance **vectorized assembly architecture** in `BeamSolver`. Achieves ~20x speedup for large models.
-- **Architecture**: Replaced the element-wise Python loop with broadcasted NumPy operations for global matrix assembly.
+- **API**: Dedicated `ConcentratedMoment` class and unified `DistributedLoad` with waypoint profiles.
+- **Feature**: Custom distribution support via `load_fn` with Gauss-Legendre quadrature.
+- **Feature**: Isosceles triangular distributions via `peak_loc=float`.
+- **Performance**: Vectorized distributed load integration engine.
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).

@@ -135,8 +135,8 @@ class BatchProcessor:
     @staticmethod
     def _substitute_placeholders(load: Any, parameters: pd.Series):
         """Recursively substitute string placeholders in a Load object."""
-        # Check all attributes
-        for attr in ['fx', 'fy', 'mz', 'wy', 'wx', 'wy1', 'wy2', 'wx1', 'wx2', 'w_peak']:
+        for attr in ['fx', 'fy', 'mz', 'wy', 'wx', 'wy1', 'wy2', 'wx1', 'wx2', 'w_peak',
+                      'wy_start', 'wy_end', 'wx_start', 'wx_end']:
             if hasattr(load, attr):
                 val = getattr(load, attr)
                 if isinstance(val, str):
@@ -151,7 +151,8 @@ class BatchProcessor:
         """Find any remaining string placeholders in a LoadCase."""
         unresolved = []
         for load in load_case.loads:
-            for attr in ['fx', 'fy', 'mz', 'wy', 'wx', 'wy1', 'wy2', 'wx1', 'wx2', 'w_peak']:
+            for attr in ['fx', 'fy', 'mz', 'wy', 'wx', 'wy1', 'wy2', 'wx1', 'wx2', 'w_peak',
+                          'wy_start', 'wy_end', 'wx_start', 'wx_end']:
                 if hasattr(load, attr):
                     val = getattr(load, attr)
                     if isinstance(val, str):

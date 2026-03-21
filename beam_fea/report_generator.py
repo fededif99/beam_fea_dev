@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import Optional, Union
 import os
 import pandas as pd
-from .loads import PointLoad, UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad
+from .loads import PointLoad, ConcentratedMoment, DistributedLoad, UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad
 from .boundary_conditions import PinnedSupport, RollerSupport, FixedSupport
 from .plot_style import PlotStyle, smart_units, DEFAULT_STYLE
 
@@ -416,12 +416,12 @@ class BeamReportGenerator:
 
         # ---- Load scaling (per-component) ------------------------------
         if self.load_case:
-            all_fy = [abs(l.fy) for l in self.load_case.loads
-                      if isinstance(l, PointLoad) and abs(l.fy) > 1e-10]
-            all_fx = [abs(l.fx) for l in self.load_case.loads
-                      if isinstance(l, PointLoad) and abs(l.fx) > 1e-10]
-            all_mz = [abs(l.mz) for l in self.load_case.loads
-                      if isinstance(l, PointLoad) and abs(l.mz) > 1e-10]
+            all_fy = [abs(getattr(l, 'fy', 0.0)) for l in self.load_case.loads
+                      if isinstance(l, (PointLoad, ConcentratedMoment)) and abs(getattr(l, 'fy', 0.0)) > 1e-10]
+            all_fx = [abs(getattr(l, 'fx', 0.0)) for l in self.load_case.loads
+                      if isinstance(l, (PointLoad, ConcentratedMoment)) and abs(getattr(l, 'fx', 0.0)) > 1e-10]
+            all_mz = [abs(getattr(l, 'mz', 0.0)) for l in self.load_case.loads
+                      if isinstance(l, (PointLoad, ConcentratedMoment)) and abs(getattr(l, 'mz', 0.0)) > 1e-10]
             max_fy = max(all_fy) if all_fy else 1.0
             max_fx = max(all_fx) if all_fx else 1.0
             max_mz = max(all_mz) if all_mz else 1.0
@@ -431,7 +431,7 @@ class BeamReportGenerator:
             stack_fx = {}
             stack_mz = {}
             for load in self.load_case.loads:
-                if isinstance(load, PointLoad):
+                if isinstance(load, (PointLoad, ConcentratedMoment)):
                     if load.node is not None:
                         x_raw, y_raw = coords[load.node, 0], coords[load.node, 1]
                     elif load.x is not None:
@@ -446,23 +446,27 @@ class BeamReportGenerator:
 
                     x_key = round(x_pt, 4)
 
-                    if abs(load.fy) > 1e-10:
+                    fy_val = getattr(load, 'fy', 0.0)
+                    fx_val = getattr(load, 'fx', 0.0)
+                    mz_val = getattr(load, 'mz', 0.0)
+
+                    if abs(fy_val) > 1e-10:
                         stack = stack_fy.get(x_key, 0)
                         f_scale, f_unit = smart_units(max_fy, 'force')
-                        label_str = f"{load.fy / f_scale:+.3g} {f_unit}"
+                        label_str = f"{fy_val / f_scale:+.3g} {f_unit}"
                         self._draw_point_force_arrow(
-                            ax, x_pt, y_pt, load.fy, max_fy,
+                            ax, x_pt, y_pt, fy_val, max_fy,
                             arrow_scale, st.colour_load, label_str, is_reaction=False,
                             x_max=coords[:, 0].max() / x_scale,
                             stack_level=stack
                         )
                         stack_fy[x_key] = stack + 1
                         
-                    if abs(load.fx) > 1e-10:
+                    if abs(fx_val) > 1e-10:
                         f_scale, f_unit = smart_units(max_fx, 'force')
-                        label_str = f"{load.fx / f_scale:+.3g} {f_unit} (axial)"
-                        h_len = max(abs(load.fx) / max_fx * arrow_scale, arrow_scale * 0.25)
-                        if load.fx > 0:
+                        label_str = f"{fx_val / f_scale:+.3g} {f_unit} (axial)"
+                        h_len = max(abs(fx_val) / max_fx * arrow_scale, arrow_scale * 0.25)
+                        if fx_val > 0:
                             ax.annotate('', xy=(x_pt, y_pt), xytext=(x_pt - h_len / x_scale, y_pt),
                                         arrowprops=dict(arrowstyle='->', lw=st.load_line_width, color=st.colour_load,
                                                        mutation_scale=st.load_mutation_scale))
@@ -487,12 +491,12 @@ class BeamReportGenerator:
                                 fontsize=st.annotation_fontsize - 1, ha=ha_val)
                         stack_fx[x_key] = stack + 1
                         
-                    if abs(load.mz) > 1e-10:
+                    if abs(mz_val) > 1e-10:
                         stack = stack_mz.get(x_key, 0)
                         m_scale, m_unit = smart_units(max_mz, 'moment')
-                        label_str = f"{load.mz / m_scale:+.3g} {m_unit}"
+                        label_str = f"{mz_val / m_scale:+.3g} {m_unit}"
                         self._draw_moment_arc(
-                            ax, x_pt, y_pt, load.mz, moment_radius, st.colour_moment_load, label_str,
+                            ax, x_pt, y_pt, mz_val, moment_radius, st.colour_moment_load, label_str,
                             is_reaction=False, stack_level=stack
                         )
                         stack_mz[x_key] = stack + 1
@@ -565,9 +569,9 @@ class BeamReportGenerator:
         all_mz = []
         
         if self.load_case:
-            all_fy = [abs(l.fy) for l in self.load_case.loads if isinstance(l, PointLoad)]
-            all_fx = [abs(l.fx) for l in self.load_case.loads if isinstance(l, PointLoad)]
-            all_mz = [abs(l.mz) for l in self.load_case.loads if isinstance(l, PointLoad)]
+            all_fy = [abs(getattr(l, 'fy', 0.0)) for l in self.load_case.loads if isinstance(l, (PointLoad, ConcentratedMoment))]
+            all_fx = [abs(getattr(l, 'fx', 0.0)) for l in self.load_case.loads if isinstance(l, (PointLoad, ConcentratedMoment))]
+            all_mz = [abs(getattr(l, 'mz', 0.0)) for l in self.load_case.loads if isinstance(l, (PointLoad, ConcentratedMoment))]
         
         for bc in self.bc_set.conditions:
             node_id = bc.node
@@ -636,7 +640,7 @@ class BeamReportGenerator:
         # ---- Draw Loads ------------------------------------------------
         if self.load_case:
             for load in self.load_case.loads:
-                if isinstance(load, PointLoad):
+                if isinstance(load, (PointLoad, ConcentratedMoment)):
                     if load.node is not None: x_raw, y_raw = coords[load.node, 0], coords[load.node, 1]
                     elif load.x is not None: x_raw, y_raw = load.x, 0.0
                     else: continue
@@ -644,18 +648,22 @@ class BeamReportGenerator:
                     y_pt = y_raw / x_scale
                     x_key = round(x_pt, 4)
 
-                    if abs(load.fy) > 1e-10:
+                    fy_val = getattr(load, 'fy', 0.0)
+                    fx_val = getattr(load, 'fx', 0.0)
+                    mz_val = getattr(load, 'mz', 0.0)
+
+                    if abs(fy_val) > 1e-10:
                         stack = stack_fy.get(x_key, 0)
                         f_scale, f_unit = smart_units(max_fy, 'force')
-                        label_str = f"{load.fy / f_scale:+.3g} {f_unit}"
-                        self._draw_point_force_arrow(ax, x_pt, y_pt, load.fy, max_fy, arrow_scale, st.colour_load, label_str, is_reaction=False, x_max=coords[:, 0].max() / x_scale, stack_level=stack)
+                        label_str = f"{fy_val / f_scale:+.3g} {f_unit}"
+                        self._draw_point_force_arrow(ax, x_pt, y_pt, fy_val, max_fy, arrow_scale, st.colour_load, label_str, is_reaction=False, x_max=coords[:, 0].max() / x_scale, stack_level=stack)
                         stack_fy[x_key] = stack + 1
-                    if abs(load.fx) > 1e-10:
+                    if abs(fx_val) > 1e-10:
                         f_scale, f_unit = smart_units(max_fx, 'force')
-                        label_str = f"{load.fx / f_scale:+.3g} {f_unit} (axial)"
-                        h_len = max(abs(load.fx) / max_fx * arrow_scale, arrow_scale * 0.25)
-                        tip_x = x_pt + h_len / x_scale if load.fx > 0 else x_pt - h_len / x_scale
-                        ha_val = 'left' if load.fx > 0 else 'right'
+                        label_str = f"{fx_val / f_scale:+.3g} {f_unit} (axial)"
+                        h_len = max(abs(fx_val) / max_fx * arrow_scale, arrow_scale * 0.25)
+                        tip_x = x_pt + h_len / x_scale if fx_val > 0 else x_pt - h_len / x_scale
+                        ha_val = 'left' if fx_val > 0 else 'right'
                         x_label = tip_x
                         if x_pt >= coords[:, 0].max() / x_scale - 1e-4:
                             ha_val, x_label = 'right', tip_x - st.annot_offset_fx_horz * arrow_scale
@@ -666,11 +674,11 @@ class BeamReportGenerator:
                         y_text = y_pt - arrow_scale * (st.annot_offset_fx_vert + stack * 0.4)
                         ax.text(x_label, y_text, label_str, color=st.colour_load, fontsize=st.annotation_fontsize - 1, ha=ha_val, weight='bold')
                         stack_fx[x_key] = stack + 1
-                    if abs(load.mz) > 1e-10:
+                    if abs(mz_val) > 1e-10:
                         stack = stack_mz.get(x_key, 0)
                         m_scale, m_unit = smart_units(max_mz, 'moment')
-                        label_str = f"{load.mz / m_scale:+.3g} {m_unit}"
-                        self._draw_moment_arc(ax, x_pt, y_pt, load.mz, moment_radius, st.colour_moment_load, label_str, is_reaction=False, stack_level=stack)
+                        label_str = f"{mz_val / m_scale:+.3g} {m_unit}"
+                        self._draw_moment_arc(ax, x_pt, y_pt, mz_val, moment_radius, st.colour_moment_load, label_str, is_reaction=False, stack_level=stack)
                         stack_mz[x_key] = stack + 1
 
                 elif isinstance(load, (UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad)):
@@ -1059,32 +1067,36 @@ class BeamReportGenerator:
         load_details_str = "None"
         
         if self.load_case:
-            num_pt_loads = len([l for l in self.load_case.loads if isinstance(l, PointLoad)])
-            num_dist_loads = len([l for l in self.load_case.loads if not isinstance(l, PointLoad)])
+            num_pt_loads = len([l for l in self.load_case.loads if isinstance(l, (PointLoad, ConcentratedMoment))])
+            num_dist_loads = len([l for l in self.load_case.loads if isinstance(l, DistributedLoad)])
             
             load_details_list = []
             for i, load in enumerate(self.load_case.loads, 1):
-                if isinstance(load, PointLoad):
+                if isinstance(load, ConcentratedMoment):
+                    loc_str = f"Node {load.node}" if load.node is not None else f"x = {load.x} mm"
+                    load_details_list.append(f"{i}. **Moment** at {loc_str}: Mz={load.mz} N·mm")
+                elif isinstance(load, PointLoad):
                     loc_str = f"Node {load.node}" if load.node is not None else f"x = {load.x} mm"
                     vals = []
-                    if load.fx: vals.append(f"Fx={load.fx} N")
-                    if load.fy: vals.append(f"Fy={load.fy} N")
-                    if load.mz: vals.append(f"Mz={load.mz} N·mm")
+                    if getattr(load, 'fx', 0.0): vals.append(f"Fx={load.fx} N")
+                    if getattr(load, 'fy', 0.0): vals.append(f"Fy={load.fy} N")
                     load_details_list.append(f"{i}. **Point Load** at {loc_str}: {', '.join(vals)}")
-                elif isinstance(load, UniformDistributedLoad):
+                elif isinstance(load, DistributedLoad):
                     if load.element is not None:
                         span_str = f"Elements {load.element}"
                     elif load.x_start is not None:
                         span_str = f"x = {load.x_start} to {load.x_end} mm"
                     else:
                         span_str = "Full Span"
-                    load_details_list.append(f"{i}. **Uniform Load** on {span_str}: wy={load.wy} N/mm")
-                elif hasattr(load, 'wy1') and hasattr(load, 'wy2'):
-                    span_str = f"Elements {load.element}" if load.element is not None else f"x = {load.x_start} to {load.x_end} mm"
-                    load_details_list.append(f"{i}. **Trapezoidal Load** on {span_str}: wy1={load.wy1}, wy2={load.wy2} N/mm")
-                elif hasattr(load, 'w_peak'):
-                    span_str = f"Elements {load.element}" if load.element is not None else f"x = {load.x_start} to {load.x_end} mm"
-                    load_details_list.append(f"{i}. **Triangular Load** on {span_str}: wy_peak={load.w_peak} N/mm at {load.peak_loc}")
+                    dist = load.distribution.lower()
+                    if dist == 'uniform':
+                        load_details_list.append(f"{i}. **Uniform Load** on {span_str}: wy={load.wy} N/mm")
+                    elif dist == 'linear':
+                        load_details_list.append(f"{i}. **Linear Load** on {span_str}: wy={load.wy_start} to {load.wy_end} N/mm")
+                    elif dist == 'triangular':
+                        load_details_list.append(f"{i}. **Triangular Load** on {span_str}: peak={load.w_peak} N/mm at {load.peak_loc}")
+                    elif dist == 'custom':
+                        load_details_list.append(f"{i}. **Custom Load** on {span_str}: {load.n_points}-pt quadrature")
             
             if load_details_list:
                 load_details_str = "\n".join(load_details_list)
@@ -1192,7 +1204,7 @@ class BeamReportGenerator:
                 total_fx_load += fx_l
                 total_fy_load += fy_l
                 
-                if isinstance(load, PointLoad):
+                if isinstance(load, (PointLoad, ConcentratedMoment)):
                     if load.node is not None:
                         lx = self.mesh.nodes[load.node, 0]
                         ly = self.mesh.nodes[load.node, 1] if self.mesh.nodes.shape[1] > 1 else 0.0

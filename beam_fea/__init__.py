@@ -73,7 +73,7 @@ from .boundary_conditions import (
     FixedSupport, PinnedSupport, RollerSupport
 )
 from .loads import (
-    LoadCase, LoadCombination, PointLoad, 
+    LoadCase, LoadCombination, PointLoad, ConcentratedMoment, DistributedLoad,
     UniformDistributedLoad, TrapezoidalDistributedLoad, TriangularDistributedLoad
 )
 from .static_analysis import StaticAnalysis, StressAnalysis
@@ -117,7 +117,8 @@ __all__ = [
     
     # Loads
     'LoadCase', 'LoadCombination',
-    'PointLoad', 'UniformDistributedLoad', 'TrapezoidalDistributedLoad', 'TriangularDistributedLoad',
+    'PointLoad', 'ConcentratedMoment', 'DistributedLoad',
+    'UniformDistributedLoad', 'TrapezoidalDistributedLoad', 'TriangularDistributedLoad',
     
     # Analysis
     'StaticAnalysis', 'ModalAnalysis', 'StressAnalysis',
