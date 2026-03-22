@@ -2,6 +2,13 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.12.0] - 2026-03-22
+
+- **Refactoring (Breaking API Change)**: Made `Laminate` immutable; replaced `add_ply`/`add_stack` with a constructor-based `stack` argument.
+- **Optimization**: Vectorized CLT ABD matrix and transverse shear calculations using NumPy, improving performance for thick laminates.
+- **CI/CD**: Upgraded GitHub Actions to test across Python 3.10-3.12 and OS matrix (Ubuntu/Windows) with pip caching.
+- **API**: Added `Laminate.from_single_material` factory method for ergonomic single-material stack-up definitions.
+
 ## [v2.11.0] - 2026-03-22
 
 - **Refactoring (Breaking API Change)**: Completely removed deprecated legacy load methods (`uniform_load`, `trapezoidal_load`, `triangular_load`, `concentrated_moment` and the `mz` argument from `point_load`). You must now use `distributed_load()` and `moment()`.

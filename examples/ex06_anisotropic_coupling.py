@@ -20,12 +20,10 @@ def run_coupling_demo():
     # 2. Setup TWO Laminates: Symmetric vs Asymmetric
     # Symmetric [0/90]s
     # We use beam_type='narrow' for exact matching with 1D textbooks
-    lam_sym = Laminate("Symmetric [0/90]s", beam_type='narrow')
-    lam_sym.add_stack(ply, [0, 90, 90, 0])
+    lam_sym = Laminate("Symmetric [0/90]s", beam_type='narrow', stack=[(ply, [0, 90, 90, 0])])
 
     # Asymmetric [0/90]
-    lam_asym = Laminate("Asymmetric [0/90]", beam_type='narrow')
-    lam_asym.add_stack(ply, [0, 0, 90, 90]) # Stacked as 2 plies of 0 then 2 of 90 for same total thickness
+    lam_asym = Laminate("Asymmetric [0/90]", beam_type='narrow', stack=[(ply, [0, 0, 90, 90])])
 
     print("\n" + "="*60)
     print("DEMONSTRATING BEND-EXTENSION COUPLING")

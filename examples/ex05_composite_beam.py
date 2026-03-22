@@ -38,10 +38,11 @@ def run_composite_analysis():
 
     # 2. Create Laminate Stack-up: Sandwich Panel
     # [0/45/-45/90/Core/90/-45/45/0]
-    lam = Laminate("Sandwich_Panel")
-    lam.add_stack(carbon_ply, [0, 45, -45, 90])    # Bottom skin
-    lam.add_ply(aluminum_core, 0)                  # Core
-    lam.add_stack(carbon_ply, [90, -45, 45, 0])    # Top skin
+    lam = Laminate("Sandwich_Panel", stack=[
+        (carbon_ply, [0, 45, -45, 90]), # Bottom skin
+        (aluminum_core, 0),             # Core
+        (carbon_ply, [90, -45, 45, 0])  # Top skin
+    ])
 
     print("\n" + "="*50)
     print(f"Laminate Analysis: {lam.name}")
@@ -94,9 +95,10 @@ def run_composite_analysis():
     solver.solve_static(load, bc)
 
     # 6. Results & Ply Stress Recovery
-    max_def, _ = solver.get_max_deflection()
+    max_def_record = solver.get_max_deflection()
+    max_def_v = max_def_record['v']
     print(f"\nFEA Results:")
-    print(f"  Max Deflection: {abs(max_def):.4f} mm")
+    print(f"  Max Transverse Deflection (v): {max_def_v:.4f} mm")
 
     # Trigger 3D stress field generation (required for ply recovery)
     print("\nExtracting High-Fidelity Ply Stresses...")

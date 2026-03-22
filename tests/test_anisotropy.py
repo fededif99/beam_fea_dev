@@ -11,9 +11,7 @@ def test_bend_extension_coupling():
     """
     # 1. Setup asymmetric laminate
     ply = Ply(E1=150000, E2=10000, nu12=0.3, G12=5000, thickness=1.0)
-    lam = Laminate("Asymmetric")
-    lam.add_ply(ply, 0)
-    lam.add_ply(ply, 90)
+    lam = Laminate("Asymmetric", stack=[(ply, 0), (ply, 90)])
 
     # B11 should be non-zero
     assert abs(lam.B[0,0]) > 1e-3
@@ -57,8 +55,7 @@ def test_symmetric_no_coupling():
     Laminate: [0/90]s
     """
     ply = Ply(E1=150000, E2=10000, nu12=0.3, G12=5000, thickness=1.0)
-    lam = Laminate("Symmetric")
-    lam.add_stack(ply, [0, 90, 90, 0])
+    lam = Laminate("Symmetric", stack=[(ply, [0, 90, 90, 0])])
 
     assert abs(lam.B[0,0]) < 1e-10
 
@@ -115,8 +112,7 @@ def test_anisotropic_udl_force_recovery():
     that was missing in the original implementation.
     """
     ply = Ply(E1=150000, E2=10000, nu12=0.3, G12=5000, thickness=0.5)
-    lam = Laminate("SS_UDL")
-    lam.add_stack(ply, [0, 90, 90, 0])  # symmetric => B=0
+    lam = Laminate("SS_UDL", stack=[(ply, [0, 90, 90, 0])])  # symmetric => B=0
 
     L = 1000.0
     w = 20.0

@@ -20,7 +20,7 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.10.0 *(2026-03-21)*
+### Latest Version: v2.12.0 *(2026-03-22)*
 
 - **API**: Dedicated `ConcentratedMoment` class and unified `DistributedLoad` with waypoint profiles.
 - **Feature**: Custom distribution support via `load_fn` with Gauss-Legendre quadrature.
@@ -303,9 +303,9 @@ Assembles plies into a stack-up and computes the [ABD] matrix and effective engi
 from beam_fea.composites import Laminate
 
 # beam_type: 'narrow' (sigma_y=0) or 'wide' (epsilon_y=0)
-lam = Laminate("Wing_Spar_Flange", beam_type='narrow')
-# Add plies from bottom to top; angle is in degrees
-lam.add_stack(carbon_ply, [0, 45, -45, 90, 90, -45, 45, 0])
+lam = Laminate("Wing_Spar_Flange", beam_type='narrow', stack=[
+    (carbon_ply, [0, 45, -45, 90, 90, -45, 45, 0])
+])
 
 # View effective properties
 props = lam.get_effective_properties()

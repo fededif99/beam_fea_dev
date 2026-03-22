@@ -339,14 +339,12 @@ class StressEngine:
             from .composites import Laminate, Ply
             if not hasattr(mat, 'plies'):
                 # Convert isotropic Material to a single-ply Laminate
-                lam = Laminate(name=mat.name)
-                # G13/G23 are equal to G for isotropic
                 p = Ply(name=mat.name, E1=mat.E, E2=mat.E, nu12=mat.nu, G12=mat.G,
                         G13=mat.G, G23=mat.G, thickness=sec.y_top - sec.y_bottom,
                         rho=mat.rho, Xt=mat.yield_strength or 0.0,
                         Xc=mat.yield_strength or 0.0, Yt=mat.yield_strength or 0.0,
                         Yc=mat.yield_strength or 0.0, S=mat.yield_strength / 1.732 if mat.yield_strength else 0.0)
-                lam.add_ply(p, 0.0)
+                lam = Laminate(name=mat.name, stack=[(p, 0.0)])
             else:
                 lam = mat
 

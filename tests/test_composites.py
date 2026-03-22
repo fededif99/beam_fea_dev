@@ -18,8 +18,7 @@ def test_ply_reduced_stiffness():
 def test_quasi_isotropic_laminate():
     # A quasi-isotropic laminate [0/45/90/-45]s should have A11 approx A22 and A16 approx 0
     ply = Ply(E1=150000, E2=10000, nu12=0.3, G12=5000, thickness=0.125)
-    lam = Laminate("QI")
-    lam.add_stack(ply, [0, 45, 90, -45, -45, 90, 45, 0])
+    lam = Laminate("QI", stack=[(ply, [0, 45, 90, -45, -45, 90, 45, 0])])
 
     A = lam.A
     assert A[0,0] == pytest.approx(A[1,1], rel=1e-2)
@@ -29,15 +28,13 @@ def test_quasi_isotropic_laminate():
 def test_symmetric_laminate_coupling():
     # Symmetric laminate should have B = 0
     ply = Ply(E1=150000, E2=10000, nu12=0.3, G12=5000, thickness=0.125)
-    lam = Laminate("Symmetric")
-    lam.add_stack(ply, [0, 90, 90, 0])
+    lam = Laminate("Symmetric", stack=[(ply, [0, 90, 90, 0])])
 
     assert np.all(np.abs(lam.B) < 1e-10)
 
 def test_effective_properties_export():
     ply = Ply(E1=150000, E2=10000, nu12=0.3, G12=5000, thickness=0.125, rho=1.6e-6)
-    lam = Laminate("Test")
-    lam.add_stack(ply, [0, 0, 0, 0])  # Pure 0 degree
+    lam = Laminate("Test", stack=[(ply, [0] * 4)])
 
     props = lam.get_effective_properties()
     # For all 0 deg, Ex should be close to E1
@@ -61,8 +58,7 @@ def test_effective_ex_compliance_vs_naive():
     ply = Ply(E1=150000, E2=10000, nu12=0.3, G12=5000, thickness=0.25)
 
     # Balanced [+15/-15]: both methods agree
-    lam_bal = Laminate("balanced")
-    lam_bal.add_stack(ply, [15, -15])
+    lam_bal = Laminate("balanced", stack=[(ply, [15, -15])])
     props_bal = lam_bal.get_effective_properties()
     # Naive formula for balanced
     A = lam_bal.A
@@ -70,8 +66,7 @@ def test_effective_ex_compliance_vs_naive():
     assert props_bal['Ex'] == pytest.approx(naive_Ex, rel=1e-3)
 
     # Unbalanced [15/15]: compliance approach is correct; naive is wrong
-    lam_unbal = Laminate("unbalanced")
-    lam_unbal.add_stack(ply, [15, 15])
+    lam_unbal = Laminate("unbalanced", stack=[(ply, [15, 15])])
     props_unbal = lam_unbal.get_effective_properties()
     A_u = lam_unbal.A
     naive_Ex_u = (A_u[0,0]*A_u[1,1] - A_u[0,1]**2) / (A_u[1,1] * lam_unbal.total_thickness)
