@@ -76,6 +76,16 @@ from .loads import (
     LoadCase, LoadCombination, PointLoad, ConcentratedMoment, DistributedLoad
 )
 from .static_analysis import StaticAnalysis, StressAnalysis
+from .failure_criteria import (
+    FailureCriterion,
+    VonMisesCriterion,
+    TrescaCriterion,
+    MaxPrincipalStressCriterion,
+    MaximumStressCriterion,
+    TsaiHillCriterion,
+    TsaiWuCriterion,
+    MaximumStrainCriterion,
+)
 from .modal_analysis import ModalAnalysis
 from .visualizer import BeamVisualizer
 from .solver import BeamSolver
@@ -120,6 +130,12 @@ __all__ = [
     
     # Analysis
     'StaticAnalysis', 'ModalAnalysis', 'StressAnalysis',
+
+    # Failure Criteria
+    'FailureCriterion',
+    'VonMisesCriterion', 'TrescaCriterion', 'MaxPrincipalStressCriterion',
+    'MaximumStressCriterion', 'TsaiHillCriterion', 'TsaiWuCriterion',
+    'MaximumStrainCriterion',
     
     # Visualization
     'BeamVisualizer',

@@ -12,6 +12,7 @@ Where:
 
 import numpy as np
 import warnings
+from typing import Union, Tuple
 
 
 class StaticAnalysis:
@@ -123,112 +124,148 @@ class StaticAnalysis:
 
 
 class StressAnalysis:
-    """Post-processing for stress analysis."""
-    
+    """
+    Post-processing utilities for stress state calculations.
+
+    All methods accept scalars or NumPy arrays interchangeably via natural
+    NumPy broadcasting. When arrays are passed the return type matches the
+    input shape element-wise.
+    """
+
     @staticmethod
-    def calculate_bending_stress(M: float, y: float, I: float) -> float:
+    def calculate_bending_stress(
+        M: Union[float, np.ndarray],
+        y: Union[float, np.ndarray],
+        I: Union[float, np.ndarray],
+    ) -> Union[float, np.ndarray]:
         """
-        Calculate bending stress: σ = -M*y/I
-        
-        Parameters:
-        -----------
-        M : float
-            Bending moment (N·mm)
-        y : float
-            Distance from neutral axis (mm)
-        I : float
-            Second moment of area (mm⁴)
-            
-        Returns:
-        --------
-        sigma : float
-            Bending stress (MPa)
+        Calculate bending stress: σ = −M·y / I
+
+        Sign convention (sagging-positive):
+        - A **CCW (sagging, M > 0)** moment bends the beam into a "U" shape.
+          Top fibre (y > 0) is in **compression** (σ < 0).
+          Bottom fibre (y < 0) is in **tension** (σ > 0).
+        - A **CW (hogging, M < 0)** moment bends the beam into an "∩" shape.
+          Top fibre (y > 0) is in **tension** (σ > 0).
+          Bottom fibre (y < 0) is in **compression** (σ < 0).
+
+        Parameters
+        ----------
+        M : float or ndarray
+            Bending moment (N·mm). Positive = sagging (CCW).
+        y : float or ndarray
+            Distance from neutral axis (mm). Positive = towards top fibre.
+        I : float or ndarray
+            Second moment of area (mm⁴).
+
+        Returns
+        -------
+        sigma : float or ndarray
+            Bending stress (MPa). Positive = tension.
         """
         return -M * y / I
-    
+
     @staticmethod
-    def calculate_axial_stress(N: float, A: float) -> float:
+    def calculate_axial_stress(
+        N: Union[float, np.ndarray],
+        A: Union[float, np.ndarray],
+    ) -> Union[float, np.ndarray]:
         """
-        Calculate axial stress: σ = N/A
-        
-        Parameters:
-        -----------
-        N : float
-            Axial force (N)
-        A : float
-            Cross-sectional area (mm²)
-            
-        Returns:
-        --------
-        sigma : float
-            Axial stress (MPa)
+        Calculate axial stress: σ = N / A
+
+        Parameters
+        ----------
+        N : float or ndarray
+            Axial force (N). Positive = tension.
+        A : float or ndarray
+            Cross-sectional area (mm²).
+
+        Returns
+        -------
+        sigma : float or ndarray
+            Axial stress (MPa). Positive = tension.
         """
         return N / A
-    
+
     @staticmethod
-    def calculate_shear_stress(V: float, Q: float, I: float, t: float) -> float:
+    def calculate_shear_stress(
+        V: Union[float, np.ndarray],
+        Q: Union[float, np.ndarray],
+        I: Union[float, np.ndarray],
+        t: Union[float, np.ndarray],
+    ) -> Union[float, np.ndarray]:
         """
-        Calculate shear stress: τ = VQ/(It)
-        
-        Parameters:
-        -----------
-        V : float
-            Shear force (N)
-        Q : float
-            First moment of area (mm³)
-        I : float
-            Second moment of area (mm⁴)
-        t : float
-            Width at point (mm)
-            
-        Returns:
-        --------
-        tau : float
-            Shear stress (MPa)
+        Calculate shear stress via the Jourawski formula: τ = V·Q / (I·t)
+
+        Parameters
+        ----------
+        V : float or ndarray
+            Shear force (N).
+        Q : float or ndarray
+            First moment of area above the point of interest (mm³).
+        I : float or ndarray
+            Second moment of area (mm⁴).
+        t : float or ndarray
+            Section width at the point of interest (mm).
+
+        Returns
+        -------
+        tau : float or ndarray
+            Shear stress (MPa).
         """
         return V * Q / (I * t)
-    
+
     @staticmethod
-    def calculate_principal_stresses(sigma_x: float, sigma_y: float, tau_xy: float):
+    def calculate_principal_stresses(
+        sigma_x: Union[float, np.ndarray],
+        sigma_y: Union[float, np.ndarray],
+        tau_xy: Union[float, np.ndarray],
+    ) -> Tuple[Union[float, np.ndarray], Union[float, np.ndarray]]:
         """
-        Calculate principal stresses (sigma_1, sigma_2) for 2D plane stress.
-        
-        Parameters:
-        -----------
-        sigma_x, sigma_y : float
-            Normal stresses (MPa)
-        tau_xy : float
-            Shear stress (MPa)
-            
-        Returns:
-        --------
-        (sigma_1, sigma_2) : Tuple[float, float]
-            Principal stresses (MPa), where sigma_1 >= sigma_2
+        Calculate 2D principal stresses via Mohr's circle.
+
+        Parameters
+        ----------
+        sigma_x, sigma_y : float or ndarray
+            Normal stresses (MPa).
+        tau_xy : float or ndarray
+            Shear stress (MPa).
+
+        Returns
+        -------
+        (sigma_1, sigma_2) : tuple of float or ndarray
+            Principal stresses (MPa), where sigma_1 >= sigma_2.
         """
         avg_sigma = (sigma_x + sigma_y) / 2
-        R = np.sqrt(((sigma_x - sigma_y) / 2)**2 + tau_xy**2)
+        R = np.sqrt(((sigma_x - sigma_y) / 2) ** 2 + tau_xy ** 2)
         return (avg_sigma + R, avg_sigma - R)
-    
+
     @staticmethod
-    def calculate_von_mises(sigma_x: float, sigma_y: float, tau_xy: float) -> float:
+    def calculate_von_mises(
+        sigma_x: Union[float, np.ndarray],
+        sigma_y: Union[float, np.ndarray],
+        tau_xy: Union[float, np.ndarray],
+    ) -> Union[float, np.ndarray]:
         """
-        Calculate von Mises equivalent stress using principal stresses.
-        
-        Parameters:
-        -----------
-        sigma_x, sigma_y : float
-            Normal stresses (MPa)
-        tau_xy : float
-            Shear stress (MPa)
-            
-        Returns:
-        --------
-        sigma_vm : float
-            von Mises stress (MPa)
+        Calculate von Mises equivalent stress (2D plane stress): σ_vm
+
+        σ_vm = sqrt(σ₁² − σ₁·σ₂ + σ₂²)
+
+        Parameters
+        ----------
+        sigma_x, sigma_y : float or ndarray
+            Normal stresses (MPa).
+        tau_xy : float or ndarray
+            Shear stress (MPa).
+
+        Returns
+        -------
+        sigma_vm : float or ndarray
+            Von Mises equivalent stress (MPa). Always non-negative.
         """
         sigma_1, sigma_2 = StressAnalysis.calculate_principal_stresses(sigma_x, sigma_y, tau_xy)
-        # For 2D plane stress, sigma_3 = 0
-        return np.sqrt(sigma_1**2 - sigma_1*sigma_2 + sigma_2**2)
+        # For 2D plane stress: sigma_3 = 0
+        return np.sqrt(sigma_1 ** 2 - sigma_1 * sigma_2 + sigma_2 ** 2)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ Example of using Classical Laminate Theory (CLT) to model a composite beam.
 
 from beam_fea import BeamSolver, Mesh, BoundaryConditionSet, LoadCase, rectangular
 from beam_fea.composites import Ply, Laminate
+from beam_fea.failure_criteria import TsaiWuCriterion, MaximumStressCriterion
 import numpy as np
 
 def run_composite_analysis():
@@ -128,8 +129,34 @@ def run_composite_analysis():
     else:
         print("Ply stresses not available. Ensure laminate properties are correctly assigned.")
 
+    # --- 8. Failure Criteria Evaluation ---
+    # Demonstrate applying Tsai-Wu and Max Stress criteria to ply stresses.
+    if ply_stresses:
+        print("\n" + "="*50)
+        print("Failure Criteria Evaluation (carbon_ply properties)")
+        print("="*50)
 
-    # 7. Generate Report
+        tw  = TsaiWuCriterion(Xt=1500, Xc=1200, Yt=50, Yc=250, S=70)
+        ms  = MaximumStressCriterion(Xt=1500, Xc=1200, Yt=50, Yc=250, S=70)
+
+        # Collect mid-plane ply stresses as arrays for vectorised evaluation
+        s1_arr  = np.array([(p['sigma_1_bot'] + p['sigma_1_top']) / 2 for p in ply_stresses])
+        s2_arr  = np.array([(p['sigma_2_bot'] + p['sigma_2_top']) / 2 for p in ply_stresses])
+        t12_arr = np.array([max(abs(p['tau_12_bot']), abs(p['tau_12_top'])) for p in ply_stresses])
+
+        tw_result  = tw.evaluate(sigma_1=s1_arr,  sigma_2=s2_arr, tau_12=t12_arr)
+        ms_result  = ms.evaluate(sigma_1=s1_arr,  sigma_2=s2_arr, tau_12=t12_arr)
+
+        print(f"\n{'Ply':<4} | {'Tsai-Wu FI':<12} | {'TW MoS':<10} | {'Max Stress FI':<14} | {'Status'}")
+        print("-" * 65)
+        for i, p in enumerate(ply_stresses):
+            fi_tw  = tw_result['FI'][i]
+            mos_tw = tw_result['MoS'][i]
+            fi_ms  = ms_result['FI'][i]
+            status = "PASS" if tw_result['passed'][i] else "FAIL"
+            print(f"{p['ply_index']:<4} | {fi_tw:<12.4f} | {mos_tw:<10.4f} | {fi_ms:<14.4f} | {status}")
+
+    # 9. Generate Report
     # The report will automatically feature the stack-up (with rosettes and the core) and ply tables
     import os
     report_path = os.path.join(os.path.dirname(__file__), "composite_beam_report.md")

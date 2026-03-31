@@ -2,6 +2,14 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.13.0] - 2026-03-31
+
+- **Feature**: New `beam_fea/failure_criteria.py` module with 7 fully vectorized failure criteria (VonMises, Tresca, MaxPrincipal, MaximumStress, TsaiHill, TsaiWu, MaximumStrain) covering metals and composites.
+- **Refactor**: Updated `StressAnalysis` in `static_analysis.py` with `Union[float, np.ndarray]` type hints and a comprehensive bending stress sign convention docstring.
+- **Test**: Added `tests/test_failure_criteria.py` with 20 parametric tests validating mathematical correctness and array broadcasting.
+- **Example**: `ex05_composite_beam.py` now demonstrates Tsai-Wu and Max Stress failure criteria evaluation after FEA.
+- **Docs**: Added `§3.11 Failure Criteria` to `README.md` with API tables and usage examples.
+
 ## [v2.12.0] - 2026-03-22
 
 - **Refactoring (Breaking API Change)**: Made `Laminate` immutable; replaced `add_ply`/`add_stack` with a constructor-based `stack` argument.

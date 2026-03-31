@@ -20,7 +20,7 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.12.0 *(2026-03-22)*
+### Latest Version: v2.13.0 *(2026-03-31)*
 
 - **API**: Dedicated `ConcentratedMoment` class and unified `DistributedLoad` with waypoint profiles.
 - **Feature**: Custom distribution support via `load_fn` with Gauss-Legendre quadrature.
@@ -47,7 +47,56 @@
    - 3.8 [Batch Analysis](#38-batch-analysis-beam_feabatch)
    - 3.9 [Visualization](#39-visualization-beam_feavisualizer--beam_feaplot_style)
    - 3.10 [Report Generation](#310-report-generation-beam_feareport_generator)
+   - 3.11 [Failure Criteria](#311-failure-criteria-beam_feafailure_criteria)
 4. [Validation & Theory](#-validation--theory)
+
+---
+
+## 📐 3.11 Failure Criteria (`beam_fea.failure_criteria`)
+
+Unified failure analysis for both **isotropic metals** and **composite plies**. All criteria are fully vectorized — accept scalars or NumPy arrays and return an identical-shaped result dict.
+
+#### Output Dictionary
+| Key | Type | Description |
+|---|---|---|
+| `'FI'` | ndarray | **Failure Index**: < 1 = safe, ≥ 1 = failed |
+| `'MoS'` | ndarray | **Margin of Safety**: = 1/FI − 1. ≥ 0 = safe |
+| `'passed'` | ndarray(bool) | `True` wherever FI < 1 |
+
+#### Metal (Isotropic) Criteria
+| Class | Formula |
+|---|---|
+| `VonMisesCriterion(yield_strength)` | FI = σ_vm / σ_y |
+| `TrescaCriterion(yield_strength)` | FI = (σ₁ − σ₂) / σ_y |
+| `MaxPrincipalStressCriterion(Ftu, Fcu)` | FI = max(σ₁/Ftu, −σ₂/Fcu) |
+
+#### Composite (Orthotropic Ply) Criteria — stresses in material axes
+| Class | Formula |
+|---|---|
+| `MaximumStressCriterion(Xt,Xc,Yt,Yc,S)` | FI = max(σ₁/Xt, −σ₁/Xc, σ₂/Yt, −σ₂/Yc, |τ₁₂|/S) |
+| `TsaiHillCriterion(Xt,Xc,Yt,Yc,S)` | FI = (σ₁/X)² − σ₁σ₂/X² + (σ₂/Y)² + (τ₁₂/S)² |
+| `TsaiWuCriterion(Xt,Xc,Yt,Yc,S,F12*)` | Full interactive tensor polynomial |
+| `MaximumStrainCriterion(eps_Xt,eps_Xc,eps_Yt,eps_Yc,gamma_S)` | FI in strain space |
+
+```python
+from beam_fea.failure_criteria import TsaiWuCriterion, VonMisesCriterion
+import numpy as np
+
+# --- Composite ply check (vectorised over many stations) ---
+crit = TsaiWuCriterion(Xt=1500, Xc=1200, Yt=50, Yc=250, S=70)
+result = crit.evaluate(
+    sigma_1=np.array([200.0, 800.0, 1400.0]),
+    sigma_2=np.array([10.0,  20.0,  40.0]),
+    tau_12=np.array([5.0,   15.0,  30.0]),
+)
+print(result['FI'])     # [0.02..., 0.35..., 0.97...]
+print(result['MoS'])    # [large,   1.86..., 0.03...]
+print(result['passed']) # [True, True, True]
+
+# --- Metal check ---
+crit_vm = VonMisesCriterion(yield_strength=250.0)
+result_vm = crit_vm.evaluate(sigma_x=180.0, sigma_y=50.0, tau_xy=30.0)
+```
 
 ---
 
