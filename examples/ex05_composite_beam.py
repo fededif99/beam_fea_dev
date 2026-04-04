@@ -117,15 +117,15 @@ def run_composite_analysis():
     
     if ply_stresses:
         print(f"\nPly-by-Ply Stresses near Midspan (Element {peak_element_id}):")
-        print(f"{'Ply':<4} | {'Material':<13} | {'Angle':<5} | {'Sigma_1':<10} | {'Sigma_2':<10} | {'Tau_12':<10} | {'Tau_xz':<10} | {'FI (TW)':<8}")
+        print(f"{'Ply':<4} | {'Material':<13} | {'Angle':<5} | {'Sigma_1':<10} | {'Sigma_2':<10} | {'Tau_12':<10} | {'Tau_xz':<10} | {'TW SF':<8}")
         print("-" * 90)
         for ply in ply_stresses:
             s1 = (ply['sigma_1_bot'] + ply['sigma_1_top']) / 2.0
             s2 = (ply['sigma_2_bot'] + ply['sigma_2_top']) / 2.0
             t12 = max(abs(ply['tau_12_bot']), abs(ply['tau_12_top']))
             txz = max(abs(ply['tau_xz_bot']), abs(ply['tau_xz_top']))
-            fi = ply['fi_tsai_wu']
-            print(f"{ply['ply_index']:<4} | {ply['ply_name']:<13} | {ply['angle']:<5.1f} | {s1:>10.1f} | {s2:>10.1f} | {t12:>10.1f} | {txz:>10.1f} | {fi:>8.3f}")
+            sf = ply['sf_tsai_wu']
+            print(f"{ply['ply_index']:<4} | {ply['ply_name']:<13} | {ply['angle']:<5.1f} | {s1:>10.1f} | {s2:>10.1f} | {t12:>10.1f} | {txz:>10.1f} | {sf:>8.3f}")
     else:
         print("Ply stresses not available. Ensure laminate properties are correctly assigned.")
 
@@ -147,14 +147,14 @@ def run_composite_analysis():
         tw_result  = tw.evaluate(sigma_1=s1_arr,  sigma_2=s2_arr, tau_12=t12_arr)
         ms_result  = ms.evaluate(sigma_1=s1_arr,  sigma_2=s2_arr, tau_12=t12_arr)
 
-        print(f"\n{'Ply':<4} | {'Tsai-Wu FI':<12} | {'TW MoS':<10} | {'Max Stress FI':<14} | {'Status'}")
+        print(f"\n{'Ply':<4} | {'TW Stress':<12} | {'TW SF':<10} | {'Max Str SF':<14} | {'Status'}")
         print("-" * 65)
         for i, p in enumerate(ply_stresses):
-            fi_tw  = tw_result['FI'][i]
-            mos_tw = tw_result['MoS'][i]
-            fi_ms  = ms_result['FI'][i]
+            stress_tw = tw_result['stress'][i]
+            sf_tw  = tw_result['SF'][i]
+            sf_ms  = ms_result['SF'][i]
             status = "PASS" if tw_result['passed'][i] else "FAIL"
-            print(f"{p['ply_index']:<4} | {fi_tw:<12.4f} | {mos_tw:<10.4f} | {fi_ms:<14.4f} | {status}")
+            print(f"{p['ply_index']:<4} | {stress_tw:<12.4f} | {sf_tw:<10.4f} | {sf_ms:<14.4f} | {status}")
 
     # 9. Generate Report
     # The report will automatically feature the stack-up (with rosettes and the core) and ply tables

@@ -33,6 +33,8 @@ class Ply:
     Yt: float = 0.0
     Yc: float = 0.0
     S: float = 0.0
+    S13: float = 0.0
+    S23: float = 0.0
     name: str = "Generic Ply"
 
     def reduced_stiffness_matrix(self) -> np.ndarray:

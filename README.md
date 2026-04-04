@@ -20,12 +20,11 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.13.0 *(2026-03-31)*
+### Latest Version: v2.14.0 *(2026-04-04)*
 
-- **API**: Dedicated `ConcentratedMoment` class and unified `DistributedLoad` with waypoint profiles.
-- **Feature**: Custom distribution support via `load_fn` with Gauss-Legendre quadrature.
-- **Feature**: Isosceles triangular distributions via `peak_loc=float`.
-- **Performance**: Vectorized distributed load integration engine.
+- **Feature**: Upgraded `FailureCriterion` processing to support true pseudo-3D invariant fields resolving 2D plane stress blindspots.
+- **Physics**: Activated exact Interlaminar transverse shear checks (`tau_13`, `tau_23`) for all composite failure formulations.
+- **API**: Expanded the `Ply` dataclass to structurally accept `S13` and `S23` transverse metrics.
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).
@@ -73,9 +72,9 @@ Unified failure analysis for both **isotropic metals** and **composite plies**. 
 #### Composite (Orthotropic Ply) Criteria — stresses in material axes
 | Class | Formula |
 |---|---|
-| `MaximumStressCriterion(Xt,Xc,Yt,Yc,S)` | FI = max(σ₁/Xt, −σ₁/Xc, σ₂/Yt, −σ₂/Yc, |τ₁₂|/S) |
-| `TsaiHillCriterion(Xt,Xc,Yt,Yc,S)` | FI = (σ₁/X)² − σ₁σ₂/X² + (σ₂/Y)² + (τ₁₂/S)² |
-| `TsaiWuCriterion(Xt,Xc,Yt,Yc,S,F12*)` | Full interactive tensor polynomial |
+| `MaximumStressCriterion(Xt,Xc,Yt,Yc,S,S13*,S23*)` | FI = max(..., \|τ₁₂\|/S, \|τ₁₃\|/S₁₃, \|τ₂₃\|/S₂₃) |
+| `TsaiHillCriterion(Xt,Xc,Yt,Yc,S,S13*,S23*)` | FI = (σ₁/X)² − ... + (τ₁₂/S)² + (τ₁₃/S₁₃)² + (τ₂₃/S₂₃)² |
+| `TsaiWuCriterion(Xt,Xc,Yt,Yc,S,F12*,S13*,S23*)` | Full interactive tensor polynomial |
 | `MaximumStrainCriterion(eps_Xt,eps_Xc,eps_Yt,eps_Yc,gamma_S)` | FI in strain space |
 
 ```python
@@ -340,7 +339,7 @@ carbon_ply = Ply(
     E1=135000, E2=10000, nu12=0.3,
     G12=5000, G13=5000, G23=4000, # In-plane and Transverse Shear
     thickness=0.125, rho=1.6e-6,
-    Xt=1500, Xc=1200, Yt=50, Yc=250, S=70 # Strengths (MPa)
+    Xt=1500, Xc=1200, Yt=50, Yc=250, S=70, S13=50, S23=40 # Strengths (MPa)
 )
 ```
 

@@ -2,6 +2,14 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.14.0] - 2026-04-04
+
+- **Feature**: Upgraded `FailureCriterion` methods to evaluate true pseudo-3D material stresses, resolving 2D plane-stress analytical blindspots for transverse shear ($V_y$) components.
+- **API**: Expanded composite criteria (`TsaiWu`, `TsaiHill`, `MaximumStress`) to natively evaluate Interlaminar shear parameters (`tau_13`, `tau_23`) and thresholds (`S13`, `S23`).
+- **Feature**: Added `_principal_stresses_3d` in `failure_criteria.py` to calculate exact analytical invariants for isotropic models (Von Mises, Tresca) via `3x3` matrix eigenvalue extraction.
+- **Physics**: Updated `StressEngine` to extract internal transverse beam shear `tau_xz` and systematically rotate it into local material coordinates.
+- **API**: Added `S13` and `S23` interlaminar limits to the `Ply` dataclass, supporting backward compatibility via auto-default mapping to `S`.
+
 ## [v2.13.0] - 2026-03-31
 
 - **Feature**: New `beam_fea/failure_criteria.py` module with 7 fully vectorized failure criteria (VonMises, Tresca, MaxPrincipal, MaximumStress, TsaiHill, TsaiWu, MaximumStrain) covering metals and composites.

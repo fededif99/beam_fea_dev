@@ -424,57 +424,14 @@ class StressEngine:
                     sig_b_bot = sig_bot[:, 0] - sig_a
                     sig_b_top = sig_top[:, 0] - sig_a
 
-                    # Transform to local material coordinates (1, 2, 12)
-                    def to_local(sig, ang):
-                        theta = np.radians(ang)
-                        c, s = np.cos(theta), np.sin(theta)
-                        # sigma_1 = sx*c^2 + sy*s^2 + 2*txy*s*c
-                        s1 = sig[:, 0]*c**2 + sig[:, 1]*s**2 + 2*sig[:, 2]*s*c
-                        # sigma_2 = sx*s^2 + sy*c^2 - 2*txy*s*c
-                        s2 = sig[:, 0]*s**2 + sig[:, 1]*c**2 - 2*sig[:, 2]*s*c
-                        # tau_12 = (sy-sx)*s*c + txy*(c^2-s^2)
-                        s12 = (sig[:, 1] - sig[:, 0])*s*c + sig[:, 2]*(c**2 - s**2)
-                        return np.column_stack([s1, s2, s12])
-
-                    loc_bot = to_local(sig_bot, angle)
-                    loc_mid = to_local(sig_mid, angle)
-                    loc_top = to_local(sig_top, angle)
-
-                    # Principal and Von Mises Calculation for each station
-                    def calc_vm_principal(sig):
-                        avg = (sig[:, 0] + sig[:, 1]) / 2.0
-                        r = np.sqrt(((sig[:, 0] - sig[:, 1]) / 2.0)**2 + sig[:, 2]**2)
-                        s1p = avg + r
-                        s2p = avg - r
-                        vm = np.sqrt(sig[:, 0]**2 + sig[:, 1]**2 - sig[:, 0]*sig[:, 1] + 3*sig[:, 2]**2)
-                        return vm, s1p, s2p
-
-                    vm_bot, s1p_bot, s2p_bot = calc_vm_principal(sig_bot)
-                    vm_mid, s1p_mid, s2p_mid = calc_vm_principal(sig_mid)
-                    vm_top, s1p_top, s2p_top = calc_vm_principal(sig_top)
-
-                    # Failure Indices
-                    fi_max_bot = np.array([ply.calculate_failure_index(s, 'max_stress') for s in loc_bot])
-                    fi_th_bot = np.array([ply.calculate_failure_index(s, 'tsai_hill') for s in loc_bot])
-                    fi_tw_bot = np.array([ply.calculate_failure_index(s, 'tsai_wu') for s in loc_bot])
-
-                    fi_max_top = np.array([ply.calculate_failure_index(s, 'max_stress') for s in loc_top])
-                    fi_th_top = np.array([ply.calculate_failure_index(s, 'tsai_hill') for s in loc_top])
-                    fi_tw_top = np.array([ply.calculate_failure_index(s, 'tsai_wu') for s in loc_top])
-
-                    # Integrated transverse shear stress at ply boundaries
-                    # tau_xz = - integral (Qbar_11 * d_eps_x/dx + Qbar_12 * d_eps_y/dx + Qbar_16 * d_gamma_xy/dx) dz
-                    # d_eps(z)/dx = d_eps0/dx + z * d_kappa/dx
+                    # Calculate Transverse Shear first so it can be evaluated
                     def calc_tau_xz(z_start, z_end, tau_start):
-                        # integral_{z_start}^{z_end} (dstrains_dx_0 + z * d_kappa_dx) dz
-                        # = [dstrains_dx_0 * z + 0.5 * d_kappa_dx * z^2]_{z_start}^{z_end}
                         term0 = dstrains_dx[:, 0:3] * (z_end - z_start)
                         term1 = 0.5 * dstrains_dx[:, 3:6] * (z_end**2 - z_start**2)
                         d_eps_int = term0 + term1
                         d_sig_x_int = (Qbar @ d_eps_int.T).T[:, 0]
                         return tau_start - d_sig_x_int
 
-                    # Initialize tau at bottom of laminate (must be zero)
                     if i == 0:
                         tau_xz_bot = np.zeros(len(indices))
                     else:
@@ -482,6 +439,54 @@ class StressEngine:
 
                     tau_xz_mid = calc_tau_xz(z_bot, z_mid, tau_xz_bot)
                     tau_xz_top = calc_tau_xz(z_bot, z_top, tau_xz_bot)
+
+                    # Transform to local material coordinates (1, 2, 12, 13, 23)
+                    def to_local(sig, txz, ang):
+                        theta = np.radians(ang)
+                        c, s = np.cos(theta), np.sin(theta)
+                        s1 = sig[:, 0]*c**2 + sig[:, 1]*s**2 + 2*sig[:, 2]*s*c
+                        s2 = sig[:, 0]*s**2 + sig[:, 1]*c**2 - 2*sig[:, 2]*s*c
+                        s12 = (sig[:, 1] - sig[:, 0])*s*c + sig[:, 2]*(c**2 - s**2)
+                        t13 = txz * c
+                        t23 = -txz * s
+                        return np.column_stack([s1, s2, s12, t13, t23])
+
+                    loc_bot = to_local(sig_bot, tau_xz_bot, angle)
+                    loc_mid = to_local(sig_mid, tau_xz_mid, angle)
+                    loc_top = to_local(sig_top, tau_xz_top, angle)
+
+                    # Principal and Von Mises Calculation for each station
+                    def calc_vm_principal(sig, txz):
+                        avg = (sig[:, 0] + sig[:, 1]) / 2.0
+                        r = np.sqrt(((sig[:, 0] - sig[:, 1]) / 2.0)**2 + sig[:, 2]**2)
+                        s1p = avg + r
+                        s2p = avg - r
+                        vm = np.sqrt(sig[:, 0]**2 + sig[:, 1]**2 - sig[:, 0]*sig[:, 1] + 3*(sig[:, 2]**2 + txz**2))
+                        return vm, s1p, s2p
+
+                    vm_bot, s1p_bot, s2p_bot = calc_vm_principal(sig_bot, tau_xz_bot)
+                    vm_mid, s1p_mid, s2p_mid = calc_vm_principal(sig_mid, tau_xz_mid)
+                    vm_top, s1p_top, s2p_top = calc_vm_principal(sig_top, tau_xz_top)
+
+                    # Minimum Safety Factors
+                    from .failure_criteria import MaximumStressCriterion, TsaiHillCriterion, TsaiWuCriterion
+                    
+                    try:
+                        c_max = MaximumStressCriterion(Xt=ply.Xt, Xc=ply.Xc, Yt=ply.Yt, Yc=ply.Yc, S=ply.S, S13=ply.S13, S23=ply.S23)
+                        sf_max_bot = c_max.evaluate(sigma_1=loc_bot[:,0], sigma_2=loc_bot[:,1], tau_12=loc_bot[:,2], tau_13=loc_bot[:,3], tau_23=loc_bot[:,4])['SF']
+                        sf_max_top = c_max.evaluate(sigma_1=loc_top[:,0], sigma_2=loc_top[:,1], tau_12=loc_top[:,2], tau_13=loc_top[:,3], tau_23=loc_top[:,4])['SF']
+                        
+                        c_th = TsaiHillCriterion(Xt=ply.Xt, Xc=ply.Xc, Yt=ply.Yt, Yc=ply.Yc, S=ply.S, S13=ply.S13, S23=ply.S23)
+                        sf_th_bot = c_th.evaluate(sigma_1=loc_bot[:,0], sigma_2=loc_bot[:,1], tau_12=loc_bot[:,2], tau_13=loc_bot[:,3], tau_23=loc_bot[:,4])['SF']
+                        sf_th_top = c_th.evaluate(sigma_1=loc_top[:,0], sigma_2=loc_top[:,1], tau_12=loc_top[:,2], tau_13=loc_top[:,3], tau_23=loc_top[:,4])['SF']
+                        
+                        c_tw = TsaiWuCriterion(Xt=ply.Xt, Xc=ply.Xc, Yt=ply.Yt, Yc=ply.Yc, S=ply.S, S13=ply.S13, S23=ply.S23)
+                        sf_tw_bot = c_tw.evaluate(sigma_1=loc_bot[:,0], sigma_2=loc_bot[:,1], tau_12=loc_bot[:,2], tau_13=loc_bot[:,3], tau_23=loc_bot[:,4])['SF']
+                        sf_tw_top = c_tw.evaluate(sigma_1=loc_top[:,0], sigma_2=loc_top[:,1], tau_12=loc_top[:,2], tau_13=loc_top[:,3], tau_23=loc_top[:,4])['SF']
+                    except ValueError:
+                        # If ply has 0s for strengths
+                        n_stat = len(indices)
+                        sf_max_bot = sf_max_top = sf_th_bot = sf_th_top = sf_tw_bot = sf_tw_top = np.full(n_stat, np.inf)
 
                     ply_stresses.append({
                         'index': i,
@@ -499,9 +504,9 @@ class StressEngine:
                         'peak_tau_xy': np.maximum(np.abs(sig_bot[:, 2]), np.abs(sig_top[:, 2])),
                         'peak_tau_xz': np.max(np.abs([tau_xz_bot, tau_xz_mid, tau_xz_top]), axis=0),
                         'peak_von_mises': np.maximum(np.abs(vm_bot), np.abs(vm_top)),
-                        'peak_fi_max': np.maximum(fi_max_bot, fi_max_top),
-                        'peak_fi_tsai_hill': np.maximum(fi_th_bot, fi_th_top),
-                        'peak_fi_tsai_wu': np.maximum(fi_tw_bot, fi_tw_top),
+                        'min_sf_max': np.minimum(sf_max_bot, sf_max_top),
+                        'min_sf_tsai_hill': np.minimum(sf_th_bot, sf_th_top),
+                        'min_sf_tsai_wu': np.minimum(sf_tw_bot, sf_tw_top),
                         'sigma_bot': sig_bot, 'sigma_mid': sig_mid, 'sigma_top': sig_top,
                         'local_bot': loc_bot, 'local_mid': loc_mid, 'local_top': loc_top,
                         'axial_sigma_x': sig_a,
@@ -608,10 +613,10 @@ class StressEngine:
                 'axial_x': ply['axial_sigma_x'][x_station_idx],
                 'bending_x_bot': ply['bending_sigma_x_bot'][x_station_idx],
                 'bending_x_top': ply['bending_sigma_x_top'][x_station_idx],
-                # Failure indices
-                'fi_max': ply['peak_fi_max'][x_station_idx],
-                'fi_tsai_hill': ply['peak_fi_tsai_hill'][x_station_idx],
-                'fi_tsai_wu': ply['peak_fi_tsai_wu'][x_station_idx],
+                # Failure SFs (Note: using SFs now, lower is more critical)
+                'sf_max': ply['min_sf_max'][x_station_idx],
+                'sf_tsai_hill': ply['min_sf_tsai_hill'][x_station_idx],
+                'sf_tsai_wu': ply['min_sf_tsai_wu'][x_station_idx],
                 'tau_xz_bot': ply['tau_xz_bot'][x_station_idx],
                 'tau_xz_mid': ply['tau_xz_mid'][x_station_idx],
                 'tau_xz_top': ply['tau_xz_top'][x_station_idx],
