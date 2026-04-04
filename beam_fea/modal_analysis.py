@@ -47,16 +47,13 @@ class ModalAnalysis:
             Mode shape matrix (each column is a mode)
         """
         from scipy.sparse import issparse
-        is_sparse_initially = issparse(K)
+        num_dofs = K.shape[0]
         
-        # Apply boundary conditions to K
-        if bc_set is not None:
-            # This handles penalty method for sparse K, or row/col zeroing for dense K
-            K, _ = bc_set.apply_to_system(K, np.zeros(K.shape[0]))
+        # Decide between sparse and dense solver
+        # Dense is often more robust for small systems and handles singular M better
+        use_sparse = issparse(K) and num_dofs > 1000
         
-        from scipy.sparse import issparse
-        
-        if issparse(K):
+        if use_sparse:
             from scipy.sparse.linalg import eigsh
             
             # For sparse matrices using penalty method in K:
@@ -82,30 +79,39 @@ class ModalAnalysis:
                 eigenvalues, eigenvectors = eigsh(K, M=M, k=k, which='SM')
             
         else:
-            # Dense matrix logic
-            # [Fix]: Prevent in-place mutation of the global mass matrix
-            M = M.copy()
+            # Dense matrix logic with partitioning for robustness
+            from scipy.sparse import issparse
+            if issparse(K): K = K.toarray()
+            if issparse(M): M = M.toarray()
             
             if bc_set is not None:
-                # For modal analysis, also need to modify M explicitly for dense method
-                # (Identity replacement method)
-                constrained_dofs = list(bc_set.get_all_constrained_dofs())
-                for dof in constrained_dofs:
-                    M[dof, :] = 0
-                    M[:, dof] = 0
-                    M[dof, dof] = 1
+                # 1. Identify active DOFs
+                all_dofs = np.arange(num_dofs)
+                constrained_dofs = bc_set.get_all_constrained_dofs()
+                active_dofs = [d for d in all_dofs if d not in constrained_dofs]
+                
+                if not active_dofs:
+                    raise ValueError("All DOFs are constrained. No modal analysis possible.")
+                
+                # 2. Extract active submatrices
+                K_act = K[np.ix_(active_dofs, active_dofs)]
+                M_act = M[np.ix_(active_dofs, active_dofs)]
+                
+                # 3. Solve generalized eigenvalue problem for active system
+                # Using 'eigh' with partitioned matrices is most stable
+                eigenvalues, eigenvectors_act = eigh(K_act, M_act)
+                
+                # 4. Map mode shapes back to full space (zero for constrained DOFs)
+                eigenvectors = np.zeros((num_dofs, len(eigenvalues)))
+                for i, dof in enumerate(active_dofs):
+                    eigenvectors[dof, :] = eigenvectors_act[i, :]
+                    
+            else:
+                # No BCs - solve full system (e.g. free-free)
+                eigenvalues, eigenvectors = eigh(K, M)
             
-            # Solve generalized eigenvalue problem
-            eigenvalues, eigenvectors = eigh(K, M)
-            
-            # Filter dummy modes (freq=1/(2pi)) if checking logic requires
-            # or extract relevant modes
-            
-            # Extract positive eigenvalues (avoid numerical issues)
-            valid_idx = eigenvalues > 1e-10
-            # For dense method with identity replacement, constrained nodes have ev=1
-            # We should probably filter those if they interfere, but usually we just look at lowest
-            
+            # Extract positive eigenvalues (avoid numerical issues with precision)
+            valid_idx = eigenvalues > 1e-12
             eigenvalues = eigenvalues[valid_idx]
             eigenvectors = eigenvectors[:, valid_idx]
         
@@ -127,7 +133,7 @@ class ModalAnalysis:
         self.eigenvectors = eigenvectors
         
         # Return requested number of modes
-        if num_modes is not None and not is_sparse_initially:
+        if num_modes is not None:
             self.frequencies = self.frequencies[:num_modes]
             self.mode_shapes = self.mode_shapes[:, :num_modes]
 

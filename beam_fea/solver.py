@@ -488,32 +488,42 @@ class BeamSolver:
         report_gen = BatchReportGenerator(self)
         return report_gen.generate_report(output_path)
 
-    def solve_modal(self, bc_set: BoundaryConditionSet, num_modes: int = 10):
+    def solve_modal(self, bc_set: BoundaryConditionSet, num_modes: int = 10, load_case: Optional[Union[LoadCase, 'LoadCombination']] = None):
         """
         Solve modal analysis.
         
         Assembles the stiffness matrix if not already done, then assembles the
         mass matrix lazily (only when this method is first called).
+        If a `load_case` containing `LumpedMass` loads is provided, those masses
+        are applied to a copy of the mass matrix for the modal solve.
         """
         # Pre-analysis validation
         self._validate_model(bc_set)
         
-        # Ensure Stiffness is assembled
+        # Ensure Stiffness and Mass are assembled
         if self.K_global is None:
             self._assemble_stiffness_matrix()
         if self.M_global is None:
             self._assemble_mass_matrix()
 
+        # Handle Lumped Masses via LoadCase
+        M_eff = self.M_global
+        if load_case is not None:
+            if not load_case.has_mass_loads():
+                raise ValueError("load_case provided to solve_modal does not contain any LumpedMass loads.")
+            M_eff = self.M_global.copy()
+            M_eff = load_case.apply_to_mass_matrix(M_eff, self.mesh)
+
         frequencies, mode_shapes = self.modal_solver.solve(
-            self.K_global, self.M_global, num_modes, bc_set
+            self.K_global, M_eff, num_modes, bc_set
         )
     
         self.last_bc_set = bc_set
         self.last_frequencies = frequencies
         self.last_mode_shapes = mode_shapes
 
-        # Calculate participation factors
-        self.last_modal_participation = self.modal_solver.get_modal_participation_summary(self.M_global)
+        # Calculate participation factors using the effective mass matrix
+        self.last_modal_participation = self.modal_solver.get_modal_participation_summary(M_eff)
 
         return frequencies, mode_shapes
     

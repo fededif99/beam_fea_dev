@@ -20,11 +20,12 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.14.0 *(2026-04-04)*
+### Latest Version: v2.15.0 *(2026-04-04)*
 
-- **Feature**: Upgraded `FailureCriterion` processing to support true pseudo-3D invariant fields resolving 2D plane stress blindspots.
-- **Physics**: Activated exact Interlaminar transverse shear checks (`tau_13`, `tau_23`) for all composite failure formulations.
-- **API**: Expanded the `Ply` dataclass to structurally accept `S13` and `S23` transverse metrics.
+- **Feature**: Integrated `LumpedMass` loading support for dynamic (modal) and static (weight) analysis.
+- **Computation**: Migrated small-scale modal analysis ($<1000$ DOFs) to a partitioned dense solver for superior numerical stability.
+- **Solver**: Added support for dynamic load-dependent mass matrices in the `solve_modal` interface.
+- **Optimization**: Implemented vectorized sparse matrix updates for lumped mass application.
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).
@@ -487,6 +488,7 @@ Supports defining loads by **Node/Element IDs** or by **Global Coordinates**.
 | **`point_load(...)`** | `node`, `fx`, `fy` | `x`, `fx`, `fy` |
 | **`moment(...)`** | `node`, `mz` | `x`, `mz` |
 | **`distributed_load(...)`** | `element`, `distribution`, `**kwargs` | `x_start`, `x_end`, `distribution`, `**kwargs` |
+| **`lumped_mass(...)`** | `node`, `m`, `Izz`, `apply_gravity` | `x`, `m`, `Izz`, `apply_gravity` |
 
 ##### Example: Parametric-Safe Loading
 
@@ -587,7 +589,7 @@ solver = BeamSolver(mesh, material, section, element_type='euler')
 **Methods:**
 
 - **`solve_static(load_case, bc_set)`**: Runs linear static analysis. Performs automatic model validation (mesh, materials, stability, slenderness checks) before solving.
-- **`solve_modal(bc_set, num_modes)`**: Runs eigenvalue analysis (Frequencies & Mode Shapes).
+- **`solve_modal(bc_set, num_modes, load_case=None)`**: Runs eigenvalue analysis (Frequencies & Mode Shapes). If `load_case` with `LumpedMass` is provided, those masses are added to the system for the modal solve only.
 - **`get_max_deflection()`**: Returns a **Pandas Series** with the node of maximum **resultant displacement** ($\sqrt{U_x^2 + U_y^2}$), including $u, v$ components and coordinates.
 - **`calculate_internal_forces(num_points=100)`**: Returns dictionary of `axial_forces`, `shear_forces`, and `bending_moments`.
 - **`calculate_stresses(num_x, num_y, num_z)`**: Generates 3D stress matrices (Axial, Bending, Shear, von Mises, Principal).

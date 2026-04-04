@@ -2,6 +2,15 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.15.0] - 2026-04-04
+
+- **Feature**: Added `LumpedMass` load type in `loads.py` for nodal mass ($m$) and rotational inertia ($I_{zz}$), supporting both static and modal analysis.
+- **Physics**: Implemented automatic gravity loading for lumped masses ($F_y = -m \cdot g$) for seamless static/modal weight integration.
+- **Solver**: Enhanced `solve_modal` in `solver.py` to support "effective mass" matrices via dynamic `load_case` injection.
+- **Robustness**: Refactored `ModalAnalysis` core to use a high-stability partitioned dense solver for small systems ($<1000$ DOFs).
+- **Performance**: Optimized sparse matrix augmentation for lumped masses using `LIL` format transformation in `loads.py`.
+- **Report**: Updated `report_generator.py` to recursively detect and format `LumpedMass` data in PDF/Markdown engineering reports.
+
 ## [v2.14.0] - 2026-04-04
 
 - **Feature**: Upgraded `FailureCriterion` methods to evaluate true pseudo-3D material stresses, resolving 2D plane-stress analytical blindspots for transverse shear ($V_y$) components.

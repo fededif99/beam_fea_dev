@@ -40,6 +40,23 @@ class Load(ABC):
         """
         pass
 
+    def apply_to_mass_matrix(self, M, mesh):
+        """
+        Apply load properties that affect the global mass matrix.
+        
+        Parameters:
+        -----------
+        M : scipy.sparse matrix
+            Global mass matrix
+        mesh : Mesh
+            Finite element mesh
+            
+        Returns:
+        --------
+        M : modified mass matrix
+        """
+        return M
+
 
 @dataclass
 class PointLoad(Load):
@@ -569,6 +586,80 @@ class DistributedLoad(Load):
         return f"Distributed load on {loc}"
 
 
+@dataclass
+class LumpedMass(Load):
+    """
+    Lumped (nodal) mass at a specific node or global x-coordinate.
+    
+    Affects natural frequencies in modal analysis.
+    If `apply_gravity=True`, this mass also produces a downward force
+    (-m * 9.80665 N) applied to the force vector during static analysis.
+    
+    Attributes:
+    -----------
+    node : int, optional
+        Node ID where lumped mass is applied
+    x : float, optional
+        Global x-coordinate (mm). Used if node is None.
+    m : float
+        Mass (kg)
+    Izz : float
+        Rotational inertia (kg·mm²)
+    apply_gravity : bool
+        If True, applies a standard Earth gravity load automatically.
+    """
+    node: Optional[int] = None
+    x: Optional[float] = None
+    m: float = 0.0
+    Izz: float = 0.0
+    apply_gravity: bool = False
+    
+    def __post_init__(self):
+        if self.node is not None and self.x is not None:
+            warnings.warn("Both 'node' and 'x' specified for LumpedMass. 'node' will take precedence.", UserWarning, stacklevel=2)
+        if self.node is None and self.x is None:
+            raise ValueError("Must specify either 'node' or 'x' for LumpedMass.")
+
+    def apply_to_force_vector(self, F: np.ndarray, mesh) -> np.ndarray:
+        """Apply gravity load if enabled."""
+        if self.apply_gravity and self.m > 0:
+            weight_N = -self.m * 9.80665
+            # Delegate to PointLoad internal logic
+            return PointLoad(node=self.node, x=self.x, fy=weight_N).apply_to_force_vector(F, mesh)
+        return F
+
+    def apply_to_mass_matrix(self, M, mesh):
+        """Apply mass and inertia to global mass matrix."""
+        from scipy.sparse import issparse
+        
+        is_sparse = issparse(M)
+        if is_sparse:
+            # LIL is efficient for changing sparsity pattern/direct indexing
+            M = M.tolil()
+
+        if self.node is not None:
+            node_idx = self.node
+        elif self.x is not None:
+            # Look up closest node
+            coords = mesh.nodes
+            dist = np.abs(coords[:, 0] - self.x)
+            node_idx = np.argmin(dist)
+            if dist[node_idx] > 1e-6:
+                warnings.warn(f"LumpedMass at x={self.x} moved to nearest node {node_idx} (x={coords[node_idx, 0]:.2f})", UserWarning, stacklevel=2)
+        
+        M[3 * node_idx, 3 * node_idx] += self.m
+        M[3 * node_idx + 1, 3 * node_idx + 1] += self.m
+        if self.Izz > 0:
+            M[3 * node_idx + 2, 3 * node_idx + 2] += self.Izz
+            
+        if is_sparse:
+            M = M.tocsr()
+        return M
+
+    def __str__(self):
+        loc = f"node {self.node}" if self.node is not None else f"x={self.x:.1f}mm"
+        gravity_str = " (with gravity)" if self.apply_gravity else ""
+        return f"Lumped Mass at {loc}: m={self.m:.2f}kg, Izz={self.Izz:.2f}kg·mm²{gravity_str}"
 
 
 class LoadCase:
@@ -617,9 +708,26 @@ class LoadCase:
         self.loads.append(DistributedLoad(
             x_start=x_start, x_end=x_end, distribution=distribution, **kwargs
         ))
-    
 
+    def lumped_mass(self, node: Optional[int] = None, x: Optional[float] = None,
+                    m: float = 0.0, Izz: float = 0.0, apply_gravity: bool = False):
+        """Add a lumped mass to this load case."""
+        self.loads.append(LumpedMass(
+            node=node, x=x, m=m, Izz=Izz, apply_gravity=apply_gravity
+        ))
 
+    def has_mass_loads(self) -> bool:
+        """Check if load case contains any lumped masses."""
+        return any(isinstance(ld, LumpedMass) for ld in self.loads)
+
+    def apply_to_mass_matrix(self, M, mesh):
+        """
+        Apply load properties that affect the global mass matrix.
+        Modifies and returns M in-place.
+        """
+        for load in self.loads:
+            M = load.apply_to_mass_matrix(M, mesh)
+        return M
     def create_force_vector(self, num_dofs: int, mesh) -> np.ndarray:
         """
         Create global force vector from all loads in this case.
@@ -678,6 +786,16 @@ class LoadCombination:
             F_combined += factor * F_case
         
         return F_combined
+
+    def has_mass_loads(self) -> bool:
+        """Check if combination contains any lumped masses."""
+        return any(lc.has_mass_loads() for lc, _ in self.load_cases)
+
+    def apply_to_mass_matrix(self, M, mesh):
+        """Apply mass modifications, ignoring combination factors for mass matrix."""
+        for load_case, _ in self.load_cases:
+            M = load_case.apply_to_mass_matrix(M, mesh)
+        return M
     
     def __str__(self):
         case_summary = "\n  ".join(f"{factor:.2f} × {lc.name}" 

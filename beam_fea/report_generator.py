@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import Optional, Union
 import os
 import pandas as pd
-from .loads import PointLoad, ConcentratedMoment, DistributedLoad
+from .loads import PointLoad, ConcentratedMoment, DistributedLoad, LumpedMass
 from .boundary_conditions import PinnedSupport, RollerSupport, FixedSupport
 from .plot_style import PlotStyle, smart_units, DEFAULT_STYLE
 
@@ -1068,12 +1068,13 @@ class BeamReportGenerator:
         
         # Load details
         num_pt_loads = 0
-        num_dist_loads = 0
+        num_mass_loads = 0
         load_details_str = "None"
         
         if self.load_case:
             num_pt_loads = len([l for l in self.load_case.loads if isinstance(l, (PointLoad, ConcentratedMoment))])
             num_dist_loads = len([l for l in self.load_case.loads if isinstance(l, DistributedLoad)])
+            num_mass_loads = len([l for l in self.load_case.loads if isinstance(l, LumpedMass)])
             
             load_details_list = []
             for i, load in enumerate(self.load_case.loads, 1):
@@ -1102,6 +1103,10 @@ class BeamReportGenerator:
                         load_details_list.append(f"{i}. **Triangular Load** on {span_str}: peak={load.w_peak} N/mm at {load.peak_loc}")
                     elif dist == 'custom':
                         load_details_list.append(f"{i}. **Custom Load** on {span_str}: {load.n_points}-pt quadrature")
+                elif isinstance(load, LumpedMass):
+                    loc_str = f"Node {load.node}" if load.node is not None else f"x = {load.x} mm"
+                    grav_str = " (gravity enabled)" if load.apply_gravity else ""
+                    load_details_list.append(f"{i}. **Lumped Mass** at {loc_str}: m = {load.m} kg, Izz = {load.Izz} kg·mm²{grav_str}")
             
             if load_details_list:
                 load_details_str = "\n".join(load_details_list)
@@ -1145,7 +1150,7 @@ class BeamReportGenerator:
 
 ### Load Case Information
 - **Name:** {self.load_case.name if self.load_case else 'N/A'}
-- **Applied Loads:** {num_pt_loads} point load(s), {num_dist_loads} distributed load(s)
+- **Applied Loads:** {num_pt_loads} point load(s), {num_dist_loads} distributed load(s), {num_mass_loads} lumped mass(es)
 
 **Detailed Loads:**
 {load_details_str}
