@@ -20,12 +20,12 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.15.0 *(2026-04-04)*
+### Latest Version: v2.16.0 *(2026-04-05)*
 
-- **Feature**: Integrated `LumpedMass` loading support for dynamic (modal) and static (weight) analysis.
-- **Computation**: Migrated small-scale modal analysis ($<1000$ DOFs) to a partitioned dense solver for superior numerical stability.
+- **Optimization**: Significant modal analysis performance boost (up to 33x speedup) via vectorized calculations and efficient dense eigensolvers.
+- **Computation**: Migrated small-scale modal analysis ($<500$ DOFs) to a partitioned dense solver for superior numerical stability.
 - **Solver**: Added support for dynamic load-dependent mass matrices in the `solve_modal` interface.
-- **Optimization**: Implemented vectorized sparse matrix updates for lumped mass application.
+- **API**: Standardized `num_modes` to internal defaults (10 modes) across all solver interfaces.
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).
@@ -113,7 +113,8 @@ beam_fea_optimized/
 │   ├── template_static.py       # (Static Analysis Template)
 │   └── template_modal.py        # (Modal Analysis Template)
 ├── tests/                       # Unit & Logic Tests
-│   ├── test_coordinate_loads.py
+│   ├── benchmark_modal.py       # (Modal Performance Tester)
+│   ├── test_integration.py
 │   └── ...
 ├── scripts/                     # Performance & Validation Utilities
 │   ├── benchmark_performance.py

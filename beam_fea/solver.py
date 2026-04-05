@@ -488,7 +488,7 @@ class BeamSolver:
         report_gen = BatchReportGenerator(self)
         return report_gen.generate_report(output_path)
 
-    def solve_modal(self, bc_set: BoundaryConditionSet, num_modes: int = 10, load_case: Optional[Union[LoadCase, 'LoadCombination']] = None):
+    def solve_modal(self, bc_set: BoundaryConditionSet, num_modes: Optional[int] = None, load_case: Optional[Union[LoadCase, 'LoadCombination']] = None):
         """
         Solve modal analysis.
         

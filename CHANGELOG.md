@@ -2,6 +2,13 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.16.0] - 2026-04-05
+
+- **Refactor**: Optimized `ModalAnalysis` core with vectorized mass-normalization and participation calculations, achieving up to 33x speedup.
+- **API**: Updated `BeamSolver.solve_modal` and `ModalAnalysis.solve` signatures to support `num_modes=None`, standardizing a default of 10 modes.
+- **Performance**: Integrated `subset_by_index` in dense eigensolvers for significantly faster lower-mode extraction in large dense models.
+- **Test**: Added `tests/benchmark_modal.py` for automated performance regression tracking of modal analysis engines.
+
 ## [v2.15.0] - 2026-04-04
 
 - **Feature**: Added `LumpedMass` load type in `loads.py` for nodal mass ($m$) and rotational inertia ($I_{zz}$), supporting both static and modal analysis.
