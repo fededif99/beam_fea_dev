@@ -2,6 +2,14 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.17.0] - 2026-04-06
+
+- **Refactor**: Re-architected `BeamSolver` into specialized engines: `AssemblyEngine`, `AnalysisEngine`, and `ResultsEngine`.
+- **API**: Standardized `PropertySet.resolve()` with pre-calculation and caching for up to 100% speedup in assembly.
+- **Feature**: Integrated `ResultsEngine` for unified peak extraction and `failure_criteria.py` FOS evaluation.
+- **Performance**: Fully vectorized global matrix assembly using cached property arrays.
+- **Report**: Enhanced `BatchReportGenerator` with automated ply-by-ply peak stress and FOS identification.
+
 ## [v2.16.0] - 2026-04-05
 
 - **Refactor**: Optimized `ModalAnalysis` core with vectorized mass-normalization and participation calculations, achieving up to 33x speedup.

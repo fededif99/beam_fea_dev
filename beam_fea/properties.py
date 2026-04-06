@@ -5,6 +5,7 @@ Property collector for materials and cross-sections.
 Allows assigning specific properties to elements or groups of elements.
 """
 
+import numpy as np
 from typing import Dict, Optional, Union, List
 from .materials import Material
 from .cross_sections import SectionProperties
@@ -43,6 +44,13 @@ class PropertySet:
         self._mat_map = {}
         self._sec_map = {}
         self._is_resolved = False
+
+        # Pre-calculated element arrays
+        self.EA = None
+        self.EI = None
+        self.ES = None
+        self.GA_s = None
+        self.rho_lin = None
 
         # If initialized with arguments, add them as the first assignment
         if material is not None or section is not None:
@@ -96,6 +104,36 @@ class PropertySet:
                     self._sec_map[eid] = section
         
         self.validate(num_elements)
+        
+        # Pre-calculate and cache element properties
+        self.EA = np.zeros(num_elements)
+        self.EI = np.zeros(num_elements)
+        self.ES = np.zeros(num_elements)
+        self.GA_s = np.zeros(num_elements)
+        self.rho_lin = np.zeros(num_elements)
+        
+        for i in range(num_elements):
+            mat = self._mat_map[i]
+            sec = self._sec_map[i]
+            
+            stiff = mat.get_sectional_stiffness(sec)
+            self.EA[i] = stiff['EA']
+            self.EI[i] = stiff['EI']
+            self.ES[i] = stiff['ES']
+            self.GA_s[i] = stiff['GA_s'] * sec.shear_factor
+            self.rho_lin[i] = mat.get_linear_density(sec)
+            
+            # Cross-check Laminate thickness vs Section height
+            from .composites import Laminate
+            if isinstance(mat, Laminate):
+                h_sec = sec.y_top - sec.y_bottom
+                if not np.isclose(mat.total_thickness, h_sec, rtol=1e-3):
+                    import warnings
+                    warnings.warn(
+                        f"Element {i}: Laminate '{mat.name}' thickness ({mat.total_thickness:.2f} mm) "
+                        f"mismatches Section height ({h_sec:.2f} mm). This may yield inconsistent results."
+                    )
+
         self._is_resolved = True
 
     def validate(self, num_elements: int):

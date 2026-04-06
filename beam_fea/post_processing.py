@@ -5,8 +5,9 @@ Internal force and stress recovery engines.
 """
 
 import numpy as np
+import pandas as pd
 from abc import ABC, abstractmethod
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Dict, Optional
 
 class ForceRecoveryStrategy(ABC):
     """Abstract base class for internal force recovery strategies."""
@@ -196,14 +197,14 @@ class InternalForceEngine:
             dist_from_n1 = np.sqrt(np.sum((stations_xyz[:, :2] - coords[node1])**2, axis=1))
             xi = np.clip(dist_from_n1 / L, 0, 1) if L > 0 else np.zeros(len(indices))
 
-            mat = solver.properties.get_material(eid)
-            sec = solver.properties.get_section(eid)
-            stiff = mat.get_sectional_stiffness(sec)
-            rho_lin = mat.get_linear_density(sec)
-
+            # Use Pre-calculated Properties
             element_expert = UnifiedBeamElement(
-                EA=stiff['EA'], ES=stiff['ES'], EI=stiff['EI'],
-                L=L, rho_total=rho_lin, GA_s=stiff['GA_s'] * sec.shear_factor,
+                EA=solver.properties.EA[eid], 
+                ES=solver.properties.ES[eid], 
+                EI=solver.properties.EI[eid],
+                L=L, 
+                rho_total=solver.properties.rho_lin[eid], 
+                GA_s=solver.properties.GA_s[eid],
                 force_euler=is_euler
             )
 
@@ -637,3 +638,105 @@ class StressEngine:
             Q_yz = (t_yz) / 2.0 * (y_top**2 - Y**2)
             Q_yz[~mask] = 0.0; t_yz[~mask] = 0.0
             return mask, t_yz, Q_yz
+
+
+class ResultsEngine:
+    """
+    Standardized engine for results extraction, peak finding, and Pandas export.
+    Unifies data handling for Static, Modal, and Batch analysis.
+    """
+    
+    @staticmethod
+    def get_nodal_displacements(solver) -> pd.DataFrame:
+        if solver.displacements is None:
+            return pd.DataFrame()
+            
+        u = solver.displacements[0::3]
+        v = solver.displacements[1::3]
+        
+        return pd.DataFrame({
+            'node_id': np.arange(solver.mesh.num_nodes),
+            'x': solver.mesh.nodes[:, 0],
+            'y': solver.mesh.nodes[:, 1],
+            'u': u,
+            'v': v,
+            'res': np.sqrt(u**2 + v**2)
+        })
+
+    @staticmethod
+    def get_peak_summary(solver) -> Dict:
+        """Standardized peak result extractor for a single load case."""
+        # 1. Deflections
+        disp_df = ResultsEngine.get_nodal_displacements(solver)
+        max_res = disp_df.iloc[disp_df['res'].idxmax()] if not disp_df.empty else None
+        
+        # 2. Internal Forces
+        forces = InternalForceEngine.calculate(solver)
+        v_idx = np.argmax(np.abs(forces['shear_forces']))
+        m_idx = np.argmax(np.abs(forces['bending_moments']))
+        
+        # 3. Peak Stresses & FOS
+        stresses = StressEngine.calculate(solver)
+        vm_flat = stresses['von_mises'].flatten()
+        max_vm_idx_flat = np.argmax(vm_flat)
+        vm_peak = vm_flat[max_vm_idx_flat]
+        
+        # Find spatial coordinates of peak stress
+        max_vm_idx = np.unravel_index(max_vm_idx_flat, stresses['von_mises'].shape)
+        peak_x = stresses['x'][max_vm_idx[0]]
+        peak_y = stresses['y'][max_vm_idx[1], max_vm_idx[2]]
+        peak_z = stresses['z'][max_vm_idx[1], max_vm_idx[2]]
+
+        # Use failure criteria module for proper FOS
+        from .failure_criteria import VonMisesCriterion
+        # Fallback to 250 as default yield if material is missing properties
+        yield_s = getattr(solver.material, 'yield_strength', 250.0) or 250.0
+        crit = VonMisesCriterion(yield_strength=yield_s)
+        # Evaluate peak stress
+        fos_result = crit.evaluate(sigma_x=vm_peak)
+        
+        result = {
+            'max_deflection': max_res['res'] if max_res is not None else 0.0,
+            'max_deflection_x': max_res['x'] if max_res is not None else 0.0,
+            'max_deflection_node': int(max_res['node_id']) if max_res is not None else -1,
+            'max_shear': forces['shear_forces'][v_idx],
+            'max_shear_x': forces['path_positions'][v_idx],
+            'max_moment': forces['bending_moments'][m_idx],
+            'max_moment_x': forces['path_positions'][m_idx],
+            'max_von_mises': vm_peak,
+            'max_vm_x': peak_x,
+            'max_vm_y': peak_y,
+            'max_vm_z': peak_z,
+            'fos': fos_result['SF'],
+            'mos': fos_result['MoS']
+        }
+        
+        # Add laminate info if available
+        if hasattr(solver, 'laminate_results'):
+            # Find element and ply for peak VM
+            for eid, data in solver.laminate_results.items():
+                for ply in data['ply_data']:
+                    z_b, z_t = ply['z_range']
+                    if z_b - 1e-6 <= peak_y <= z_t + 1e-6:
+                        # Check if this station matches peak_x (using path coord)
+                        if any(np.isclose(data['x_positions'], peak_x, rtol=1e-5)):
+                             result['peak_ply'] = ply['name']
+                             break
+        
+        return result
+
+    @staticmethod
+    def create_batch_summary(solver, load_cases: List, peak_results: List[Dict]) -> pd.DataFrame:
+        """Create a consolidated Pandas DataFrame for batch results."""
+        rows = []
+        for lc, res in zip(load_cases, peak_results):
+            row = {'case_name': lc.name}
+            row.update(res)
+            rows.append(row)
+        return pd.DataFrame(rows)
+
+    @staticmethod
+    def export_results(df: pd.DataFrame, filepath: str):
+        """Export results to CSV."""
+        df.to_csv(filepath, index=False)
+        return filepath

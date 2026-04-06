@@ -20,12 +20,12 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.16.0 *(2026-04-05)*
+### Latest Version: v2.17.0 *(2026-04-06)*
 
-- **Optimization**: Significant modal analysis performance boost (up to 33x speedup) via vectorized calculations and efficient dense eigensolvers.
-- **Computation**: Migrated small-scale modal analysis ($<500$ DOFs) to a partitioned dense solver for superior numerical stability.
-- **Solver**: Added support for dynamic load-dependent mass matrices in the `solve_modal` interface.
-- **API**: Standardized `num_modes` to internal defaults (10 modes) across all solver interfaces.
+- **Optimization**: Significant solver performance boost (up to 100% speedup in assembly) via vectorized pre-calculation and caching.
+- **Architecture**: Decoupled `BeamSolver` into specialized Assembly, Analysis, and Results engines for improved modularity.
+- **Computation**: Unified stress analysis and Factor of Safety (FOS) evaluation across all analysis types.
+- **API**: Improved `PropertySet.resolve()` with automatic consistency checks for laminate height validation.
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).
@@ -52,27 +52,30 @@
 
 ---
 
-## 📐 3.11 Failure Criteria (`beam_fea.failure_criteria`)
+## 3.11 Failure Criteria (`beam_fea.failure_criteria`)
 
 Unified failure analysis for both **isotropic metals** and **composite plies**. All criteria are fully vectorized — accept scalars or NumPy arrays and return an identical-shaped result dict.
 
-#### Output Dictionary
+### Output Dictionary
+
 | Key | Type | Description |
-|---|---|---|
+| :--- | :--- | :--- |
 | `'FI'` | ndarray | **Failure Index**: < 1 = safe, ≥ 1 = failed |
 | `'MoS'` | ndarray | **Margin of Safety**: = 1/FI − 1. ≥ 0 = safe |
 | `'passed'` | ndarray(bool) | `True` wherever FI < 1 |
 
-#### Metal (Isotropic) Criteria
+### Metal (Isotropic) Criteria
+
 | Class | Formula |
-|---|---|
+| :--- | :--- |
 | `VonMisesCriterion(yield_strength)` | FI = σ_vm / σ_y |
 | `TrescaCriterion(yield_strength)` | FI = (σ₁ − σ₂) / σ_y |
 | `MaxPrincipalStressCriterion(Ftu, Fcu)` | FI = max(σ₁/Ftu, −σ₂/Fcu) |
 
-#### Composite (Orthotropic Ply) Criteria — stresses in material axes
+### Composite (Orthotropic Ply) Criteria — stresses in material axes
+
 | Class | Formula |
-|---|---|
+| :--- | :--- |
 | `MaximumStressCriterion(Xt,Xc,Yt,Yc,S,S13*,S23*)` | FI = max(..., \|τ₁₂\|/S, \|τ₁₃\|/S₁₃, \|τ₂₃\|/S₂₃) |
 | `TsaiHillCriterion(Xt,Xc,Yt,Yc,S,S13*,S23*)` | FI = (σ₁/X)² − ... + (τ₁₂/S)² + (τ₁₃/S₁₃)² + (τ₂₃/S₂₃)² |
 | `TsaiWuCriterion(Xt,Xc,Yt,Yc,S,F12*,S13*,S23*)` | Full interactive tensor polynomial |
