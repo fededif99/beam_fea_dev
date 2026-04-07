@@ -20,12 +20,13 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.17.0 *(2026-04-06)*
+### Latest Version: v2.18.0 *(2026-04-07)*
 
-- **Optimization**: Significant solver performance boost (up to 100% speedup in assembly) via vectorized pre-calculation and caching.
-- **Architecture**: Decoupled `BeamSolver` into specialized Assembly, Analysis, and Results engines for improved modularity.
-- **Computation**: Unified stress analysis and Factor of Safety (FOS) evaluation across all analysis types.
-- **API**: Improved `PropertySet.resolve()` with automatic consistency checks for laminate height validation.
+- **API**: Standardized on **Safety Factor (SF)** and **Margin of Safety (MoS)** across all modules; removed deprecated Failure Index (FI).
+- **Physics**: Implemented high-fidelity **through-thickness stress interpolation** (linear for bending, quadratic for shear) in 3D visualization grids.
+- **Validation**: Added `BeamSolver.verify_equilibrium()` for analytical residual checks supporting all load types (Uniform, Linear, Triangular, Custom).
+- **Architecture**: Fully removed legacy `self.material` and `self.section` solver pointers; shifted to element-aware validation across all engines.
+- **Robustness**: Enhanced width extraction and modeling consistency checks for non-rectangular composite sections.
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).

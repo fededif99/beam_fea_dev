@@ -68,27 +68,35 @@ class Ply:
              (Q11 + Q22 - 2*Q12 - 2*Q66)*s2*c2 + Q66*(s**4 + c**4)]
         ])
 
-    def calculate_failure_index(self, sigma_local: np.ndarray, criterion: str = 'max_stress') -> float:
-        """Calculate the failure index for the ply given local stresses."""
+    def calculate_safety_factor(self, sigma_local: np.ndarray, criterion: str = 'max_stress') -> float:
+        """Calculate the safety factor for the ply given local stresses."""
         s1, s2, s12 = sigma_local[0], sigma_local[1], sigma_local[2]
+
+        # Determine failure index (FI) first
+        fi = 0.0
         if criterion == 'max_stress':
-            if any(v <= 0 for v in [self.Xt, self.Xc, self.Yt, self.Yc, self.S]): return 0.0
-            f1 = s1 / self.Xt if s1 >= 0 else abs(s1) / self.Xc
-            f2 = s2 / self.Yt if s2 >= 0 else abs(s2) / self.Yc
-            f12 = abs(s12) / self.S
-            return max(f1, f2, f12)
+            if any(v <= 0 for v in [self.Xt, self.Xc, self.Yt, self.Yc, self.S]): fi = 0.0
+            else:
+                f1 = s1 / self.Xt if s1 >= 0 else abs(s1) / self.Xc
+                f2 = s2 / self.Yt if s2 >= 0 else abs(s2) / self.Yc
+                f12 = abs(s12) / self.S
+                fi = max(f1, f2, f12)
         elif criterion == 'tsai_hill':
             X = self.Xt if s1 >= 0 else self.Xc
             Y = self.Yt if s2 >= 0 else self.Yc
-            if any(v <= 0 for v in [X, Y, self.S]): return 0.0
-            return (s1/X)**2 - (s1*s2)/(X**2) + (s2/Y)**2 + (s12/self.S)**2
+            if any(v <= 0 for v in [X, Y, self.S]): fi = 0.0
+            else:
+                fi = (s1/X)**2 - (s1*s2)/(X**2) + (s2/Y)**2 + (s12/self.S)**2
         elif criterion == 'tsai_wu':
-            if any(v <= 0 for v in [self.Xt, self.Xc, self.Yt, self.Yc, self.S]): return 0.0
-            F1, F11 = 1/self.Xt - 1/self.Xc, 1/(self.Xt * self.Xc)
-            F2, F22 = 1/self.Yt - 1/self.Yc, 1/(self.Yt * self.Yc)
-            F66, F12 = 1/(self.S**2), -0.5 * np.sqrt(1/(self.Xt * self.Xc * self.Yt * self.Yc))
-            return F1*s1 + F11*s1**2 + F2*s2 + F22*s2**2 + F66*s12**2 + 2*F12*s1*s2
-        return 0.0
+            if any(v <= 0 for v in [self.Xt, self.Xc, self.Yt, self.Yc, self.S]): fi = 0.0
+            else:
+                F1, F11 = 1/self.Xt - 1/self.Xc, 1/(self.Xt * self.Xc)
+                F2, F22 = 1/self.Yt - 1/self.Yc, 1/(self.Yt * self.Yc)
+                F66, F12 = 1/(self.S**2), -0.5 * np.sqrt(1/(self.Xt * self.Xc * self.Yt * self.Yc))
+                fi = F1*s1 + F11*s1**2 + F2*s2 + F22*s2**2 + F66*s12**2 + 2*F12*s1*s2
+
+        # SF = 1 / FI
+        return 1.0 / fi if fi > 0 else np.inf
 
 
 class Laminate:
@@ -350,7 +358,8 @@ class Laminate:
         - Jones, R.M. (1999). Mechanics of Composite Materials, 2nd ed. §4.5
         - Reddy, J.N. (2004). Mechanics of Laminated Composite Plates, §4.2
         """
-        width = getattr(section, 'width', getattr(section, 'diameter', 1.0))
+        # Standardized robust width extraction using bounding box
+        width = section.z_right - section.z_left
 
         if self.beam_type == 'narrow':
             try:
@@ -382,7 +391,7 @@ class Laminate:
 
     def get_linear_density(self, section) -> float:
         """Calculate mass per unit length for the laminate."""
-        width = getattr(section, 'width', getattr(section, 'diameter', 1.0))
+        width = section.z_right - section.z_left
         return self.rho * width * self.total_thickness
 
     def __str__(self):

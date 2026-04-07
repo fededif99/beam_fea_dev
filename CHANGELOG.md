@@ -2,6 +2,16 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.18.0] - 2026-04-07
+
+- **API**: Standardized entire codebase on **Safety Factor (SF)** and **Margin of Safety (MoS)**; removed all remaining references to "Failure Index" (FI) for consistency.
+- **Feature**: Added `BeamSolver.verify_equilibrium()` and centralized analytical residual calculation in `ResultsEngine`, supporting all load types.
+- **Physics**: Upgraded `StressEngine` to perform true **through-thickness interpolation** (linear bending, parabolic shear) for 3D stress field extraction.
+- **Architecture**: Removed legacy `self.material` and `self.section` pointers from `BeamSolver`, enforcing `PropertySet` API usage.
+- **Robustness**: Standardized robust section width extraction (`z_right - z_left`) and added area-consistency warnings for non-rectangular composite sections.
+- **Report**: Enhanced `BeamReportGenerator` with centralized equilibrium verification and fixed SF/MoS reporting data mismatch.
+- **Validation**: Updated `_validate_model` to perform per-element slenderness ($L/h$) and stability checks.
+
 ## [v2.17.0] - 2026-04-06
 
 - **Refactor**: Re-architected `BeamSolver` into specialized engines: `AssemblyEngine`, `AnalysisEngine`, and `ResultsEngine`.
