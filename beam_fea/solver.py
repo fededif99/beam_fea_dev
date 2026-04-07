@@ -14,7 +14,7 @@ from .materials import Material
 from .cross_sections import SectionProperties
 from .properties import PropertySet
 from .boundary_conditions import BoundaryConditionSet
-from .loads import LoadCase
+from .loads import LoadCase, LoadCombination
 from .static_analysis import StaticAnalysis
 from .modal_analysis import ModalAnalysis
 from .visualizer import BeamVisualizer

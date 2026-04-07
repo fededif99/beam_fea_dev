@@ -28,8 +28,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        # Pre-install core dependencies to avoid build issues with dynamic versioning
-        pip install numpy scipy matplotlib pandas tabulate pytest flake8
+        # Pre-install build tools and core dependencies to avoid issues with dynamic versioning and build isolation
+        pip install setuptools wheel numpy scipy matplotlib pandas tabulate pytest flake8
         # Install the package in editable mode
         pip install --no-build-isolation -e .
         

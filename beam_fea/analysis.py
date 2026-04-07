@@ -5,8 +5,12 @@ Unified analysis engine for static, modal, and batch execution.
 """
 
 from enum import Enum, auto
-from typing import Dict, List, Optional, Union, Tuple
+from typing import Dict, List, Optional, Union, Tuple, TYPE_CHECKING
 import numpy as np
+
+if TYPE_CHECKING:
+    import pandas as pd
+    from .loads import LoadCase, LoadCombination
 
 class AnalysisType(Enum):
     STATIC = auto()
