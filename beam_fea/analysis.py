@@ -4,6 +4,7 @@ analysis.py
 Unified analysis engine for static, modal, and batch execution.
 """
 
+from __future__ import annotations
 from enum import Enum, auto
 from typing import Dict, List, Optional, Union, Tuple, TYPE_CHECKING
 import numpy as np
@@ -68,7 +69,7 @@ class AnalysisEngine:
         return displacements
 
     def _run_modal(self, bc_set, num_modes: Optional[int] = None, 
-                   load_case: Optional[Union['LoadCase', 'LoadCombination']] = None) -> Tuple[np.ndarray, np.ndarray]:
+                   load_case: Optional[Union[LoadCase, LoadCombination]] = None) -> Tuple[np.ndarray, np.ndarray]:
         """Execute modal analysis."""
         # 1. Ensure Matrices
         if self.solver.K_global is None:
@@ -97,7 +98,7 @@ class AnalysisEngine:
         return frequencies, mode_shapes
 
     def _run_batch(self, load_cases: List, bc_set, mode: str = 'light',
-                  failure_criterion: str = 'tsai_wu') -> 'pd.DataFrame':
+                  failure_criterion: str = 'tsai_wu') -> pd.DataFrame:
         """Execute batch static analysis across multiple load cases."""
         from .post_processing import ResultsEngine
         import copy

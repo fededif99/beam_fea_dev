@@ -72,7 +72,7 @@ class Ply:
         """Calculate the safety factor for the ply given local stresses."""
         s1, s2, s12 = sigma_local[0], sigma_local[1], sigma_local[2]
 
-        # Determine failure index (FI) first
+        # Determine normalized failure intensity first
         fi = 0.0
         if criterion == 'max_stress':
             if any(v <= 0 for v in [self.Xt, self.Xc, self.Yt, self.Yc, self.S]): fi = 0.0
@@ -95,7 +95,7 @@ class Ply:
                 F66, F12 = 1/(self.S**2), -0.5 * np.sqrt(1/(self.Xt * self.Xc * self.Yt * self.Yc))
                 fi = F1*s1 + F11*s1**2 + F2*s2 + F22*s2**2 + F66*s12**2 + 2*F12*s1*s2
 
-        # SF = 1 / FI
+        # Safety Factor is inversely proportional to failure intensity
         return 1.0 / fi if fi > 0 else np.inf
 
 

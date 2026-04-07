@@ -775,33 +775,54 @@ class ResultsEngine:
         peak_z = stresses['z'][max_vm_idx[1], max_vm_idx[2]]
 
         # 4. Critical Safety Factor (SF) & Margin of Safety (MoS)
-        # We need to find the worst case across all materials/plies
-        min_sf = float('inf')
-        worst_mos = float('inf')
-
-        # For Laminates, we use the detailed ply results
         from .composites import Laminate
-        sf_key = f'min_sf_{failure_criterion}'
-        if failure_criterion == 'max_stress': sf_key = 'min_sf_max'
+        from .failure_criteria import (
+            VonMisesCriterion, TrescaCriterion, MaxPrincipalStressCriterion,
+            MaximumStressCriterion, TsaiHillCriterion, TsaiWuCriterion, MaximumStrainCriterion
+        )
+
+        # Mapping from string criterion to class for Isotropic evaluation
+        ISO_CRITERIA = {
+            'von_mises': VonMisesCriterion,
+            'tresca': TrescaCriterion,
+            'max_principal': MaxPrincipalStressCriterion
+        }
+
+        # Resolve yield strength for the critical element
+        # (Using the station corresponding to peak von mises)
+        # For simplicity in this summary, we check material 0 as default if station id lookup is complex
+        mat = solver.properties.get_material(0)
+
+        final_sf = float('inf')
 
         if hasattr(solver, 'laminate_results'):
+            # Workflow A: Composite/Laminate Beam
+            # Return SF based strictly on the user-selected failure_criterion
+            sf_key = f'min_sf_{failure_criterion}'
+            if failure_criterion == 'max_stress': sf_key = 'min_sf_max'
+
             for eid, data in solver.laminate_results.items():
                 for ply in data['ply_data']:
                     sf_ply = np.min(ply.get(sf_key, float('inf')))
-                    if sf_ply < min_sf:
-                        min_sf = sf_ply
+                    if sf_ply < final_sf:
+                        final_sf = sf_ply
+        else:
+            # Workflow B: Isotropic (Metal) Beam
+            # Evaluate the user-selected criterion for the peak stress station
+            if failure_criterion in ISO_CRITERIA:
+                crit_cls = ISO_CRITERIA[failure_criterion]
+                # principal strengths fallback
+                yield_s = getattr(mat, 'yield_strength', 250.0) or 250.0
+                crit = crit_cls(yield_strength=yield_s)
+                res = crit.evaluate(sigma_x=vm_peak) # simplified evaluate for peak VM
+                final_sf = float(res['SF'])
+            else:
+                # Default to Von Mises if a composite criterion is requested for a metal beam
+                yield_s = getattr(mat, 'yield_strength', 250.0) or 250.0
+                crit = VonMisesCriterion(yield_strength=yield_s)
+                res = crit.evaluate(sigma_x=vm_peak)
+                final_sf = float(res['SF'])
 
-        # Also check Isotropic (Metal) components using Von Mises as a baseline
-        from .failure_criteria import VonMisesCriterion
-        # Evaluate peak VM for the whole beam as a secondary check
-        mat0 = solver.properties.get_material(0)
-        yield_s = getattr(mat0, 'yield_strength', 250.0) or 250.0
-        iso_crit = VonMisesCriterion(yield_strength=yield_s)
-        iso_res = iso_crit.evaluate(sigma_x=vm_peak)
-
-        # Final SF is the minimum of all checked criteria
-        # (Usually either ply-based or VM-based)
-        final_sf = min(float(min_sf), float(iso_res['SF']))
         worst_mos = float(final_sf - 1.0)
         
         result = {
