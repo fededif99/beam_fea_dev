@@ -40,21 +40,29 @@ class BatchProcessor:
 
         load_cases = {}
 
-        for _, row in df.iterrows():
-            name = str(row['case_name'])
+        for row in df.itertuples(index=False):
+            # Fast dictionary access from namedtuple
+            row_dict = row._asdict()
+            name = str(row_dict['case_name'])
             if name not in load_cases:
                 load_cases[name] = LoadCase(name)
 
             lc = load_cases[name]
-            target_id = row['target_id']
-            target_type = str(row['target_type']).lower()
-            ltype = str(row['load_type']).lower()
+            target_id = row_dict['target_id']
+            target_type = str(row_dict['target_type']).lower()
+            ltype = str(row_dict['load_type']).lower()
 
-            v1 = row.get('v1', 0.0)
-            v2 = row.get('v2', 0.0)
-            v3 = row.get('v3', 0.0)
-            v4 = row.get('v4', 0.0)
-            v5 = row.get('v5', 0.0)
+            v1 = row_dict.get('v1', 0.0)
+            v2 = row_dict.get('v2', 0.0)
+            v3 = row_dict.get('v3', 0.0)
+            v4 = row_dict.get('v4', 0.0)
+            v5 = row_dict.get('v5', 0.0)
+
+            # Support target_type == 'range' explicitly
+            def _parse_elements(tid):
+                if ',' in str(tid):
+                    return [int(e) for e in str(tid).split(',')]
+                return int(tid)
 
             if ltype == 'point':
                 if target_type == 'node':
@@ -80,11 +88,19 @@ class BatchProcessor:
                     lc.moment(node=int(target_id), mz=float(v1))
                 else:
                     lc.moment(x=float(target_id), mz=float(v1))
+            elif ltype in ['mass', 'lumped_mass']:
+                m = float(v1)
+                Izz = float(v2)
+                # v3 parameter acts as apply_gravity flag (0/1 or False/True)
+                apply_gravity = str(v3).lower() in ['true', '1', '1.0', 'yes']
+                if target_type == 'node':
+                    lc.lumped_mass(node=int(target_id), m=m, Izz=Izz, apply_gravity=apply_gravity)
+                else:
+                    lc.lumped_mass(x=float(target_id), m=m, Izz=Izz, apply_gravity=apply_gravity)
             elif ltype == 'udl':
                 if target_type == 'element':
-                    elems = [int(e) for e in str(target_id).split(',')] if ',' in str(target_id) else int(target_id)
-                    lc.distributed_load(element=elems, distribution='uniform', wy=float(v1), wx=float(v2))
-                else:
+                    lc.distributed_load(element=_parse_elements(target_id), distribution='uniform', wy=float(v1), wx=float(v2))
+                else:  # assumes 'range' or equivalent
                     lc.distributed_load(x_start=float(v1), x_end=float(v2), distribution='uniform', wy=float(v3), wx=float(v4))
             elif ltype == 'trap':
                 if target_type == 'element':
@@ -118,15 +134,16 @@ class BatchProcessor:
         df = pd.read_csv(filepath)
         load_cases = []
 
-        for _, row in df.iterrows():
+        for row in df.itertuples(index=False):
+            row_dict = row._asdict()
             # Create a deep copy of the template
-            case_name = str(row.get('case_name', f"Case_{len(load_cases)+1}"))
+            case_name = str(row_dict.get('case_name', f"Case_{len(load_cases)+1}"))
             lc = copy.deepcopy(template_lc)
             lc.name = case_name
 
             # Substitute placeholders
             for load in lc.loads:
-                BatchProcessor._substitute_placeholders(load, row)
+                BatchProcessor._substitute_placeholders(load, row_dict)
 
             unresolved = BatchProcessor._get_unresolved_placeholders(lc)
             if unresolved:
@@ -137,28 +154,34 @@ class BatchProcessor:
         return load_cases
 
     @staticmethod
-    def _substitute_placeholders(load: Any, parameters: pd.Series):
-        """Recursively substitute string placeholders in a Load object."""
-        for attr in ['fx', 'fy', 'mz', 'wy', 'wx', 'wy1', 'wy2', 'wx1', 'wx2', 'w_peak',
-                      'wy_start', 'wy_end', 'wx_start', 'wx_end']:
-            if hasattr(load, attr):
-                val = getattr(load, attr)
-                if isinstance(val, str):
-                    if val in parameters:
-                        setattr(load, attr, float(parameters[val]))
-                    else:
-                        # Placeholder not found in CSV
-                        pass
+    def _substitute_placeholders(load: Any, parameters: Dict[str, Any]):
+        """Recursively substitute string placeholders in a Load object dynamically."""
+        for attr, val in vars(load).items():
+            if isinstance(val, str) and val in parameters:
+                new_val = parameters[val]
+                
+                # Check for specific boolean parameters
+                if attr in ['apply_gravity']:
+                    setattr(load, attr, str(new_val).lower() in ['true', '1', '1.0', 'yes'])
+                # Check for string parameters
+                elif attr in ['peak_loc', 'distribution']:
+                    setattr(load, attr, str(new_val))
+                else:
+                    # Float fallback for standard magnitude properties
+                    try:
+                        setattr(load, attr, float(new_val))
+                    except ValueError:
+                        setattr(load, attr, new_val)
 
     @staticmethod
     def _get_unresolved_placeholders(load_case: LoadCase) -> List[str]:
-        """Find any remaining string placeholders in a LoadCase."""
+        """Find any remaining string placeholders dynamically in a LoadCase."""
         unresolved = []
         for load in load_case.loads:
-            for attr in ['fx', 'fy', 'mz', 'wy', 'wx', 'wy1', 'wy2', 'wx1', 'wx2', 'w_peak',
-                          'wy_start', 'wy_end', 'wx_start', 'wx_end']:
-                if hasattr(load, attr):
-                    val = getattr(load, attr)
-                    if isinstance(val, str):
-                        unresolved.append(val)
+            for attr, val in vars(load).items():
+                # Avoid counting inherently string attributes as unresolved placeholders
+                if attr in ['peak_loc', 'distribution']:
+                    continue
+                if isinstance(val, str):
+                    unresolved.append(val)
         return unresolved
