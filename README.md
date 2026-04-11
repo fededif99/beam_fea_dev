@@ -20,13 +20,11 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.18.0 *(2026-04-07)*
+### Latest Version: v2.19.0 *(2026-04-11)*
 
-- **API**: Standardized on **Safety Factor (SF)** and **Margin of Safety (MoS)** across all modules; removed deprecated Failure Index (FI).
-- **Physics**: Implemented high-fidelity **through-thickness stress interpolation** (linear for bending, quadratic for shear) in 3D visualization grids.
-- **Validation**: Added `BeamSolver.verify_equilibrium()` for analytical residual checks supporting all load types (Uniform, Linear, Triangular, Custom).
-- **Architecture**: Fully removed legacy `self.material` and `self.section` solver pointers; shifted to element-aware validation across all engines.
-- **Robustness**: Enhanced width extraction and modeling consistency checks for non-rectangular composite sections.
+- **Feature**: Added native support for `LumpedMass` inside standard string-based batch configuration pipelines.
+- **Optimization**: Modernized loop iterations in `BatchProcessor` to significantly improve CSV parsing performance over massive parametric sweeps.
+- **Refactor**: Replaced hardcoded placeholder substitution in `batch.py` with dynamic generic inspection, universally enabling `LoadCase` parametrization for any property.
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).

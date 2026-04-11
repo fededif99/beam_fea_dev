@@ -2,6 +2,12 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.19.0] - 2026-04-11
+
+- **Feature**: Added native support for `LumpedMass` (via `mass` or `lumped_mass` identifiers) inside standard string-based structural batch configuration pipelines.
+- **Optimization**: Modernized loop iterations in `BatchProcessor` reducing memory overhead via `itertuples` and NamedTuple dictionary conversion, significantly improving CSV parsing performance over massive parametric sweeps.
+- **Refactor**: Replaced hardcoded 14-item property placeholder substitution in `load_from_table` with generic dynamic Python reflection (`vars(load)`), universally enabling `LoadCase` parametrization for any textual, numeric, or boolean property.
+
 ## [v2.18.0] - 2026-04-07
 
 - **API**: Standardized entire codebase on **Safety Factor (SF)** and **Margin of Safety (MoS)**; removed all remaining references to "Failure Index" (FI) for consistency.
