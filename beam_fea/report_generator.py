@@ -14,15 +14,13 @@ Generates markdown reports with linked visualizations including:
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.patches import FancyArrowPatch
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Union
-import os
+from typing import Union
 import pandas as pd
 from .loads import PointLoad, ConcentratedMoment, DistributedLoad, LumpedMass
 from .boundary_conditions import PinnedSupport, RollerSupport, FixedSupport
-from .plot_style import PlotStyle, smart_units, DEFAULT_STYLE
+from .plot_style import smart_units, DEFAULT_STYLE
 
 
 class BatchReportGenerator:
@@ -248,13 +246,13 @@ class BeamReportGenerator:
 
         if fy < 0:   # downward load (text goes UP above the tail)
             ax.annotate('', xy=(x, y), xytext=(x, y + length),
-                        arrowprops=dict(arrowstyle=f'->', color=colour, lw=lw,
+                        arrowprops=dict(arrowstyle='->', color=colour, lw=lw,
                                         mutation_scale=mut))
             ax.text(x + x_offset, y + length + y_shift + arrow_scale * 0.05, label_str, color=colour,
                     fontsize=fs, weight='bold', va='center', ha=ha_val)
         else:         # upward load/reaction (text goes DOWN below the tail)
             ax.annotate('', xy=(x, y), xytext=(x, y - length),
-                        arrowprops=dict(arrowstyle=f'->', color=colour, lw=lw,
+                        arrowprops=dict(arrowstyle='->', color=colour, lw=lw,
                                         mutation_scale=mut))
             ax.text(x + x_offset, y - length - y_shift - arrow_scale * 0.15, label_str, color=colour,
                     fontsize=fs, weight='bold', va='center', ha=ha_val)
@@ -324,7 +322,6 @@ class BeamReportGenerator:
         arrow_tips = np.zeros(n_arrows)
         arrow_bases = np.zeros(n_arrows)
 
-        hw = comb_h * 0.04
         for i, (xi, hi) in enumerate(zip(xs, heights)):
             eff_h = hi if hi > comb_h * 0.05 else comb_h * 0.05
             tip_y = 0.0
@@ -1255,7 +1252,7 @@ class BeamReportGenerator:
                 master_ply_data.append(d)
 
             ply_df = pd.DataFrame(master_ply_data)
-            ply_stress_table = f"\n### Ply-by-Ply Maximum Stresses\n\n" + ply_df.to_markdown(index=False)
+            ply_stress_table = "\n### Ply-by-Ply Maximum Stresses\n\n" + ply_df.to_markdown(index=False)
             
             beam_assump = "Narrow Beam (sigma_y=0)" if self.material.beam_type == 'narrow' else "Wide Beam (epsilon_y=0)"
             ply_stress_table += f"\n\n*Note: All stress values reported in MPa. Safety Factor (SF) calculated using **{crit_label}** criterion. Values represent absolute peaks across all stations and ply thickness (Top/Mid/Bot). Model assumes: **{beam_assump}**.*"

@@ -7,7 +7,7 @@ Main FEA orchestrator that coordinates specialized engines.
 import numpy as np
 import warnings
 import pandas as pd
-from typing import Optional, Union, Tuple, List
+from typing import Optional, Union, List
 
 from .mesh import Mesh
 from .materials import Material
@@ -46,7 +46,7 @@ class BeamSolver:
                 if isinstance(ps, PropertySet):
                     self.properties._assignments.extend(ps._assignments)
                 else:
-                    raise TypeError(f"List of properties must contain only PropertySet objects")
+                    raise TypeError("List of properties must contain only PropertySet objects")
         elif isinstance(material, PropertySet):
             self.properties = material
         else:

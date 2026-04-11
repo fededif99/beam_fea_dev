@@ -7,7 +7,7 @@ Internal force and stress recovery engines.
 import numpy as np
 import pandas as pd
 from abc import ABC, abstractmethod
-from typing import Tuple, List, Union, Dict, Optional
+from typing import Tuple, List, Union, Dict
 
 class ForceRecoveryStrategy(ABC):
     """Abstract base class for internal force recovery strategies."""
@@ -178,7 +178,7 @@ class InternalForceEngine:
             node1, node2 = elements[eid]
             p1, p2 = coords[node1], coords[node2]
             dx, dy = p2[0] - p1[0], p2[1] - p1[1]
-            x1, L = p1[0], np.sqrt(dx**2 + dy**2)
+            L = np.sqrt(dx**2 + dy**2)
             angle = np.arctan2(dy, dx)
             T = get_rotation_matrix(angle)
 
@@ -188,7 +188,7 @@ class InternalForceEngine:
             u_local = T @ solver.displacements[dof_indices]
 
             # Use path coordinates for xi instead of purely X to support angled beams
-            s_start = eval_plan['path_positions'][indices[0]] # Approximate start of stations
+            # s_start = eval_plan['path_positions'][indices[0]] # Approximate start of stations
             # Actually better to use the mapped global coords from xyz
             xi = np.clip((path_positions[indices] - path_positions[indices[0]] + (coords[node1, 0] - coords[node1, 0])) / L, 0, 1)
             # Re-derive xi correctly from xyz positions
@@ -307,7 +307,7 @@ class StressEngine:
 
         profile_cache = {}
 
-        from .element_matrices import get_rotation_matrix
+
         coords = solver.mesh.nodes
         elements = solver.mesh.elements
 
@@ -316,7 +316,7 @@ class StressEngine:
             p1, p2 = coords[node1], coords[node2]
             dx, dy = p2[0] - p1[0], p2[1] - p1[1]
             angle = np.arctan2(dy, dx)
-            T = get_rotation_matrix(angle)
+            # T = get_rotation_matrix(angle)
 
             mat = solver.properties.get_material(eid)
             sec = solver.properties.get_section(eid)
@@ -698,7 +698,7 @@ class ResultsEngine:
             raise ValueError("Must run static analysis before verifying equilibrium.")
 
         mesh = solver.mesh
-        num_nodes = mesh.num_nodes
+        # num_nodes = mesh.num_nodes
         coords = mesh.nodes
 
         # 1. Total applied forces (from global force vector used in last analysis)
@@ -786,10 +786,8 @@ class ResultsEngine:
         peak_z = stresses['z'][max_vm_idx[1], max_vm_idx[2]]
 
         # 4. Critical Safety Factor (SF) & Margin of Safety (MoS)
-        from .composites import Laminate
         from .failure_criteria import (
-            VonMisesCriterion, TrescaCriterion, MaxPrincipalStressCriterion,
-            MaximumStressCriterion, TsaiHillCriterion, TsaiWuCriterion, MaximumStrainCriterion
+            VonMisesCriterion, TrescaCriterion, MaxPrincipalStressCriterion
         )
 
         # Mapping from string criterion to class for Isotropic evaluation
