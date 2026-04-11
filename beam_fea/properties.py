@@ -123,15 +123,28 @@ class PropertySet:
             self.GA_s[i] = stiff['GA_s'] * sec.shear_factor
             self.rho_lin[i] = mat.get_linear_density(sec)
             
-            # Cross-check Laminate thickness vs Section height
+            # Cross-check Laminate thickness vs Section height/width
             from .composites import Laminate
             if isinstance(mat, Laminate):
                 h_sec = sec.y_top - sec.y_bottom
+                w_sec = sec.z_right - sec.z_left
+
+                # Check height
                 if not np.isclose(mat.total_thickness, h_sec, rtol=1e-3):
                     import warnings
                     warnings.warn(
                         f"Element {i}: Laminate '{mat.name}' thickness ({mat.total_thickness:.2f} mm) "
                         f"mismatches Section height ({h_sec:.2f} mm). This may yield inconsistent results."
+                    )
+
+                # Check area consistency (width * height vs actual A)
+                # Significant deviation suggests non-rectangular geometry where 1D CLT is less accurate.
+                theoretical_area = w_sec * h_sec
+                if not np.isclose(theoretical_area, sec.A, rtol=0.05):
+                    import warnings
+                    warnings.warn(
+                        f"Element {i}: Section '{sec.name}' is non-rectangular (Area deviation > 5%). "
+                        f"Laminate calculations using robust width ({w_sec:.2f} mm) may be approximate."
                     )
 
         self._is_resolved = True

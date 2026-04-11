@@ -39,17 +39,24 @@ class BatchReportGenerator:
 
         # Calculate Envelope
         # For each numeric column, find the absolute maximum and its associated row values
-        numeric_cols = ['max_deflection', 'max_shear', 'max_moment', 'max_von_mises']
+        numeric_cols = ['max_deflection', 'max_shear', 'max_moment', 'max_von_mises', 'sf']
         envelope_data = {'case_name': '**ENVELOPE (ABS MAX)**'}
 
         for col in numeric_cols:
             if col in self.summary.columns:
-                abs_max_idx = self.summary[col].abs().idxmax()
-                envelope_data[col] = self.summary.loc[abs_max_idx, col]
+                if col == 'sf':
+                    # For Safety Factors, the envelope is the MINIMUM (most critical)
+                    crit_idx = self.summary[col].idxmin()
+                else:
+                    # For loads and deflections, it is the absolute maximum
+                    crit_idx = self.summary[col].abs().idxmax()
+
+                envelope_data[col] = self.summary.loc[crit_idx, col]
                 # Try to copy associated location/ply if they exist
                 for suffix in ['_x', '_y', '_z', '_ply']:
                     loc_col = col.replace('max_', 'max_vm_') if 'von_mises' in col else col + suffix
                     if 'von_mises' in col and suffix == '_x': loc_col = 'max_vm_x'
+                    if col == 'sf': loc_col = 'mos' # Special case for SF
 
                     # Correction for my naming convention in solver.py
                     if col == 'max_deflection' and suffix == '_x': loc_col = 'max_deflection_x'
@@ -57,7 +64,7 @@ class BatchReportGenerator:
                     if col == 'max_moment' and suffix == '_x': loc_col = 'max_moment_x'
 
                     if loc_col in self.summary.columns:
-                        envelope_data[loc_col] = self.summary.loc[abs_max_idx, loc_col]
+                        envelope_data[loc_col] = self.summary.loc[crit_idx, loc_col]
 
         # Append envelope to a copy of summary for display
         display_df = pd.concat([self.summary, pd.DataFrame([envelope_data])], ignore_index=True)
@@ -85,7 +92,7 @@ class BeamReportGenerator:
     Generate professional markdown reports for beam analysis results.
     """
     
-    def __init__(self, solver, mesh, material, section, load_case, bc_set,
+    def __init__(self, solver, mesh, load_case, bc_set,
                  displacements, reactions, failure_criterion: str = 'tsai_wu'):
         """
         Initialize report generator.
@@ -96,10 +103,6 @@ class BeamReportGenerator:
             Beam solver instance
         mesh : Mesh
             Finite element mesh
-        material : Material
-            Material properties
-        section : SectionProperties
-            Cross-section properties
         load_case : LoadCase
             Applied load case
         bc_set : BoundaryConditionSet
@@ -111,8 +114,8 @@ class BeamReportGenerator:
         """
         self.solver = solver
         self.mesh = mesh
-        self.material = material
-        self.section = section
+        self.material = solver.properties.default_material
+        self.section = solver.properties.default_section
         self.load_case = load_case
         self.bc_set = bc_set
         self.displacements = displacements
@@ -1182,81 +1185,11 @@ class BeamReportGenerator:
         self.plot_moment_diagram(str(images_dir / "moment_diagram.png"))
         self.plot_stress_distributions(str(images_dir / "stress_distribution.png"))
 
-        # Equilibrium calculations
-        total_fy_reaction = 0.0
-        total_fx_reaction = 0.0
-        total_mz_res = 0.0
-        
-        # 1. Reaction contributions
-        for bc in self.bc_set.conditions:
-            node_id = bc.node
-            if isinstance(bc, (PinnedSupport, RollerSupport, FixedSupport)):
-                fx = self.reactions[3*node_id]
-                fy = self.reactions[3*node_id + 1]
-                mz = self.reactions[3*node_id + 2]
-                
-                total_fx_reaction += fx
-                total_fy_reaction += fy
-                
-                n_x = self.mesh.nodes[node_id, 0]
-                n_y = self.mesh.nodes[node_id, 1] if self.mesh.nodes.shape[1] > 1 else 0.0
-                total_mz_res += mz + (fy * n_x) - (fx * n_y)
-                
-        # 2. Load contributions
-        total_fy_load = 0.0
-        total_fx_load = 0.0
-        if self.load_case:
-            for load in self.load_case.loads:
-                fx_l = getattr(load, 'fx', 0.0)
-                fy_l = getattr(load, 'fy', 0.0)
-                mz_l = getattr(load, 'mz', 0.0)
-                
-                total_fx_load += fx_l
-                total_fy_load += fy_l
-                
-                if isinstance(load, (PointLoad, ConcentratedMoment)):
-                    if load.node is not None:
-                        lx = self.mesh.nodes[load.node, 0]
-                        ly = self.mesh.nodes[load.node, 1] if self.mesh.nodes.shape[1] > 1 else 0.0
-                    else:
-                        lx, ly = load.x, 0.0
-                    total_mz_res += mz_l + (fy_l * lx) - (fx_l * ly)
-                    
-                elif isinstance(load, DistributedLoad) and getattr(load, 'distribution', 'uniform').lower() == 'uniform':
-                    if hasattr(load, 'element') and load.element is not None:
-                        elements = [load.element] if isinstance(load.element, int) else load.element
-                        for elem_id in elements:
-                            node1, node2 = self.mesh.elements[elem_id]
-                            n1_x, n2_x = self.mesh.nodes[node1, 0], self.mesh.nodes[node2, 0]
-                            n1_y = self.mesh.nodes[node1, 1] if self.mesh.nodes.shape[1] > 1 else 0.0
-                            n2_y = self.mesh.nodes[node2, 1] if self.mesh.nodes.shape[1] > 1 else 0.0
-                            
-                            # Use integration over the element
-                            # For a linear segment, moment about origin is Int(w_vec x r_vec ds)
-                            # Vector w = (wx, wy), Vector r = (x, y)
-                            # dm = (wy*x - wx*y) ds
-                            # Since w is constant and r is linear:
-                            # M_el = wy * x_avg * L_el - wx * y_avg * L_el
-                            L_el = np.linalg.norm((n2_x - n1_x, n2_y - n1_y))
-                            x_avg = (n1_x + n2_x) / 2
-                            y_avg = (n1_y + n2_y) / 2
-                            
-                            # Note: wy in UDL is usually transverse. 
-                            # Need to be careful if wy/wx are in global or local.
-                            # Standard FEA assumes global for these summaries.
-                            total_mz_res += (fy_l * L_el) * x_avg - (fx_l * L_el) * y_avg
-                            # Note: total_fy_load is already handled by loop start for simple UDL? 
-                            # No, the loop start just gets getattr. UDL usually has wy.
-                            # We should probably sum the total forces here.
-                    elif hasattr(load, 'x_start') and load.x_start is not None:
-                        L_el = abs(load.x_end - load.x_start)
-                        x_avg = (load.x_start + load.x_end) / 2
-                        total_mz_res += (fy_l * L_el) * x_avg
-                        # Assuming y=0 for x_start style loads
-
-        residual_fx = abs(total_fx_reaction + total_fx_load)
-        residual_fy = abs(total_fy_reaction + total_fy_load)
-        residual_mz = abs(total_mz_res)
+        # Equilibrium calculations (Centralized)
+        eq = self.solver.verify_equilibrium()
+        residual_fx = eq['residual_fx']
+        residual_fy = eq['residual_fy']
+        residual_mz = eq['residual_mz']
 
         # Deflection / Auto-scale
         v_displacements = self.displacements[1::3]
@@ -1295,8 +1228,8 @@ class BeamReportGenerator:
             # Aggregate peaks for each ply across ALL elements and ALL stations
             master_ply_data = []
             
-            fi_key = f'peak_fi_{self.failure_criterion}'
-            if self.failure_criterion == 'max_stress': fi_key = 'peak_fi_max'
+            sf_key = f'min_sf_{self.failure_criterion}'
+            if self.failure_criterion == 'max_stress': sf_key = 'min_sf_max'
 
             # Group by ply index
             ply_indices = sorted(next(iter(self.solver.laminate_results.values()))['ply_data'], key=lambda x: x['index'])
@@ -1305,7 +1238,7 @@ class BeamReportGenerator:
                 d = {
                     'Ply': pid + 1, 'Name': p_meta['name'], 'Angle': f"{p_meta['angle']}°",
                     'Max σ1': 0.0, 'Max σ2': 0.0, 'Max τ12': 0.0, 'Max τxz': 0.0,
-                    'Max σx': 0.0, 'Max τxy': 0.0, f'{crit_label} Index': 0.0
+                    'Max σx': 0.0, 'Max τxy': 0.0, f'Min {crit_label} SF': float('inf')
                 }
 
                 for eid, results in self.solver.laminate_results.items():
@@ -1317,7 +1250,7 @@ class BeamReportGenerator:
                     d['Max τxz'] = max(d['Max τxz'], np.max(ply.get('peak_tau_xz', 0.0)))
                     d['Max σx'] = max(d['Max σx'], np.max(ply['peak_sigma_x']))
                     d['Max τxy'] = max(d['Max τxy'], np.max(ply['peak_tau_xy']))
-                    d[f'{crit_label} Index'] = max(d[f'{crit_label} Index'], np.max(ply.get(fi_key, 0.0)))
+                    d[f'Min {crit_label} SF'] = min(d[f'Min {crit_label} SF'], np.min(ply.get(sf_key, float('inf'))))
 
                 master_ply_data.append(d)
 
@@ -1325,7 +1258,7 @@ class BeamReportGenerator:
             ply_stress_table = f"\n### Ply-by-Ply Maximum Stresses\n\n" + ply_df.to_markdown(index=False)
             
             beam_assump = "Narrow Beam (sigma_y=0)" if self.material.beam_type == 'narrow' else "Wide Beam (epsilon_y=0)"
-            ply_stress_table += f"\n\n*Note: All stress values reported in MPa. Failure index calculated using **{crit_label}** criterion. Values represent absolute peaks across all stations and ply thickness (Top/Mid/Bot). Model assumes: **{beam_assump}**.*"
+            ply_stress_table += f"\n\n*Note: All stress values reported in MPa. Safety Factor (SF) calculated using **{crit_label}** criterion. Values represent absolute peaks across all stations and ply thickness (Top/Mid/Bot). Model assumes: **{beam_assump}**.*"
 
         stress_summary_df = pd.DataFrame([
             ["von Mises (Peak)", f"{max_vm:.2f}", f"({vm_x:.1f}, {vm_y:.1f}, {vm_z:.1f})", "MPa"],

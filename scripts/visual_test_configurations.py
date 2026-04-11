@@ -225,8 +225,8 @@ def config_8():
     section = l_section(leg_vertical=80, leg_horizontal=80, thickness=8)
 
     lc = LoadCase("Trapezoidal UDL")
-    lc.trapezoidal_load(x_start=0.0, x_end=L,
-                        wy1=-0.5, wy2=-3.0)    # 0.5→3 N/mm tapered
+    lc.distributed_load(x_start=0.0, x_end=L, distribution='linear',
+                        wy_start=-0.5, wy_end=-3.0)    # 0.5→3 N/mm tapered
 
     bc = BoundaryConditionSet("Pin–Pin trapezoidal")
     bc.pinned_support(node=0)

@@ -14,7 +14,7 @@ from .materials import Material
 from .cross_sections import SectionProperties
 from .properties import PropertySet
 from .boundary_conditions import BoundaryConditionSet
-from .loads import LoadCase
+from .loads import LoadCase, LoadCombination
 from .static_analysis import StaticAnalysis
 from .modal_analysis import ModalAnalysis
 from .visualizer import BeamVisualizer
@@ -56,10 +56,6 @@ class BeamSolver:
         if self.mesh and self.mesh.num_elements > 0:
             self.properties.resolve(self.mesh.num_elements)
 
-        # Legacy pointers
-        self.material = self.properties.default_material
-        self.section = self.properties.default_section
-
         # System matrices
         self.K_global = None
         self.M_global = None
@@ -99,14 +95,15 @@ class BeamSolver:
         if self.mesh.num_elements == 0:
             raise ValueError("Mesh has no elements.")
 
-        if self.material is None:
-            raise ValueError("No material assigned to BeamSolver.")
-        if self.section is None:
-            raise ValueError("No cross-section properties assigned to BeamSolver.")
+        # 1. Property Coverage Validation
+        # BeamSolver already calls self.properties.resolve() in __init__ which handles this
+        if not self.properties._is_resolved:
+             self.properties.resolve(self.mesh.num_elements)
+
         if bc_set is None:
             raise ValueError("No boundary conditions mapping (bc_set) provided for analysis.")
 
-        # Stability Checks
+        # 2. Stability Checks
         constrained_dofs = bc_set.get_all_constrained_dofs()
         if not constrained_dofs and not bc_set.spring_supports:
             raise ValueError("No boundary conditions or spring supports defined. The structure is unstable.")
@@ -120,21 +117,36 @@ class BeamSolver:
         if not has_y_const:
             raise ValueError("No Y-direction constraints found. The beam is unstable in the transverse direction.")
 
-        # Slenderness Ratio Check (L/h)
-        if self.mesh.num_nodes > 0:
-            coords = self.mesh.nodes
-            L_total = np.max(coords[:, 0]) - np.min(coords[:, 0])
-            
+        # 3. Slenderness Ratio Check (L/h) - Per Element Validation
+        # Collect all flagged elements first, then emit a single batched warning to avoid log noise.
+        coords = self.mesh.nodes
+        elements = self.mesh.elements
+        low_slenderness = []  # list of (element_id, slenderness)
+
+        for i in range(self.mesh.num_elements):
+            node1, node2 = elements[i]
+            L_el = np.linalg.norm(coords[node2] - coords[node1])
+            sec = self.properties.get_section(i)
+
             # Section height (depth)
-            if hasattr(self.section, 'y_top') and self.section.y_top is not None:
-                h = self.section.y_top - self.section.y_bottom
+            if hasattr(sec, 'y_top') and sec.y_top is not None:
+                h = sec.y_top - sec.y_bottom
             else:
-                h = np.sqrt(self.section.A) 
-                
+                h = np.sqrt(sec.A)
+
             if h > 0:
-                slenderness = L_total / h
+                slenderness = L_el / h
                 if slenderness < 10 and self.element_type == 'euler':
-                    warnings.warn(f"Slenderness ratio L/h = {slenderness:.1f} is low (< 10). Euler-Bernoulli elements may under-predict deflections.")
+                    low_slenderness.append((i, slenderness))
+
+        if low_slenderness:
+            elem_summary = ", ".join(f"el[{i}] L/h={s:.1f}" for i, s in low_slenderness)
+            warnings.warn(
+                f"{len(low_slenderness)} element(s) have low slenderness ratio (L/h < 10). "
+                f"Euler-Bernoulli elements may under-predict deflections for short/deep beams. "
+                f"Affected: [{elem_summary}]. Consider using element_type='timoshenko'.",
+                stacklevel=2
+            )
 
         # Coordinates Bounds Check
         max_x = np.max(self.mesh.nodes[:, 0])
@@ -173,17 +185,27 @@ class BeamSolver:
         return self.analysis_engine.run(AnalysisType.MODAL, bc_set=bc_set, 
                                        num_modes=num_modes, load_case=load_case)
 
-    def solve_batch(self, load_cases: List[LoadCase], bc_set: BoundaryConditionSet, mode: str = 'light'):
+    def solve_batch(self, load_cases: List[LoadCase], bc_set: BoundaryConditionSet,
+                    mode: str = 'light', failure_criterion: str = 'tsai_wu'):
         """Public wrapper for batch static analysis."""
         if not isinstance(load_cases, list) or len(load_cases) == 0:
             raise ValueError("load_cases must be a non-empty list of LoadCase objects.")
         if not all(isinstance(lc, LoadCase) for lc in load_cases):
             raise TypeError("All items in load_cases must be LoadCase objects.")
         return self.analysis_engine.run(AnalysisType.BATCH, load_cases=load_cases, 
-                                       bc_set=bc_set, mode=mode)
+                                       bc_set=bc_set, mode=mode,
+                                       failure_criterion=failure_criterion)
 
     # --- Result Extraction Wrappers ---
     
+    def verify_equilibrium(self) -> dict:
+        """
+        Verify analytical equilibrium of the last static solution.
+        Returns residuals for forces and moments.
+        """
+        from .post_processing import ResultsEngine
+        return ResultsEngine.verify_equilibrium(self)
+
     def calculate_internal_forces(self, num_points: int = None, strategy: str = None) -> dict:
         from .post_processing import InternalForceEngine
         strat = strategy or self.recovery_strategy
@@ -236,7 +258,7 @@ class BeamSolver:
             raise ValueError("Must run analysis before generating report.")
         
         gen = BeamReportGenerator(
-            solver=self, mesh=self.mesh, material=self.material, section=self.section,
+            solver=self, mesh=self.mesh,
             load_case=self.last_load_case, bc_set=self.last_bc_set,
             displacements=self.displacements, reactions=self.reactions,
             failure_criterion=failure_criterion
