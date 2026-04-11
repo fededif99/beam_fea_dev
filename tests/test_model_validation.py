@@ -62,7 +62,7 @@ def test_slenderness_warning():
     bc = BoundaryConditionSet()
     bc.fixed_support(0)
     
-    with pytest.warns(UserWarning, match="Slenderness ratio.*is low"):
+    with pytest.warns(UserWarning, match=r"element\(s\) have low slenderness ratio"):
         solver.solve_static(LoadCase(), bc)
 
 def test_axial_stability_warning():

@@ -118,25 +118,35 @@ class BeamSolver:
             raise ValueError("No Y-direction constraints found. The beam is unstable in the transverse direction.")
 
         # 3. Slenderness Ratio Check (L/h) - Per Element Validation
+        # Collect all flagged elements first, then emit a single batched warning to avoid log noise.
         coords = self.mesh.nodes
         elements = self.mesh.elements
+        low_slenderness = []  # list of (element_id, slenderness)
 
         for i in range(self.mesh.num_elements):
             node1, node2 = elements[i]
             L_el = np.linalg.norm(coords[node2] - coords[node1])
             sec = self.properties.get_section(i)
-            
+
             # Section height (depth)
             if hasattr(sec, 'y_top') and sec.y_top is not None:
                 h = sec.y_top - sec.y_bottom
             else:
                 h = np.sqrt(sec.A)
-                
+
             if h > 0:
                 slenderness = L_el / h
                 if slenderness < 10 and self.element_type == 'euler':
-                    warnings.warn(f"Element {i}: Slenderness ratio L/h = {slenderness:.1f} is low (< 10). "
-                                 f"Euler-Bernoulli elements may under-predict deflections.")
+                    low_slenderness.append((i, slenderness))
+
+        if low_slenderness:
+            elem_summary = ", ".join(f"el[{i}] L/h={s:.1f}" for i, s in low_slenderness)
+            warnings.warn(
+                f"{len(low_slenderness)} element(s) have low slenderness ratio (L/h < 10). "
+                f"Euler-Bernoulli elements may under-predict deflections for short/deep beams. "
+                f"Affected: [{elem_summary}]. Consider using element_type='timoshenko'.",
+                stacklevel=2
+            )
 
         # Coordinates Bounds Check
         max_x = np.max(self.mesh.nodes[:, 0])

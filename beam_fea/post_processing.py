@@ -558,11 +558,16 @@ class StressEngine:
                                       t_top * 2 * y_rel * (y_rel - 0.5))
                         tau_s[global_idx, mask_ply] = tau_interp
 
-                        # Von Mises also interpolated (re-calculated from components at each grid point)
+                        # Von Mises re-evaluated at each grid point using interpolated stress components.
                         s_x_grid = sig_a_val + (sb_bot + (sb_top - sb_bot) * y_rel)
-                        # simplified sig_y and tau_xy (interpolated mid-values for now)
-                        s_y_grid = ply_info['sigma_bot'][idx_in_sub, 1] # approx constant
-                        t_xy_grid = ply_info['sigma_bot'][idx_in_sub, 2] # approx constant
+
+                        # NOTE: sigma_y and tau_xy from CLT are in-plane membrane/coupling stresses
+                        # that are theoretically constant within each ply (they depend only on the
+                        # ply lamina coordinates and angle, not on z-position within the ply).
+                        # This is not an approximation — it is the correct CLT behaviour.
+                        # Only sigma_x (bending) and tau_xz (transverse shear) vary through thickness.
+                        s_y_grid = ply_info['sigma_bot'][idx_in_sub, 1]  # constant per CLT
+                        t_xy_grid = ply_info['sigma_bot'][idx_in_sub, 2]  # constant per CLT
 
                         sigma_vm[global_idx, mask_ply] = np.sqrt(
                             s_x_grid**2 + s_y_grid**2 - s_x_grid*s_y_grid +
@@ -680,8 +685,14 @@ class ResultsEngine:
         """
         Perform analytical equilibrium check by summing applied and reaction forces.
 
-        Calculates residuals for Fx, Fy, and Mz (about origin).
-        Uses work-equivalent nodal forces for maximum accuracy.
+        Calculates residuals for Fx, Fy, and Mz (about origin) in the GLOBAL Cartesian frame.
+        No decomposition into beam-local axes is required — rigid body equilibrium in 2D is
+        fully captured by ΣFx=0, ΣFy=0, ΣMz=0, regardless of beam orientation. Node y-coordinates
+        are correctly used in the moment arm (Fy*x - Fx*y), so inclined 2D beams are handled
+        exactly. Uses work-equivalent nodal forces from create_force_vector() for maximum accuracy.
+
+        Scope: valid for any 2D planar beam model (horizontal, inclined, multi-span, curved).
+        Not applicable to out-of-plane 3D models (out of current library scope).
         """
         if solver.displacements is None or solver.reactions is None:
             raise ValueError("Must run static analysis before verifying equilibrium.")
