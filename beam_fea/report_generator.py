@@ -1068,6 +1068,7 @@ class BeamReportGenerator:
         
         # Load details
         num_pt_loads = 0
+        num_dist_loads = 0
         num_mass_loads = 0
         load_details_str = "None"
         

@@ -31,6 +31,7 @@ from beam_fea.cross_sections import (
     rectangular, i_beam, c_channel, box as box_section,
     circular, hollow_circular, t_beam, l_section
 )
+from beam_fea.composites import Ply, Laminate
 
 OUTPUT_ROOT = os.path.join(ROOT, 'visual_stress_tests')
 os.makedirs(OUTPUT_ROOT, exist_ok=True)
@@ -261,6 +262,146 @@ def config_9():
 
 
 # ---------------------------------------------------------------------------
+# Test 10 — Modal Analysis
+# Cross-section: Rectangular
+# BCs: Pinned-Pinned
+# Tests: solve_modal outputs, mode shape plots, freq tables
+# ---------------------------------------------------------------------------
+def config_10():
+    try:
+        L, n = 2_000.0, 40
+        mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=n)
+        section = rectangular(width=50, height=100)
+        
+        bc = BoundaryConditionSet("Modal Restraint")
+        bc.pinned_support(node=0)
+        bc.pinned_support(node=n)
+
+        lc = LoadCase("Free Vibration")
+
+        solver = BeamSolver(mesh, steel, section, element_type='timoshenko')
+        solver.solve_modal(bc, num_modes=3)
+
+        report_path = os.path.join(OUTPUT_ROOT, '10_modal_analysis_report.md')
+        solver.generate_report(report_path)
+        print(f"  [PASS] {'10_modal_analysis':55s}  Modes = 3")
+        return True
+    except Exception:
+        print(f"  [FAIL] 10_modal_analysis")
+        traceback.print_exc()
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Test 11 — Composite Laminate Static
+# Cross-section: Rectangular (Thin lam)
+# BCs: Cantilever
+# Tests: Ply-by-Ply stesses, Polar Rosette, Tsai-Wu Failure
+# ---------------------------------------------------------------------------
+def config_11():
+    try:
+        L, n = 1_000.0, 20
+        mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=n)
+        
+        carbon_ply = Ply(
+            name="T300_Epoxy", E1=135000, E2=10000, nu12=0.3,
+            G12=5000, G13=5000, G23=4000, thickness=0.2, rho=1.6e-6,
+            Xt=1500, Xc=1200, Yt=50, Yc=250, S=70, S13=50, S23=40
+        )
+        lam = Laminate("CFRP_Skin", beam_type='narrow', stack=[
+            (carbon_ply, [0, 45, -45, 90, 90, -45, 45, 0])
+        ])
+        
+        section = rectangular(width=25, height=lam.total_thickness)
+        
+        lc = LoadCase("Composite Tip Load")
+        lc.point_load(node=n, fy=-100.0)
+        
+        bc = BoundaryConditionSet("Cantilever")
+        bc.fixed_support(0)
+        
+        solver = BeamSolver(mesh, lam, section, element_type='timoshenko')
+        solver.solve_static(lc, bc)
+        
+        report_path = os.path.join(OUTPUT_ROOT, '11_composite_laminate_report.md')
+        solver.generate_report(report_path, failure_criterion='tsai_wu')
+        
+        max_rec = solver.get_max_deflection()
+        print(f"  [PASS] {'11_composite_laminate':55s}  d_max = {max_rec['res']:.4f} mm")
+        return True
+    except Exception:
+        print(f"  [FAIL] 11_composite_laminate")
+        traceback.print_exc()
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Test 12 — Advanced Loads & Springs
+# BCs: Spring root, prescribed displacement tip
+# Loads: LumpedMass + Custom Equation
+# ---------------------------------------------------------------------------
+def config_12():
+    try:
+        L, n = 2_000.0, 40
+        mesh = Mesh.from_path([(0, 0), (L, 0)], elements_per_segment=n)
+        section = circular(diameter=80)
+        
+        lc = LoadCase("Advanced Loads")
+        lc.distributed_load(x_start=0, x_end=L, distribution='custom', load_fn=lambda x: -1e-6 * x**2)
+        lc.lumped_mass(x=L/2, m=50.0, Izz=0.0, apply_gravity=True)
+        
+        bc = BoundaryConditionSet("Spring and Displacement")
+        bc.spring_support(0, ky=1e5, kr=1e7)
+        bc.prescribed_displacement(n, dy=-5.0)
+        
+        solver = BeamSolver(mesh, aluminium, section)
+        solver.solve_static(lc, bc)
+        
+        report_path = os.path.join(OUTPUT_ROOT, '12_advanced_loads_bc_report.md')
+        solver.generate_report(report_path)
+        
+        max_rec = solver.get_max_deflection()
+        print(f"  [PASS] {'12_advanced_loads_bc':55s}  d_max = {max_rec['res']:.4f} mm")
+        return True
+    except Exception:
+        print(f"  [FAIL] 12_advanced_loads_bc")
+        traceback.print_exc()
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Test 13 — Angled Frame Geometry
+# Shape: Diagonal beam
+# Tests: 2D geometry projection in Deformation charts
+# ---------------------------------------------------------------------------
+def config_13():
+    try:
+        mesh = Mesh.from_path([(0, 0), (1000, 500)], elements_per_segment=20)
+        section = i_beam(flange_width=100, total_height=200, web_thickness=5, flange_thickness=8)
+        
+        lc = LoadCase("Vertical load on diagonal beam")
+        # Distributed load along the exact mapped element length (1118.03)
+        lc.distributed_load(x_start=0, x_end=1118.03, distribution='uniform', wy=-2.0)
+        
+        bc = BoundaryConditionSet("Fixed-Free")
+        bc.fixed_support(0)
+        
+        solver = BeamSolver(mesh, steel, section)
+        solver.solve_static(lc, bc)
+        
+        report_path = os.path.join(OUTPUT_ROOT, '13_angled_frame_report.md')
+        solver.generate_report(report_path)
+        
+        max_rec = solver.get_max_deflection()
+        print(f"  [PASS] {'13_angled_frame':55s}  d_max = {max_rec['res']:.4f} mm")
+        return True
+    except Exception:
+        print(f"  [FAIL] 13_angled_frame")
+        traceback.print_exc()
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
@@ -274,6 +415,10 @@ if __name__ == '__main__':
         config_7,
         config_8,
         config_9,
+        config_10,
+        config_11,
+        config_12,
+        config_13,
     ]
 
     print("=" * 75)

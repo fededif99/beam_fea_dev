@@ -36,51 +36,62 @@ class ModalAnalysis:
         # Determine solver type based on matrix type and size
         use_sparse = issparse(K) and num_dofs > self.SPARSE_THRESHOLD
         
+        # 1. Boundary Condition Handling via Partitioning (Elimination Method)
+        active_indices = None
+        if bc_set is not None:
+            constrained_dofs = bc_set.get_all_constrained_dofs()
+            active_mask = np.ones(num_dofs, dtype=bool)
+            active_mask[list(constrained_dofs)] = False
+            active_indices = np.where(active_mask)[0]
+            
+            if len(active_indices) == 0:
+                raise ValueError("All DOFs constrained. No modal analysis possible.")
+                
+            K_act = K[np.ix_(active_indices, active_indices)]
+            M_act = M[np.ix_(active_indices, active_indices)]
+        else:
+            K_act = K
+            M_act = M
+            
+        num_act_dofs = K_act.shape[0]
+
+        # 2. Eigenvalue Solver Execution
         if use_sparse:
             # Determine number of modes to solve
-            max_modes = num_dofs - 2
-            k = min(num_modes, max_modes)
+            max_modes = num_act_dofs - 2
+            k = min(num_modes, max_modes) if max_modes > 0 else num_act_dofs
+            k = max(1, k) # safety fallback
                 
             # Use shift-invert mode (sigma=0) for efficient low-frequency extraction
             try:
-                eigenvalues, eigenvectors = eigsh(K, M=M, k=k, which='LM', sigma=0)
+                eigenvalues, eigenvectors_act = eigsh(K_act, M=M_act, k=k, which='LM', sigma=0)
             except Exception as e:
                 import warnings
                 warnings.warn(f"Sparse shift-invert failed ({e}), trying standard SM mode")
-                eigenvalues, eigenvectors = eigsh(K, M=M, k=k, which='SM')
+                eigenvalues, eigenvectors_act = eigsh(K_act, M=M_act, k=k, which='SM')
             
         else:
             # Dense solver path
-            if issparse(K): K = K.toarray()
-            if issparse(M): M = M.toarray()
+            if issparse(K_act): K_act = K_act.toarray()
+            if issparse(M_act): M_act = M_act.toarray()
             
-            # Boundary Condition Handling via Partitioning
-            if bc_set is not None:
-                constrained_dofs = bc_set.get_all_constrained_dofs()
-                active_mask = np.ones(num_dofs, dtype=bool)
-                active_mask[list(constrained_dofs)] = False
-                active_indices = np.where(active_mask)[0]
-                
-                if len(active_indices) == 0:
-                    raise ValueError("All DOFs constrained. No modal analysis possible.")
-                
-                K_act = K[np.ix_(active_indices, active_indices)]
-                M_act = M[np.ix_(active_indices, active_indices)]
-                
-                # Use subset_by_index for dense solver if num_modes is requested
-                subset = None
-                if num_modes is not None:
-                    subset = [0, min(num_modes, len(active_indices)) - 1]
-                
+            # Use subset_by_index for dense solver if num_modes is requested
+            subset = [0, min(num_modes, num_act_dofs) - 1] if num_modes else None
+            try:
                 eigenvalues, eigenvectors_act = eigh(K_act, M_act, subset_by_index=subset)
-                
-                # Back-map eigenvectors to full space
-                eigenvectors = np.zeros((num_dofs, len(eigenvalues)))
-                eigenvectors[active_indices, :] = eigenvectors_act
-                    
-            else:
-                subset = [0, (num_modes or num_dofs) - 1] if num_modes else None
-                eigenvalues, eigenvectors = eigh(K, M, subset_by_index=subset)
+            except Exception as e:
+                # Fallback to full decomposition if subset fails
+                eigenvalues, eigenvectors_act = eigh(K_act, M_act)
+                if num_modes:
+                    eigenvalues = eigenvalues[:num_modes]
+                    eigenvectors_act = eigenvectors_act[:, :num_modes]
+            
+        # 3. Back-map eigenvectors to full model space
+        if active_indices is not None:
+            eigenvectors = np.zeros((num_dofs, len(eigenvalues)))
+            eigenvectors[active_indices, :] = eigenvectors_act
+        else:
+            eigenvectors = eigenvectors_act
             
         # Post-process results
         # Ensure positive eigenvalues (handle numerical noise/rigid body modes)

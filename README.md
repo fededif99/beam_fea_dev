@@ -20,11 +20,11 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.19.0 *(2026-04-11)*
+### Latest Version: v2.19.1 *(2026-04-12)*
 
-- **Feature**: Added native support for `LumpedMass` inside standard string-based batch configuration pipelines.
-- **Optimization**: Modernized loop iterations in `BatchProcessor` to significantly improve CSV parsing performance over massive parametric sweeps.
-- **Refactor**: Replaced hardcoded placeholder substitution in `batch.py` with dynamic generic inspection, universally enabling `LoadCase` parametrization for any property.
+- **Bugfix**: Resolved ARPACK sparse solver algorithm breakdown by extending sparse backend matrix partitioning.
+- **Bugfix**: Patched `ReportGenerator` crashing while creating automated reports that contain zero external generic loads.
+- **Validation**: Enormously expanded multi-factor internal QA test suite (`visual_test_configurations.py`) mapping testing domains to new configurations.
 
 > [!NOTE]
 > For the full version history, please see the [CHANGELOG.md](CHANGELOG.md).

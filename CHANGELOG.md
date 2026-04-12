@@ -2,6 +2,12 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.19.1] - 2026-04-12
+
+- **Bugfix**: Resolved ARPACK sparse solver failures on extremely fine meshes (>500 DOFs) by extending the mathematical Matrix Elimination partitioning method out to the Sparse `scipy.sparse.linalg.eigsh` backend.
+- **Bugfix**: Patched `ReportGenerator` crashing with `UnboundLocalError` when executing Modal reports lacking static load instances.
+- **Validation**: Expanded internal test suite configurations (`visual_test_configurations.py`) mapping 4 new end-to-end integration workflows covering Advanced Loads, Composites, Angle Mesh Generation, and Modal Output tables.
+
 ## [v2.19.0] - 2026-04-11
 
 - **Feature**: Added native support for `LumpedMass` (via `mass` or `lumped_mass` identifiers) inside standard string-based structural batch configuration pipelines.
