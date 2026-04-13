@@ -56,57 +56,6 @@
 
 ---
 
-## 3.11 Failure Criteria (`beam_fea.failure_criteria`)
-
-Unified failure analysis for both **isotropic metals** and **composite plies**. All criteria are fully vectorized — accept scalars or NumPy arrays and return an identical-shaped result dict.
-
-### Output Dictionary
-
-| Key | Type | Description |
-| :--- | :--- | :--- |
-| `'stress'` | ndarray | **Governing stress** (or dimensionless ratio/index) |
-| `'SF'` | ndarray | **Safety Factor**: allowable / stress. SF ≥ 1 = safe |
-| `'MoS'` | ndarray | **Margin of Safety**: SF − 1. MoS ≥ 0 = safe |
-| `'passed'` | ndarray(bool) | `True` wherever SF ≥ 1 |
-
-### Metal (Isotropic) Criteria
-
-| Class | Formula |
-| :--- | :--- |
-| `VonMisesCriterion(yield_strength)` | SF = σ_y / σ_vm |
-| `TrescaCriterion(yield_strength)` | SF = σ_y / (σ₁ − σ₂) |
-| `MaxPrincipalStressCriterion(Ftu, Fcu)` | SF = 1 / max(σ₁/Ftu, −σ₂/Fcu) |
-
-### Composite (Orthotropic Ply) Criteria — stresses in material axes
-
-| Class | Formula |
-| :--- | :--- |
-| `MaximumStressCriterion(Xt,Xc,Yt,Yc,S,S13*,S23*)` | SF = 1 / max(..., \|τ₁₂\|/S, \|τ₁₃\|/S₁₃, \|τ₂₃\|/S₂₃) |
-| `TsaiHillCriterion(Xt,Xc,Yt,Yc,S,S13*,S23*)` | SF = 1 / sqrt((σ₁/X)² − ... + (τ₁₂/S)² + (τ₁₃/S₁₃)² + (τ₂₃/S₂₃)²) |
-| `TsaiWuCriterion(Xt,Xc,Yt,Yc,S,F12*,S13*,S23*)` | Full interactive tensor polynomial (results in SF) |
-| `MaximumStrainCriterion(eps_Xt,eps_Xc,eps_Yt,eps_Yc,gamma_S)` | SF in strain space |
-
-```python
-from beam_fea.failure_criteria import TsaiWuCriterion, VonMisesCriterion
-import numpy as np
-
-# --- Composite ply check (vectorised over many stations) ---
-crit = TsaiWuCriterion(Xt=1500, Xc=1200, Yt=50, Yc=250, S=70)
-result = crit.evaluate(
-    sigma_1=np.array([200.0, 800.0, 1400.0]),
-    sigma_2=np.array([10.0,  20.0,  40.0]),
-    tau_12=np.array([5.0,   15.0,  30.0]),
-)
-print(result['SF'])     # [large,   2.8..., 1.03...]
-print(result['MoS'])    # [large,   1.8..., 0.03...]
-print(result['passed']) # [True, True, True]
-
-# --- Metal check ---
-crit_vm = VonMisesCriterion(yield_strength=250.0)
-result_vm = crit_vm.evaluate(sigma_x=180.0, sigma_y=50.0, tau_xy=30.0)
-```
-
----
 
 ## 📂 File Organization
 
@@ -667,6 +616,58 @@ Generates comprehensive engineering reports in Markdown format, which can be eas
 ```python
 # Generate full report
 solver.generate_report("Structural_Analysis_Report.md")
+```
+
+---
+
+## 3.11 Failure Criteria (`beam_fea.failure_criteria`)
+
+Unified failure analysis for both **isotropic metals** and **composite plies**. All criteria are fully vectorized — accept scalars or NumPy arrays and return an identical-shaped result dict.
+
+### Output Dictionary
+
+| Key | Type | Description |
+| :--- | :--- | :--- |
+| `'stress'` | ndarray | **Governing stress** (or dimensionless ratio/index) |
+| `'SF'` | ndarray | **Safety Factor**: allowable / stress. SF ≥ 1 = safe |
+| `'MoS'` | ndarray | **Margin of Safety**: SF − 1. MoS ≥ 0 = safe |
+| `'passed'` | ndarray(bool) | `True` wherever SF ≥ 1 |
+
+### Metal (Isotropic) Criteria
+
+| Class | Formula |
+| :--- | :--- |
+| `VonMisesCriterion(yield_strength)` | SF = σ_y / σ_vm |
+| `TrescaCriterion(yield_strength)` | SF = σ_y / (σ₁ − σ₂) |
+| `MaxPrincipalStressCriterion(Ftu, Fcu)` | SF = 1 / max(σ₁/Ftu, −σ₂/Fcu) |
+
+### Composite (Orthotropic Ply) Criteria — stresses in material axes
+
+| Class | Formula |
+| :--- | :--- |
+| `MaximumStressCriterion(Xt,Xc,Yt,Yc,S,S13*,S23*)` | SF = 1 / max(..., \|τ₁₂\|/S, \|τ₁₃\|/S₁₃, \|τ₂₃\|/S₂₃) |
+| `TsaiHillCriterion(Xt,Xc,Yt,Yc,S,S13*,S23*)` | SF = 1 / sqrt((σ₁/X)² − ... + (τ₁₂/S)² + (τ₁₃/S₁₃)² + (τ₂₃/S₂₃)²) |
+| `TsaiWuCriterion(Xt,Xc,Yt,Yc,S,F12*,S13*,S23*)` | Full interactive tensor polynomial (results in SF) |
+| `MaximumStrainCriterion(eps_Xt,eps_Xc,eps_Yt,eps_Yc,gamma_S)` | SF in strain space |
+
+```python
+from beam_fea.failure_criteria import TsaiWuCriterion, VonMisesCriterion
+import numpy as np
+
+# --- Composite ply check (vectorised over many stations) ---
+crit = TsaiWuCriterion(Xt=1500, Xc=1200, Yt=50, Yc=250, S=70)
+result = crit.evaluate(
+    sigma_1=np.array([200.0, 800.0, 1400.0]),
+    sigma_2=np.array([10.0,  20.0,  40.0]),
+    tau_12=np.array([5.0,   15.0,  30.0]),
+)
+print(result['SF'])     # [large,   2.8..., 1.03...]
+print(result['MoS'])    # [large,   1.8..., 0.03...]
+print(result['passed']) # [True, True, True]
+
+# --- Metal check ---
+crit_vm = VonMisesCriterion(yield_strength=250.0)
+result_vm = crit_vm.evaluate(sigma_x=180.0, sigma_y=50.0, tau_xy=30.0)
 ```
 
 ---
