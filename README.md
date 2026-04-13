@@ -20,7 +20,12 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.19.2 *(2026-04-14)*
+### Latest Version: v2.19.3 *(2026-04-14)*
+
+- **Docs**: Re-sequenced API Reference rendering the `Failure Criteria` section directly below `Report Generation`.
+- **Workflow**: Automated `release_public` AI agent workflow added to standardize public releases.
+
+### v2.19.2 *(2026-04-14)*
 
 - **Docs**: Comprehensive standardization on Safety Factor (SF) and Margin of Safety (MoS) across library and documentation.
 - **Bugfix**: Patched `ReportGenerator` legacy element attribute access crash.

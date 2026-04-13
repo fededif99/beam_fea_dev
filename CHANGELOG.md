@@ -2,6 +2,11 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.19.3] - 2026-04-14
+
+- **Docs**: Re-sequenced API Reference rendering the `Failure Criteria` section directly below `Report Generation`.
+- **Workflow**: Automated `release_public` AI agent workflow added to standardize public releases.
+
 ## [v2.19.2] - 2026-04-14
 
 - **Feature**: Added **Angled Frame Geometry** support to the visual test suite (`config_13`), validating 2D projection in deformation results.
