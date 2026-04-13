@@ -188,13 +188,13 @@ where $\frac{\partial \sigma_x}{\partial x}$ is derived from the rate of change 
 
 ### 3.7 Composite Failure Criteria
 
-Calculated in local material coordinates $(1, 2, 12)$:
+Calculated in local material coordinates $(1, 2, 12)$ and standardized on **Safety Factor (SF)**:
 
-1. **Maximum Stress**: $FI = \max\left(\frac{\sigma_1}{X}, \frac{\sigma_2}{Y}, \frac{|\tau_{12}|}{S}\right)$
-2. **Tsai-Hill**: $FI = \left(\frac{\sigma_1}{X}\right)^2 - \frac{\sigma_1\sigma_2}{X^2} + \left(\frac{\sigma_2}{Y}\right)^2 + \left(\frac{\tau_{12}}{S}\right)^2$
-3. **Tsai-Wu**: $FI = F_1\sigma_1 + F_{11}\sigma_1^2 + F_2\sigma_2 + F_{22}\sigma_2^2 + F_{66}\tau_{12}^2 + 2F_{12}\sigma_1\sigma_2$
+1. **Maximum Stress**: $SF = 1 / \max\left(\frac{\sigma_1}{X}, \frac{\sigma_2}{Y}, \frac{|\tau_{12}|}{S}, \frac{|\tau_{13}|}{S_{13}}, \frac{|\tau_{23}|}{S_{23}}\right)$
+2. **Tsai-Hill**: $SF = 1 / \sqrt{\left(\frac{\sigma_1}{X}\right)^2 - \frac{\sigma_1\sigma_2}{X^2} + \left(\frac{\sigma_2}{Y}\right)^2 + \left(\frac{\tau_{12}}{S}\right)^2 + \left(\frac{\tau_{13}}{S_{13}}\right)^2 + \left(\frac{\tau_{23}}{S_{23}}\right)^2}$
+3. **Tsai-Wu**: Evaluated as the positive root of the failure tensor polynomial to determine the critical $SF$.
 
-### 3.6 References
+### 3.8 References
 
 1. R. M. Jones, *Mechanics of Composite Materials*, 2nd ed., 1999.
 2. J. N. Reddy, *Mechanics of Laminated Composite Plates and Shells*, 2003.

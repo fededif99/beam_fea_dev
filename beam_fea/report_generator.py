@@ -504,8 +504,8 @@ class BeamReportGenerator:
                 elif isinstance(load, DistributedLoad):
                     if hasattr(load, 'element') and load.element is not None:
                         elements = ([load.element] if isinstance(load.element, int) else load.element)
-                        x_s = coords[self.mesh.elements[elements[0]].node1, 0]
-                        x_e = coords[self.mesh.elements[elements[-1]].node2, 0]
+                        x_s = coords[self.mesh.elements[elements[0], 0], 0]
+                        x_e = coords[self.mesh.elements[elements[-1], 1], 0]
                     elif (hasattr(load, 'x_start') and load.x_start is not None):
                         x_s, x_e = load.x_start, load.x_end
                     else: continue
@@ -687,7 +687,7 @@ class BeamReportGenerator:
                 elif isinstance(load, DistributedLoad):
                     if hasattr(load, 'element') and load.element is not None:
                         elements = ([load.element] if isinstance(load.element, int) else load.element)
-                        x_s, x_e = coords[self.mesh.elements[elements[0]].node1, 0], coords[self.mesh.elements[elements[-1]].node2, 0]
+                        x_s, x_e = coords[self.mesh.elements[elements[0], 0], 0], coords[self.mesh.elements[elements[-1], 1], 0]
                     elif hasattr(load, 'x_start') and load.x_start is not None: x_s, x_e = load.x_start, load.x_end
                     else: continue
                     dist = getattr(load, 'distribution', 'uniform').lower()

@@ -20,7 +20,12 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.19.2 *(2026-04-13)*
+### Latest Version: v2.19.2 *(2026-04-14)*
+
+- **Docs**: Comprehensive standardization on Safety Factor (SF) and Margin of Safety (MoS) across library and documentation.
+- **Bugfix**: Patched `ReportGenerator` legacy element attribute access crash.
+- **Feature**: Added **Angled Frame Geometry** support to the visual test suite (`config_13`), validating 2D projection in deformation results.
+- **QA**: Expanded automated validation suite to 13 comprehensive end-to-end integration workflows.
 
 - **Bugfix**: Resolved ARPACK sparse solver algorithm breakdown by extending sparse backend matrix partitioning.
 - **Bugfix**: Patched `ReportGenerator` crashing while creating automated reports that contain zero external generic loads.
@@ -59,26 +64,27 @@ Unified failure analysis for both **isotropic metals** and **composite plies**. 
 
 | Key | Type | Description |
 | :--- | :--- | :--- |
-| `'FI'` | ndarray | **Failure Index**: < 1 = safe, ≥ 1 = failed |
-| `'MoS'` | ndarray | **Margin of Safety**: = 1/FI − 1. ≥ 0 = safe |
-| `'passed'` | ndarray(bool) | `True` wherever FI < 1 |
+| `'stress'` | ndarray | **Governing stress** (or dimensionless ratio/index) |
+| `'SF'` | ndarray | **Safety Factor**: allowable / stress. SF ≥ 1 = safe |
+| `'MoS'` | ndarray | **Margin of Safety**: SF − 1. MoS ≥ 0 = safe |
+| `'passed'` | ndarray(bool) | `True` wherever SF ≥ 1 |
 
 ### Metal (Isotropic) Criteria
 
 | Class | Formula |
 | :--- | :--- |
-| `VonMisesCriterion(yield_strength)` | FI = σ_vm / σ_y |
-| `TrescaCriterion(yield_strength)` | FI = (σ₁ − σ₂) / σ_y |
-| `MaxPrincipalStressCriterion(Ftu, Fcu)` | FI = max(σ₁/Ftu, −σ₂/Fcu) |
+| `VonMisesCriterion(yield_strength)` | SF = σ_y / σ_vm |
+| `TrescaCriterion(yield_strength)` | SF = σ_y / (σ₁ − σ₂) |
+| `MaxPrincipalStressCriterion(Ftu, Fcu)` | SF = 1 / max(σ₁/Ftu, −σ₂/Fcu) |
 
 ### Composite (Orthotropic Ply) Criteria — stresses in material axes
 
 | Class | Formula |
 | :--- | :--- |
-| `MaximumStressCriterion(Xt,Xc,Yt,Yc,S,S13*,S23*)` | FI = max(..., \|τ₁₂\|/S, \|τ₁₃\|/S₁₃, \|τ₂₃\|/S₂₃) |
-| `TsaiHillCriterion(Xt,Xc,Yt,Yc,S,S13*,S23*)` | FI = (σ₁/X)² − ... + (τ₁₂/S)² + (τ₁₃/S₁₃)² + (τ₂₃/S₂₃)² |
-| `TsaiWuCriterion(Xt,Xc,Yt,Yc,S,F12*,S13*,S23*)` | Full interactive tensor polynomial |
-| `MaximumStrainCriterion(eps_Xt,eps_Xc,eps_Yt,eps_Yc,gamma_S)` | FI in strain space |
+| `MaximumStressCriterion(Xt,Xc,Yt,Yc,S,S13*,S23*)` | SF = 1 / max(..., \|τ₁₂\|/S, \|τ₁₃\|/S₁₃, \|τ₂₃\|/S₂₃) |
+| `TsaiHillCriterion(Xt,Xc,Yt,Yc,S,S13*,S23*)` | SF = 1 / sqrt((σ₁/X)² − ... + (τ₁₂/S)² + (τ₁₃/S₁₃)² + (τ₂₃/S₂₃)²) |
+| `TsaiWuCriterion(Xt,Xc,Yt,Yc,S,F12*,S13*,S23*)` | Full interactive tensor polynomial (results in SF) |
+| `MaximumStrainCriterion(eps_Xt,eps_Xc,eps_Yt,eps_Yc,gamma_S)` | SF in strain space |
 
 ```python
 from beam_fea.failure_criteria import TsaiWuCriterion, VonMisesCriterion
@@ -91,8 +97,8 @@ result = crit.evaluate(
     sigma_2=np.array([10.0,  20.0,  40.0]),
     tau_12=np.array([5.0,   15.0,  30.0]),
 )
-print(result['FI'])     # [0.02..., 0.35..., 0.97...]
-print(result['MoS'])    # [large,   1.86..., 0.03...]
+print(result['SF'])     # [large,   2.8..., 1.03...]
+print(result['MoS'])    # [large,   1.8..., 0.03...]
 print(result['passed']) # [True, True, True]
 
 # --- Metal check ---

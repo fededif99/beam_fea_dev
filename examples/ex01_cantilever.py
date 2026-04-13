@@ -63,7 +63,8 @@ def run_example():
     solver.solve_static(lc, bc)
     
     # 5. Verification (Calculation only, results in report)
-    disp_fem, node_fem = solver.get_max_deflection()
+    res_df = solver.get_max_deflection()
+    disp_fem = res_df['res']
     
     # Analytical solution
     E = aluminum.E

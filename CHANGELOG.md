@@ -2,11 +2,14 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
-## [v2.19.2] - 2026-04-13
+## [v2.19.2] - 2026-04-14
 
 - **Feature**: Added **Angled Frame Geometry** support to the visual test suite (`config_13`), validating 2D projection in deformation results.
-- **Docs**: Global refinement of `THEORY.md`, including detailed CLT constitutive law derivations and ABD inverse identities.
+- **Docs**: Standardized entire codebase and documentation on **Safety Factor (SF)** and **Margin of Safety (MoS)**; completely removed "Failure Index" (FI) terminology.
+- **Docs**: Synchronized `README.md` and `THEORY.md` with the latest API implementations and physical formulations.
 - **QA**: Expanded automated validation suite to 13 comprehensive end-to-end integration workflows.
+- **Bugfix**: Resolved `AttributeError` in `report_generator.py` by correcting legacy element attribute access (`.node1`/`.node2`) to NumPy array indexing.
+- **Example**: Updated `ex01_cantilever.py` to correctly handle the `pandas.Series` return type of `get_max_deflection()`.
 
 ## [v2.19.1] - 2026-04-12
 

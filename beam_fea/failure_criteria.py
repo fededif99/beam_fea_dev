@@ -4,7 +4,7 @@ failure_criteria.py
 Unified Failure Criteria for metals and composite laminates.
 
 All criteria accept scalars or NumPy arrays and return a dict containing:
-  - 'stress' : Governing equivalent stress (or dimensionless ratio/index).
+  - 'stress' : Governing equivalent stress (or dimensionless ratio/normalized intensity).
   - 'SF'     : Safety Factor = allowable / stress. SF >= 1 → safe; SF < 1 → failed.
   - 'MoS'    : Margin of Safety = SF - 1. MoS >= 0 → safe.
   - 'passed' : Boolean array. True where SF >= 1.
@@ -79,9 +79,9 @@ def _result(stress: _Array, allowable: float) -> _Result:
     Parameters
     ----------
     stress : array-like
-        The computed governing stress (or dimensionless ratio/index).
+        The computed governing stress (or dimensionless ratio/normalized intensity).
     allowable : float
-        The allowable strength (often 1.0 for dimensionless index criteria).
+        The allowable strength (often 1.0 for criteria defined by normalized intensities).
     """
     strs = np.asarray(stress, dtype=float)
     allow = float(allowable)
@@ -242,8 +242,8 @@ class MaxPrincipalStressCriterion(FailureCriterion):
         s1, s2, s3, _ = _principal_stresses_3d(sx, sy, sz, txy, tyz, txz)
 
         # Max Principal considers s1 and s3
-        index = np.maximum(s1 / self.Ftu, -s3 / self.Fcu)
-        return _result(stress=index, allowable=1.0)
+        norm_intensity = np.maximum(s1 / self.Ftu, -s3 / self.Fcu)
+        return _result(stress=norm_intensity, allowable=1.0)
 
 
 # ===========================================================================
@@ -295,8 +295,8 @@ class MaximumStressCriterion(FailureCriterion):
             np.abs(t23) / self.S23,
         ], axis=0)
         
-        index = np.max(terms, axis=0)
-        return _result(stress=index, allowable=1.0)
+        norm_intensity = np.max(terms, axis=0)
+        return _result(stress=norm_intensity, allowable=1.0)
 
 
 class TsaiHillCriterion(FailureCriterion):
@@ -334,8 +334,8 @@ class TsaiHillCriterion(FailureCriterion):
         X = np.where(s1 >= 0, self.Xt, self.Xc)
         Y = np.where(s2 >= 0, self.Yt, self.Yc)
 
-        index = (s1 / X) ** 2 - (s1 * s2 / X ** 2) + (s2 / Y) ** 2 + (t12 / self.S) ** 2 + (t13 / self.S13) ** 2 + (t23 / self.S23) ** 2
-        return _result(stress=index, allowable=1.0)
+        norm_intensity = (s1 / X) ** 2 - (s1 * s2 / X ** 2) + (s2 / Y) ** 2 + (t12 / self.S) ** 2 + (t13 / self.S13) ** 2 + (t23 / self.S23) ** 2
+        return _result(stress=norm_intensity, allowable=1.0)
 
 
 class TsaiWuCriterion(FailureCriterion):
@@ -393,7 +393,7 @@ class TsaiWuCriterion(FailureCriterion):
     ) -> _Result:
         s1, s2, t12, t13, t23 = _ensure_arrays(sigma_1, sigma_2, tau_12, tau_13, tau_23)
 
-        index = (
+        norm_intensity = (
             self.F1  * s1
             + self.F2  * s2
             + self.F11 * s1 ** 2
@@ -403,7 +403,7 @@ class TsaiWuCriterion(FailureCriterion):
             + self.F44 * t23 ** 2
             + 2 * self.F12 * s1 * s2
         )
-        return _result(stress=index, allowable=1.0)
+        return _result(stress=norm_intensity, allowable=1.0)
 
 
 class MaximumStrainCriterion(FailureCriterion):
@@ -439,11 +439,11 @@ class MaximumStrainCriterion(FailureCriterion):
     ) -> _Result:
         e1, e2, g12 = _ensure_arrays(eps_1, eps_2, gamma_12)
 
-        index = np.maximum.reduce([
+        norm_intensity = np.maximum.reduce([
             e1  / self.eps_Xt,
             -e1 / self.eps_Xc,
             e2  / self.eps_Yt,
             -e2 / self.eps_Yc,
             np.abs(g12) / self.gamma_S,
         ])
-        return _result(stress=index, allowable=1.0)
+        return _result(stress=norm_intensity, allowable=1.0)
