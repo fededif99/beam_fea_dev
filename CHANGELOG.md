@@ -2,6 +2,12 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.19.2] - 2026-04-13
+
+- **Feature**: Added **Angled Frame Geometry** support to the visual test suite (`config_13`), validating 2D projection in deformation results.
+- **Docs**: Global refinement of `THEORY.md`, including detailed CLT constitutive law derivations and ABD inverse identities.
+- **QA**: Expanded automated validation suite to 13 comprehensive end-to-end integration workflows.
+
 ## [v2.19.1] - 2026-04-12
 
 - **Bugfix**: Resolved ARPACK sparse solver failures on extremely fine meshes (>500 DOFs) by extending the mathematical Matrix Elimination partitioning method out to the Sparse `scipy.sparse.linalg.eigsh` backend.
@@ -371,7 +377,7 @@ All notable changes to the `beam_fea` project will be documented in this file.
 
 - **Build**: Added `pyproject.toml` to support standard `pip` installation and build backends
 - **UX**: Installed package in editable mode (`pip install -e .`) to enable clean imports without `sys.path` hacks
-- **Refactor**: Removed all manual `sys.path` manipulations from `examples/`, `scripts/`, and `tests/`
+- **Refactor**: Removed all manual `sys.path` manipulations from `examples/`, `scripts/`, and
 
 ## [v1.5.0] - 2026-02-23
 

@@ -20,7 +20,7 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.19.1 *(2026-04-12)*
+### Latest Version: v2.19.2 *(2026-04-13)*
 
 - **Bugfix**: Resolved ARPACK sparse solver algorithm breakdown by extending sparse backend matrix partitioning.
 - **Bugfix**: Patched `ReportGenerator` crashing while creating automated reports that contain zero external generic loads.
