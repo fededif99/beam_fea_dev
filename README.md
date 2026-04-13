@@ -111,7 +111,7 @@ result_vm = crit_vm.evaluate(sigma_x=180.0, sigma_y=50.0, tau_xy=30.0)
 ## 📂 File Organization
 
 ```text
-beam_fea_optimized/
+beam_fea/
 ├── beam_fea/                    # Core Library
 │   ├── modules...               # (materials, sections, mesh, loads, etc.)
 ├── examples/                    # Usage Examples & Case Studies
