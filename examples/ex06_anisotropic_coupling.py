@@ -9,7 +9,7 @@ from beam_fea.composites import Ply, Laminate
 import numpy as np
 
 def run_coupling_demo():
-    # 1. Define Carbon Ply with strengths for failure index extraction
+    # 1. Define Carbon Ply with strengths for safety factor extraction
     ply = Ply(
         E1=150000, E2=10000, nu12=0.3,
         G12=5000, G13=5000, G23=4000,

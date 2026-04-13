@@ -2,6 +2,13 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
+## [v2.19.2] - 2026-04-14
+
+- **Docs**: Standardized entire codebase and documentation on **Safety Factor (SF)** and **Margin of Safety (MoS)**; completely removed "Failure Index" (FI) terminology.
+- **Docs**: Synchronized `README.md` and `THEORY.md` with the latest API implementations and physical formulations.
+- **Bugfix**: Resolved `AttributeError` in `report_generator.py` by correcting legacy element attribute access (`.node1`/`.node2`) to NumPy array indexing.
+- **Example**: Updated `ex01_cantilever.py` to correctly handle the `pandas.Series` return type of `get_max_deflection()`.
+
 ## [v2.19.1] - 2026-04-12
 
 - **Bugfix**: Resolved ARPACK sparse solver failures on extremely fine meshes (>500 DOFs) by extending the mathematical Matrix Elimination partitioning method out to the Sparse `scipy.sparse.linalg.eigsh` backend.

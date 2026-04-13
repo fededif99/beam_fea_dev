@@ -72,31 +72,31 @@ class Ply:
         """Calculate the safety factor for the ply given local stresses."""
         s1, s2, s12 = sigma_local[0], sigma_local[1], sigma_local[2]
 
-        # Determine normalized failure intensity first
-        fi = 0.0
+        # Determine normalized failure intensity (1/SF) first
+        inv_sf = 0.0
         if criterion == 'max_stress':
-            if any(v <= 0 for v in [self.Xt, self.Xc, self.Yt, self.Yc, self.S]): fi = 0.0
+            if any(v <= 0 for v in [self.Xt, self.Xc, self.Yt, self.Yc, self.S]): inv_sf = 0.0
             else:
                 f1 = s1 / self.Xt if s1 >= 0 else abs(s1) / self.Xc
                 f2 = s2 / self.Yt if s2 >= 0 else abs(s2) / self.Yc
                 f12 = abs(s12) / self.S
-                fi = max(f1, f2, f12)
+                inv_sf = max(f1, f2, f12)
         elif criterion == 'tsai_hill':
             X = self.Xt if s1 >= 0 else self.Xc
             Y = self.Yt if s2 >= 0 else self.Yc
-            if any(v <= 0 for v in [X, Y, self.S]): fi = 0.0
+            if any(v <= 0 for v in [X, Y, self.S]): inv_sf = 0.0
             else:
-                fi = (s1/X)**2 - (s1*s2)/(X**2) + (s2/Y)**2 + (s12/self.S)**2
+                inv_sf = (s1/X)**2 - (s1*s2)/(X**2) + (s2/Y)**2 + (s12/self.S)**2
         elif criterion == 'tsai_wu':
-            if any(v <= 0 for v in [self.Xt, self.Xc, self.Yt, self.Yc, self.S]): fi = 0.0
+            if any(v <= 0 for v in [self.Xt, self.Xc, self.Yt, self.Yc, self.S]): inv_sf = 0.0
             else:
                 F1, F11 = 1/self.Xt - 1/self.Xc, 1/(self.Xt * self.Xc)
                 F2, F22 = 1/self.Yt - 1/self.Yc, 1/(self.Yt * self.Yc)
                 F66, F12 = 1/(self.S**2), -0.5 * np.sqrt(1/(self.Xt * self.Xc * self.Yt * self.Yc))
-                fi = F1*s1 + F11*s1**2 + F2*s2 + F22*s2**2 + F66*s12**2 + 2*F12*s1*s2
+                inv_sf = F1*s1 + F11*s1**2 + F2*s2 + F22*s2**2 + F66*s12**2 + 2*F12*s1*s2
 
         # Safety Factor is inversely proportional to failure intensity
-        return 1.0 / fi if fi > 0 else np.inf
+        return 1.0 / inv_sf if inv_sf > 0 else np.inf
 
 
 class Laminate:
