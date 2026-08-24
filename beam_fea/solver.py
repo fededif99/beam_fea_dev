@@ -225,6 +225,9 @@ class BeamSolver:
         self._cached_stresses_params = params
         return self._cached_stresses
 
+    get_internal_forces = calculate_internal_forces
+    get_stresses = calculate_stresses
+
     def get_max_deflection(self) -> 'pd.Series':
         from .post_processing import ResultsEngine
         df = ResultsEngine.get_nodal_displacements(self)

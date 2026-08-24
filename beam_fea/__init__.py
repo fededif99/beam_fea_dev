@@ -89,7 +89,8 @@ from .failure_criteria import (
 from .modal_analysis import ModalAnalysis
 from .visualizer import BeamVisualizer
 from .solver import BeamSolver
-from .report_generator import BeamReportGenerator
+from .report_generator import BeamReportGenerator, BatchReportGenerator
+from .batch_report import BatchReportGenerator
 from .plot_style import PlotStyle, smart_units, DEFAULT_STYLE
 
 from ._version import __version__
@@ -144,7 +145,7 @@ __all__ = [
     'PlotStyle', 'smart_units', 'DEFAULT_STYLE',
     
     # Report Generation
-    'BeamReportGenerator',
+    'BeamReportGenerator', 'BatchReportGenerator',
     
     # Main Solver
     'BeamSolver',

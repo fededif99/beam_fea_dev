@@ -364,6 +364,9 @@ class BoundaryConditionSet:
             # For dense matrices, use the exact "Identity Method"
             # Zero out rows and columns
             for dof in constrained_dofs:
+                if dof in prescribed_values:
+                    F_bc -= K_bc[:, dof] * prescribed_values[dof]
+                    
                 K_bc[dof, :] = 0
                 K_bc[:, dof] = 0
                 K_bc[dof, dof] = 1
