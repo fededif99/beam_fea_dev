@@ -13,8 +13,9 @@ examples/*.md
 !examples/README.md
 
 # Generated example/batch run outputs (not source)
-/batch_results*.csv
+/*.csv
 /batch_*.md
+/cantilever_report*.md
 /parametric_study.csv
 
 # Environment & Internal

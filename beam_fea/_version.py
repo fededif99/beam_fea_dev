@@ -24,6 +24,6 @@ def _get_version():
         pass
 
     # 3. Final Fallback
-    return '2.19.2'
+    return '2.20.0'
 
 __version__ = _get_version()
