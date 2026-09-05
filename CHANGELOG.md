@@ -2,7 +2,22 @@
 
 All notable changes to the `beam_fea` project will be documented in this file.
 
-## [v2.19.3] - 2026-04-14
+## [v2.20.0] - 2026-08-24
+
+- **Bugfix**: Resolved angled element distributed load transformation bug in `loads.py` and `post_processing.py` by applying direction cosine transformations ($c = \cos\theta, s = \sin\theta$) during equivalent nodal load assembly and internal force recovery.
+- **Bugfix**: Fixed dense boundary condition solver fallback in `boundary_conditions.py` to properly subtract coupling forces ($K_{bc}[:, \text{dof}] \times \text{value}$) prior to matrix row/column zeroing.
+- **Bugfix**: Corrected C-channel section centroid formula in `cross_sections.py` to use $x_{\text{web}} = t_w / 2$.
+- **Bugfix**: Fixed thin-walled box section torsional constant in `cross_sections.py` to use mid-plane enclosed area $A_m = (B - t)(H - t)$.
+- **Performance**: Converted `mesh.py` mesh generation (`from_path` and `refine_uniform`) from $O(N^2)$ dynamic `np.vstack` reallocation to $O(N)$ pre-allocated block array assignment.
+- **Performance**: Removed $O(N^3)$ SVD condition number check (`np.linalg.cond`) from dense static solver fallback in `static_analysis.py`.
+- **Performance**: Added `@functools.lru_cache` memoization to cross-section geometric property evaluations in `cross_sections.py`.
+- **Performance**: Optimized `ResultsEngine.get_peak_summary()` in `post_processing.py` to reuse solver cached results and avoid redundant full-field recalculation.
+- **Architecture**: Modularized the monolithic `StressEngine.calculate()` in `post_processing.py` into specialized single-responsibility helper methods (`_normalize_to_laminate`, `_compute_midplane_kinematics`, `_compute_ply_stresses`, `_interpolate_stress_grid`).
+- **Architecture**: Decomposed the 67 KB `report_generator.py` God-class into clean, modular submodules:
+  - `beam_fea/batch_report.py`: `BatchReportGenerator` for parametric batch analysis reports.
+  - `beam_fea/diagrams.py`: Dedicated drawing and glyph module for structure, reaction, shear, moment, and stress distribution diagrams.
+  - `beam_fea/report_generator.py`: Streamlined `BeamReportGenerator` orchestrating markdown generation and diagram integration.
+- **Refactor**: Eliminated duplicated failure criteria mathematical formulations in `composites.py` by delegating `Ply.calculate_safety_factor()` directly to `failure_criteria.py`.
 
 - **Docs**: Re-sequenced API Reference rendering the `Failure Criteria` section directly below `Report Generation`.
 - **Workflow**: Automated `release_public` AI agent workflow added to standardize public releases.

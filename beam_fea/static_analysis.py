@@ -61,16 +61,6 @@ class StaticAnalysis:
             self.displacements = spsolve(K, F)
         else:
             # Dense fallback
-            try:
-                cond_number = np.linalg.cond(K)
-                if cond_number > 1e12:
-                    warnings.warn(
-                        f"Stiffness matrix is ill-conditioned (cond = {cond_number:.2e}). "
-                        "Check boundary conditions."
-                    )
-            except np.linalg.LinAlgError:
-                pass
-                
             self.displacements = np.linalg.solve(K, F)
         
         return self.displacements

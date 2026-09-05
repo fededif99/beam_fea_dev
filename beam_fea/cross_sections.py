@@ -11,6 +11,7 @@ Provides classes and functions to calculate:
 """
 
 import numpy as np
+import functools
 from dataclasses import dataclass
 from typing import Tuple, Optional
 from abc import ABC, abstractmethod
@@ -164,6 +165,7 @@ class RectangularSection(CrossSection):
         self.height = height
         self.name = name or f"Rectangular ({width}w × {height}h)"
     
+    @functools.lru_cache(maxsize=1)
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
         b, h = self.width, self.height
@@ -215,6 +217,7 @@ class CircularSection(CrossSection):
         self.diameter = diameter
         self.name = name or f"Circular (∅{diameter})"
     
+    @functools.lru_cache(maxsize=1)
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
         d = self.diameter
@@ -274,6 +277,7 @@ class HollowCircularSection(CrossSection):
         self.inner_diameter = outer_diameter - 2 * thickness
         self.name = name or f"Hollow Circular (∅{outer_diameter} × {thickness}t)"
     
+    @functools.lru_cache(maxsize=1)
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
         do = self.outer_diameter
@@ -363,6 +367,7 @@ class IBeamSection(CrossSection):
         self.flange_thickness = flange_thickness
         self.name = name or f"I-Beam (d={total_height}, bf={flange_width}, tw={web_thickness}, tf={flange_thickness})"
     
+    @functools.lru_cache(maxsize=1)
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
         bf = self.flange_width
@@ -463,6 +468,7 @@ class TBeamSection(CrossSection):
         self.total_height = flange_thickness + web_height
         self.name = name or f"T-Beam (bf={flange_width}, tf={flange_thickness}, hw={web_height}, tw={web_thickness})"
     
+    @functools.lru_cache(maxsize=1)
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
         bf = self.flange_width
@@ -577,6 +583,7 @@ class BoxSection(CrossSection):
         self.thickness = thickness
         self.name = name or f"Box Section ({width}w × {height}h × {thickness}t)"
     
+    @functools.lru_cache(maxsize=1)
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
         B = self.width
@@ -598,7 +605,7 @@ class BoxSection(CrossSection):
             raise ValueError(f"Calculated moment of inertia Iz must be positive (got {Iz}). Check dimensions.")
         
         # Torsional constant for thin-walled box
-        Am = b * h  # Mean area
+        Am = (B - t) * (H - t)  # Mean area (mid-plane)
         perimeter = 2*(B + H)
         J = (4 * Am**2 * t) / perimeter
         
@@ -675,6 +682,7 @@ class CChannelSection(CrossSection):
         self.flange_thickness = flange_thickness
         self.name = name or f"C-Channel (d={height}, bf={flange_width}, tw={web_thickness}, tf={flange_thickness})"
     
+    @functools.lru_cache(maxsize=1)
     def properties(self) -> SectionProperties:
         """Calculate section properties."""
         h = self.height
@@ -689,7 +697,7 @@ class CChannelSection(CrossSection):
         
         # Centroid (measured from back of web)
         x_flange = bf/2
-        x_web = 0
+        x_web = tw / 2
         x_bar = (2*A_flange*x_flange + A_web*x_web) / A_total
         
         # Major axis (y-axis)
@@ -787,6 +795,7 @@ class LSection(CrossSection):
         type_str = "Equal" if is_equal else "Unequal"
         self.name = name or f"L-Section {type_str} ({leg_length_vertical} × {leg_length_horizontal} × {thickness}t)"
     
+    @functools.lru_cache(maxsize=1)
     def properties(self) -> SectionProperties:
         """Calculate section properties about centroidal axes."""
         h = self.leg_length_vertical

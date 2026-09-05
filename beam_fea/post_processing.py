@@ -257,36 +257,247 @@ class InternalForceEngine:
             if load.element is not None:
                 elems = [load.element] if isinstance(load.element, int) else load.element
                 for eid in elems:
+                    node1, node2 = elements[eid]
+                    p1, p2 = coords[node1], coords[node2]
+                    dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+                    L = np.sqrt(dx**2 + dy**2)
+                    c = dx/L if L > 0 else 1.0
+                    s = dy/L if L > 0 else 0.0
+                    
+                    # Global to local mapping
+                    wya_local = -s * wx1 + c * wy1
+                    wxa_local =  c * wx1 + s * wy1
+                    wyb_local = -s * wx2 + c * wy2
+                    wxb_local =  c * wx2 + s * wy2
+
                     curr = element_dist_loads.get(eid, (0, 0, 0, 0))
-                    element_dist_loads[eid] = (curr[0] + wy1, curr[1] + wy2, curr[2] + wx1, curr[3] + wx2)
+                    element_dist_loads[eid] = (curr[0] + wya_local, curr[1] + wyb_local, curr[2] + wxa_local, curr[3] + wxb_local)
             elif load.x_start is not None:
                 x_s, x_e = min(load.x_start, load.x_end), max(load.x_start, load.x_end)
                 for eid in range(solver.mesh.num_elements):
                     node1, node2 = elements[eid]
-                    p1, p2 = coords[node1, 0], coords[node2, 0]
-                    e_min, e_max = min(p1, p2), max(p1, p2)
+                    p1, p2 = coords[node1], coords[node2]
+                    e_min, e_max = min(p1[0], p2[0]), max(p1[0], p2[0])
                     i_min, i_max = max(e_min, x_s), min(e_max, x_e)
                     if i_max > i_min:
+                        dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+                        L = np.sqrt(dx**2 + dy**2)
+                        c = dx/L if L > 0 else 1.0
+                        s = dy/L if L > 0 else 0.0
+
                         def get_w(x, w1, w2, xs, xe):
                             if abs(xe - xs) < 1e-9: return w1
                             return w1 + (w2 - w1) * (x - xs) / (xe - xs)
-                        wya = get_w(p1, wy1, wy2, load.x_start, load.x_end)
-                        wyb = get_w(p2, wy1, wy2, load.x_start, load.x_end)
-                        wxa = get_w(p1, wx1, wx2, load.x_start, load.x_end)
-                        wxb = get_w(p2, wx1, wx2, load.x_start, load.x_end)
+                        
+                        wya = get_w(p1[0], wy1, wy2, load.x_start, load.x_end)
+                        wyb = get_w(p2[0], wy1, wy2, load.x_start, load.x_end)
+                        wxa = get_w(p1[0], wx1, wx2, load.x_start, load.x_end)
+                        wxb = get_w(p2[0], wx1, wx2, load.x_start, load.x_end)
+                        
+                        wya_local = -s * wxa + c * wya
+                        wxa_local =  c * wxa + s * wya
+                        wyb_local = -s * wxb + c * wyb
+                        wxb_local =  c * wxb + s * wyb
+
                         curr = element_dist_loads.get(eid, (0, 0, 0, 0))
-                        element_dist_loads[eid] = (curr[0] + wya, curr[1] + wyb, curr[2] + wxa, curr[3] + wxb)
+                        element_dist_loads[eid] = (curr[0] + wya_local, curr[1] + wyb_local, curr[2] + wxa_local, curr[3] + wxb_local)
         return element_dist_loads
 
 class StressEngine:
     """Engine to coordinate 3D stress field calculation."""
 
     @staticmethod
+    def _normalize_to_laminate(mat, sec):
+        """Treat isotropic Material as a 1-ply laminate for code unification."""
+        from .composites import Laminate, Ply
+        if not hasattr(mat, 'plies'):
+            p = Ply(name=mat.name, E1=mat.E, E2=mat.E, nu12=mat.nu, G12=mat.G,
+                    G13=mat.G, G23=mat.G, thickness=sec.y_top - sec.y_bottom,
+                    rho=mat.rho, Xt=mat.yield_strength or 0.0,
+                    Xc=mat.yield_strength or 0.0, Yt=mat.yield_strength or 0.0,
+                    Yc=mat.yield_strength or 0.0, S=mat.yield_strength / 1.732 if mat.yield_strength else 0.0)
+            return Laminate(name=mat.name, stack=[(p, 0.0)])
+        return mat
+
+    @staticmethod
+    def _compute_midplane_kinematics(lam, N_sub, M_sub, V_sub, wx_avg, width, n_stat):
+        """Invert ABD matrix and compute midplane strains and strain derivatives."""
+        load_vectors = np.zeros((n_stat, 6))
+        load_vectors[:, 0] = N_sub
+        load_vectors[:, 3] = M_sub
+
+        try:
+            ABD_inv = np.linalg.inv(lam.ABD)
+            strains_mid = (ABD_inv @ load_vectors.T).T
+        except np.linalg.LinAlgError:
+            strains_mid = np.zeros((n_stat, 6))
+            ABD_inv = None
+
+        load_rates = np.zeros((n_stat, 6))
+        load_rates[:, 0] = -wx_avg / width
+        load_rates[:, 3] = V_sub / width
+
+        if ABD_inv is not None:
+            try:
+                dstrains_dx = (ABD_inv @ load_rates.T).T
+            except np.linalg.LinAlgError:
+                dstrains_dx = np.zeros((n_stat, 6))
+        else:
+            dstrains_dx = np.zeros((n_stat, 6))
+
+        return strains_mid, dstrains_dx
+
+    @staticmethod
+    def _compute_ply_stresses(lam, strains_mid, dstrains_dx, n_stat):
+        """Compute stresses at top/mid/bottom of each ply, shear equilibrium, local stresses, and failure criteria."""
+        from .failure_criteria import MaximumStressCriterion, TsaiHillCriterion, TsaiWuCriterion
+
+        ply_stresses = []
+        z_ply = -lam.total_thickness / 2.0
+
+        for i, (ply, angle) in enumerate(lam.plies):
+            Qbar = ply.transformed_reduced_stiffness(angle)
+
+            z_bot = z_ply
+            z_top = z_ply + ply.thickness
+            z_mid = z_ply + ply.thickness / 2.0
+
+            eps_bot = strains_mid[:, 0:3] + z_bot * strains_mid[:, 3:6]
+            eps_mid = strains_mid[:, 0:3] + z_mid * strains_mid[:, 3:6]
+            eps_top = strains_mid[:, 0:3] + z_top * strains_mid[:, 3:6]
+
+            sig_bot = (Qbar @ eps_bot.T).T
+            sig_mid = (Qbar @ eps_mid.T).T
+            sig_top = (Qbar @ eps_top.T).T
+
+            sig_a = (Qbar @ strains_mid[:, 0:3].T).T[:, 0]
+            sig_b_bot = sig_bot[:, 0] - sig_a
+            sig_b_top = sig_top[:, 0] - sig_a
+
+            def calc_tau_xz(z_start, z_end, tau_start):
+                term0 = dstrains_dx[:, 0:3] * (z_end - z_start)
+                term1 = 0.5 * dstrains_dx[:, 3:6] * (z_end**2 - z_start**2)
+                d_eps_int = term0 + term1
+                d_sig_x_int = (Qbar @ d_eps_int.T).T[:, 0]
+                return tau_start - d_sig_x_int
+
+            if i == 0:
+                tau_xz_bot = np.zeros(n_stat)
+            else:
+                tau_xz_bot = ply_stresses[-1]['tau_xz_top']
+
+            tau_xz_mid = calc_tau_xz(z_bot, z_mid, tau_xz_bot)
+            tau_xz_top = calc_tau_xz(z_bot, z_top, tau_xz_bot)
+
+            # Transform to local material coordinates (1, 2, 12, 13, 23)
+            def to_local(sig, txz, ang):
+                theta = np.radians(ang)
+                c, s = np.cos(theta), np.sin(theta)
+                s1 = sig[:, 0]*c**2 + sig[:, 1]*s**2 + 2*sig[:, 2]*s*c
+                s2 = sig[:, 0]*s**2 + sig[:, 1]*c**2 - 2*sig[:, 2]*s*c
+                s12 = (sig[:, 1] - sig[:, 0])*s*c + sig[:, 2]*(c**2 - s**2)
+                t13 = txz * c
+                t23 = -txz * s
+                return np.column_stack([s1, s2, s12, t13, t23])
+
+            loc_bot = to_local(sig_bot, tau_xz_bot, angle)
+            loc_mid = to_local(sig_mid, tau_xz_mid, angle)
+            loc_top = to_local(sig_top, tau_xz_top, angle)
+
+            def calc_vm(sig, txz):
+                return np.sqrt(sig[:, 0]**2 + sig[:, 1]**2 - sig[:, 0]*sig[:, 1] + 3*(sig[:, 2]**2 + txz**2))
+
+            vm_bot = calc_vm(sig_bot, tau_xz_bot)
+            vm_top = calc_vm(sig_top, tau_xz_top)
+
+            try:
+                c_max = MaximumStressCriterion(Xt=ply.Xt, Xc=ply.Xc, Yt=ply.Yt, Yc=ply.Yc, S=ply.S, S13=ply.S13, S23=ply.S23)
+                sf_max_bot = c_max.evaluate(sigma_1=loc_bot[:,0], sigma_2=loc_bot[:,1], tau_12=loc_bot[:,2], tau_13=loc_bot[:,3], tau_23=loc_bot[:,4])['SF']
+                sf_max_top = c_max.evaluate(sigma_1=loc_top[:,0], sigma_2=loc_top[:,1], tau_12=loc_top[:,2], tau_13=loc_top[:,3], tau_23=loc_top[:,4])['SF']
+
+                c_th = TsaiHillCriterion(Xt=ply.Xt, Xc=ply.Xc, Yt=ply.Yt, Yc=ply.Yc, S=ply.S, S13=ply.S13, S23=ply.S23)
+                sf_th_bot = c_th.evaluate(sigma_1=loc_bot[:,0], sigma_2=loc_bot[:,1], tau_12=loc_bot[:,2], tau_13=loc_bot[:,3], tau_23=loc_bot[:,4])['SF']
+                sf_th_top = c_th.evaluate(sigma_1=loc_top[:,0], sigma_2=loc_top[:,1], tau_12=loc_top[:,2], tau_13=loc_top[:,3], tau_23=loc_top[:,4])['SF']
+
+                c_tw = TsaiWuCriterion(Xt=ply.Xt, Xc=ply.Xc, Yt=ply.Yt, Yc=ply.Yc, S=ply.S, S13=ply.S13, S23=ply.S23)
+                sf_tw_bot = c_tw.evaluate(sigma_1=loc_bot[:,0], sigma_2=loc_bot[:,1], tau_12=loc_bot[:,2], tau_13=loc_bot[:,3], tau_23=loc_bot[:,4])['SF']
+                sf_tw_top = c_tw.evaluate(sigma_1=loc_top[:,0], sigma_2=loc_top[:,1], tau_12=loc_top[:,2], tau_13=loc_top[:,3], tau_23=loc_top[:,4])['SF']
+            except ValueError:
+                sf_max_bot = sf_max_top = sf_th_bot = sf_th_top = sf_tw_bot = sf_tw_top = np.full(n_stat, np.inf)
+
+            ply_stresses.append({
+                'index': i,
+                'name': ply.name,
+                'angle': angle,
+                'z_range': (z_bot, z_top),
+                'tau_xz_bot': tau_xz_bot,
+                'tau_xz_mid': tau_xz_mid,
+                'tau_xz_top': tau_xz_top,
+                'sigma_x': (sig_bot[:, 0] + sig_top[:, 0]) / 2.0,
+                'peak_sigma_x': np.maximum(np.abs(sig_bot[:, 0]), np.abs(sig_top[:, 0])),
+                'peak_sigma_1': np.maximum(np.abs(loc_bot[:, 0]), np.abs(loc_top[:, 0])),
+                'peak_sigma_2': np.maximum(np.abs(loc_bot[:, 1]), np.abs(loc_top[:, 1])),
+                'peak_tau_12': np.maximum(np.abs(loc_bot[:, 2]), np.abs(loc_top[:, 2])),
+                'peak_tau_xy': np.maximum(np.abs(sig_bot[:, 2]), np.abs(sig_top[:, 2])),
+                'peak_tau_xz': np.max(np.abs([tau_xz_bot, tau_xz_mid, tau_xz_top]), axis=0),
+                'peak_von_mises': np.maximum(np.abs(vm_bot), np.abs(vm_top)),
+                'min_sf_max': np.minimum(sf_max_bot, sf_max_top),
+                'min_sf_tsai_hill': np.minimum(sf_th_bot, sf_th_top),
+                'min_sf_tsai_wu': np.minimum(sf_tw_bot, sf_tw_top),
+                'sigma_bot': sig_bot, 'sigma_mid': sig_mid, 'sigma_top': sig_top,
+                'local_bot': loc_bot, 'local_mid': loc_mid, 'local_top': loc_top,
+                'axial_sigma_x': sig_a,
+                'bending_sigma_x_bot': sig_b_bot,
+                'bending_sigma_x_top': sig_b_top
+            })
+            z_ply += ply.thickness
+
+        return ply_stresses
+
+    @staticmethod
+    def _interpolate_stress_grid(ply_stresses, mask, Y, indices, sigma_a, sigma_b, tau_s, sigma_vm):
+        """Map ply stresses back to 2D Y-Z grid via through-thickness interpolation."""
+        for idx_in_sub, global_idx in enumerate(indices):
+            for ply_info in ply_stresses:
+                z_b, z_t = ply_info['z_range']
+                mask_ply = mask & (Y >= z_b) & (Y <= z_t)
+                if not np.any(mask_ply):
+                    continue
+
+                h_ply = z_t - z_b
+                y_rel = (Y[mask_ply] - z_b) / h_ply if h_ply > 0 else 0.5
+
+                sig_a_val = ply_info['axial_sigma_x'][idx_in_sub]
+                sb_bot = ply_info['bending_sigma_x_bot'][idx_in_sub]
+                sb_top = ply_info['bending_sigma_x_top'][idx_in_sub]
+
+                sigma_a[global_idx, mask_ply] = sig_a_val
+                sigma_b[global_idx, mask_ply] = sb_bot + (sb_top - sb_bot) * y_rel
+
+                t_bot = ply_info['tau_xz_bot'][idx_in_sub]
+                t_mid = ply_info['tau_xz_mid'][idx_in_sub]
+                t_top = ply_info['tau_xz_top'][idx_in_sub]
+
+                tau_interp = (t_bot * 2 * (y_rel - 0.5) * (y_rel - 1.0) +
+                              t_mid * (-4 * y_rel * (y_rel - 1.0)) +
+                              t_top * 2 * y_rel * (y_rel - 0.5))
+                tau_s[global_idx, mask_ply] = tau_interp
+
+                s_x_grid = sig_a_val + (sb_bot + (sb_top - sb_bot) * y_rel)
+                s_y_grid = ply_info['sigma_bot'][idx_in_sub, 1]
+                t_xy_grid = ply_info['sigma_bot'][idx_in_sub, 2]
+
+                sigma_vm[global_idx, mask_ply] = np.sqrt(
+                    s_x_grid**2 + s_y_grid**2 - s_x_grid*s_y_grid +
+                    3*(t_xy_grid**2 + tau_interp**2)
+                )
+
+    @staticmethod
     def calculate(solver, num_x_points: int = None, num_y_points: int = 20, num_z_points: int = 20) -> dict:
         forces = solver.calculate_internal_forces(num_x_points)
         x_positions = forces['positions']
         N_x = forces['axial_forces']
-        V_x = forces['shear_forces'] # Transverse shear force V_y
+        V_x = forces['shear_forces']
         M_x = forces['bending_moments']
 
         # Build 2D grid for the cross-section
@@ -299,289 +510,53 @@ class StressEngine:
         points_by_element = eval_plan['points_by_element']
 
         eval_x_count = len(x_positions)
-        x_positions = eval_plan['path_positions'] # Use path length for X in stresses too
+        x_positions = eval_plan['path_positions']
         shape_3d = (eval_x_count, num_y_points, num_z_points)
 
         sigma_a, sigma_b, tau_s, sigma_vm = [np.zeros(shape_3d) for _ in range(4)]
         sigma_1, sigma_2 = np.zeros(shape_3d), np.zeros(shape_3d)
 
         profile_cache = {}
-
-
-        coords = solver.mesh.nodes
-        elements = solver.mesh.elements
+        element_dist_loads = InternalForceEngine._get_element_dist_loads(solver)
 
         for eid, indices in points_by_element.items():
-            node1, node2 = elements[eid]
-            p1, p2 = coords[node1], coords[node2]
-            dx, dy = p2[0] - p1[0], p2[1] - p1[1]
-            angle = np.arctan2(dy, dx)
-            # T = get_rotation_matrix(angle)
-
             mat = solver.properties.get_material(eid)
             sec = solver.properties.get_section(eid)
             sec_id = id(sec)
 
             if sec_id not in profile_cache:
                 profile_cache[sec_id] = StressEngine._get_section_profile(sec, Y, Z)
-
             mask, t_yz, Q_yz = profile_cache[sec_id]
 
-            # --- Rotate Load Vectors for Angled Beams ---
-            # Midplane resultants (N, V, M) are in global coords.
-            # We need them in local element axes for CLT stress recovery.
-            # Local Force Vector [n_local; m_local] = T @ [n_global; m_global]
-            # Actually, standard beam internal force vectors are already local in our strategy.
-            # But the 'midplane resultants' logic here builds vectors from N_x, V_x, M_x.
-            # Are N_x, V_x local or global?
-            # In InternalForceEngine, they are LOCAL (axial, shear, moment).
-            # So no extra rotation needed here if N_x, V_x are already local.
-            # Treat Isotropic as a 1-ply laminate for code unification
-            from .composites import Laminate, Ply
-            if not hasattr(mat, 'plies'):
-                # Convert isotropic Material to a single-ply Laminate
-                p = Ply(name=mat.name, E1=mat.E, E2=mat.E, nu12=mat.nu, G12=mat.G,
-                        G13=mat.G, G23=mat.G, thickness=sec.y_top - sec.y_bottom,
-                        rho=mat.rho, Xt=mat.yield_strength or 0.0,
-                        Xc=mat.yield_strength or 0.0, Yt=mat.yield_strength or 0.0,
-                        Yc=mat.yield_strength or 0.0, S=mat.yield_strength / 1.732 if mat.yield_strength else 0.0)
-                lam = Laminate(name=mat.name, stack=[(p, 0.0)])
-            else:
-                lam = mat
+            lam = StressEngine._normalize_to_laminate(mat, sec)
+            width = sec.z_right - sec.z_left
 
-            if True: # Always use the advanced recovery logic now
-                t_lam = lam.total_thickness
+            N_sub = N_x[indices] / width
+            M_sub = M_x[indices] / width
+            V_sub = V_x[indices]
 
-                # Laminate mid-plane strains and curvatures for these stations
-                # For 1D beam: eps_x = eps_x_0 + z * kappa_x
-                # u_local = [u1, v1, th1, u2, v2, th2]
-                # Actually we have global forces N, V, M.
-                # Midplane resultants per unit width: n = N/width, m = M/width
-                width = sec.z_right - sec.z_left
+            d_load = element_dist_loads.get(eid, (0.0, 0.0, 0.0, 0.0))
+            wx_avg = (d_load[2] + d_load[3]) / 2.0
 
-                N_sub = N_x[indices] / width
-                M_sub = M_x[indices] / width
+            strains_mid, dstrains_dx = StressEngine._compute_midplane_kinematics(
+                lam, N_sub, M_sub, V_sub, wx_avg, width, len(indices)
+            )
 
-                # Solve [ABD][eps0; kappa] = [n; m]
-                # [n_x, n_y, n_xy, m_x, m_y, m_xy]^T
-                # In 1D beam, we assume n_y=n_xy=m_y=m_xy = 0
-                load_vectors = np.zeros((len(indices), 6))
-                load_vectors[:, 0] = N_sub
-                load_vectors[:, 3] = M_sub
+            ply_stresses = StressEngine._compute_ply_stresses(
+                lam, strains_mid, dstrains_dx, len(indices)
+            )
 
-                try:
-                    ABD_inv = np.linalg.inv(lam.ABD)
-                    strains_mid = (ABD_inv @ load_vectors.T).T # (n_stations, 6)
-                except np.linalg.LinAlgError:
-                    strains_mid = np.zeros((len(indices), 6))
+            StressEngine._interpolate_stress_grid(
+                ply_stresses, mask, Y, indices, sigma_a, sigma_b, tau_s, sigma_vm
+            )
 
-                # Transverse Shear Stress Recovery (tau_xz)
-                # Recovered by integrating equilibrium: d_sigma_x/dx + d_tau_xz/dz = 0
-                # tau_xz(z) = - integral_{-t/2}^{z} (d_sigma_x/dx) dz
-                # Since sigma_x = Qbar_11 * eps_x + ...
-                # d_sigma_x/dx is related to dN/dx (axial load) and dM/dx (shear force V)
-                # In 1D beam: dM/dx = V. dN/dx = -wx (axial distributed load)
-
-                # Recover d_strains_mid/dx: [ABD_inv] * [dN/dx, 0, 0, dM/dx, 0, 0]^T
-                # Load rates: dN/dx = -wx_sub, dM/dx = V_sub
-                element_dist_loads = InternalForceEngine._get_element_dist_loads(solver)
-                d_load = element_dist_loads.get(eid, (0.0, 0.0, 0.0, 0.0))
-                # Approximate wx as average across element stations for this estação
-                wx_avg = (d_load[2] + d_load[3]) / 2.0
-
-                load_rates = np.zeros((len(indices), 6))
-                load_rates[:, 0] = -wx_avg / width
-                load_rates[:, 3] = V_x[indices] / width
-
-                try:
-                    dstrains_dx = (ABD_inv @ load_rates.T).T # (n_stations, 6)
-                except np.linalg.LinAlgError:
-                    dstrains_dx = np.zeros((len(indices), 6))
-
-                # For each ply, calculate stress at its top, bottom and mid
-                ply_stresses = []
-                z_ply = -t_lam / 2.0
-                for i, (ply, angle) in enumerate(lam.plies):
-                    Qbar = ply.transformed_reduced_stiffness(angle)
-
-                    # Heights within the ply (top, mid, bottom relative to midplane)
-                    z_bot = z_ply
-                    z_top = z_ply + ply.thickness
-                    z_mid = z_ply + ply.thickness / 2.0
-
-                    # Strains at these heights: eps = eps0 + z * kappa
-                    # eps0 = strains_mid[:, 0:3], kappa = strains_mid[:, 3:6]
-                    eps_bot = strains_mid[:, 0:3] + z_bot * strains_mid[:, 3:6]
-                    eps_mid = strains_mid[:, 0:3] + z_mid * strains_mid[:, 3:6]
-                    eps_top = strains_mid[:, 0:3] + z_top * strains_mid[:, 3:6]
-
-                    # Stresses at these heights: sig = Qbar * eps (Global laminate coordinates x, y, xy)
-                    sig_bot = (Qbar @ eps_bot.T).T # (n_stations, 3)
-                    sig_mid = (Qbar @ eps_mid.T).T # (n_stations, 3)
-                    sig_top = (Qbar @ eps_top.T).T # (n_stations, 3)
-
-                    # Axial vs Bending decomposition for sigma_x
-                    sig_a = (Qbar @ strains_mid[:, 0:3].T).T[:, 0]
-                    sig_b_bot = sig_bot[:, 0] - sig_a
-                    sig_b_top = sig_top[:, 0] - sig_a
-
-                    # Calculate Transverse Shear first so it can be evaluated
-                    def calc_tau_xz(z_start, z_end, tau_start):
-                        term0 = dstrains_dx[:, 0:3] * (z_end - z_start)
-                        term1 = 0.5 * dstrains_dx[:, 3:6] * (z_end**2 - z_start**2)
-                        d_eps_int = term0 + term1
-                        d_sig_x_int = (Qbar @ d_eps_int.T).T[:, 0]
-                        return tau_start - d_sig_x_int
-
-                    if i == 0:
-                        tau_xz_bot = np.zeros(len(indices))
-                    else:
-                        tau_xz_bot = ply_stresses[-1]['tau_xz_top']
-
-                    tau_xz_mid = calc_tau_xz(z_bot, z_mid, tau_xz_bot)
-                    tau_xz_top = calc_tau_xz(z_bot, z_top, tau_xz_bot)
-
-                    # Transform to local material coordinates (1, 2, 12, 13, 23)
-                    def to_local(sig, txz, ang):
-                        theta = np.radians(ang)
-                        c, s = np.cos(theta), np.sin(theta)
-                        s1 = sig[:, 0]*c**2 + sig[:, 1]*s**2 + 2*sig[:, 2]*s*c
-                        s2 = sig[:, 0]*s**2 + sig[:, 1]*c**2 - 2*sig[:, 2]*s*c
-                        s12 = (sig[:, 1] - sig[:, 0])*s*c + sig[:, 2]*(c**2 - s**2)
-                        t13 = txz * c
-                        t23 = -txz * s
-                        return np.column_stack([s1, s2, s12, t13, t23])
-
-                    loc_bot = to_local(sig_bot, tau_xz_bot, angle)
-                    loc_mid = to_local(sig_mid, tau_xz_mid, angle)
-                    loc_top = to_local(sig_top, tau_xz_top, angle)
-
-                    # Principal and Von Mises Calculation for each station
-                    def calc_vm_principal(sig, txz):
-                        avg = (sig[:, 0] + sig[:, 1]) / 2.0
-                        r = np.sqrt(((sig[:, 0] - sig[:, 1]) / 2.0)**2 + sig[:, 2]**2)
-                        s1p = avg + r
-                        s2p = avg - r
-                        vm = np.sqrt(sig[:, 0]**2 + sig[:, 1]**2 - sig[:, 0]*sig[:, 1] + 3*(sig[:, 2]**2 + txz**2))
-                        return vm, s1p, s2p
-
-                    vm_bot, s1p_bot, s2p_bot = calc_vm_principal(sig_bot, tau_xz_bot)
-                    vm_mid, s1p_mid, s2p_mid = calc_vm_principal(sig_mid, tau_xz_mid)
-                    vm_top, s1p_top, s2p_top = calc_vm_principal(sig_top, tau_xz_top)
-
-                    # Minimum Safety Factors
-                    from .failure_criteria import MaximumStressCriterion, TsaiHillCriterion, TsaiWuCriterion
-                    
-                    try:
-                        c_max = MaximumStressCriterion(Xt=ply.Xt, Xc=ply.Xc, Yt=ply.Yt, Yc=ply.Yc, S=ply.S, S13=ply.S13, S23=ply.S23)
-                        sf_max_bot = c_max.evaluate(sigma_1=loc_bot[:,0], sigma_2=loc_bot[:,1], tau_12=loc_bot[:,2], tau_13=loc_bot[:,3], tau_23=loc_bot[:,4])['SF']
-                        sf_max_top = c_max.evaluate(sigma_1=loc_top[:,0], sigma_2=loc_top[:,1], tau_12=loc_top[:,2], tau_13=loc_top[:,3], tau_23=loc_top[:,4])['SF']
-                        
-                        c_th = TsaiHillCriterion(Xt=ply.Xt, Xc=ply.Xc, Yt=ply.Yt, Yc=ply.Yc, S=ply.S, S13=ply.S13, S23=ply.S23)
-                        sf_th_bot = c_th.evaluate(sigma_1=loc_bot[:,0], sigma_2=loc_bot[:,1], tau_12=loc_bot[:,2], tau_13=loc_bot[:,3], tau_23=loc_bot[:,4])['SF']
-                        sf_th_top = c_th.evaluate(sigma_1=loc_top[:,0], sigma_2=loc_top[:,1], tau_12=loc_top[:,2], tau_13=loc_top[:,3], tau_23=loc_top[:,4])['SF']
-                        
-                        c_tw = TsaiWuCriterion(Xt=ply.Xt, Xc=ply.Xc, Yt=ply.Yt, Yc=ply.Yc, S=ply.S, S13=ply.S13, S23=ply.S23)
-                        sf_tw_bot = c_tw.evaluate(sigma_1=loc_bot[:,0], sigma_2=loc_bot[:,1], tau_12=loc_bot[:,2], tau_13=loc_bot[:,3], tau_23=loc_bot[:,4])['SF']
-                        sf_tw_top = c_tw.evaluate(sigma_1=loc_top[:,0], sigma_2=loc_top[:,1], tau_12=loc_top[:,2], tau_13=loc_top[:,3], tau_23=loc_top[:,4])['SF']
-                    except ValueError:
-                        # If ply has 0s for strengths
-                        n_stat = len(indices)
-                        sf_max_bot = sf_max_top = sf_th_bot = sf_th_top = sf_tw_bot = sf_tw_top = np.full(n_stat, np.inf)
-
-                    ply_stresses.append({
-                        'index': i,
-                        'name': ply.name,
-                        'angle': angle,
-                        'z_range': (z_bot, z_top),
-                        'tau_xz_bot': tau_xz_bot,
-                        'tau_xz_mid': tau_xz_mid,
-                        'tau_xz_top': tau_xz_top,
-                        'sigma_x': (sig_bot[:, 0] + sig_top[:, 0]) / 2.0,
-                        'peak_sigma_x': np.maximum(np.abs(sig_bot[:, 0]), np.abs(sig_top[:, 0])),
-                        'peak_sigma_1': np.maximum(np.abs(loc_bot[:, 0]), np.abs(loc_top[:, 0])),
-                        'peak_sigma_2': np.maximum(np.abs(loc_bot[:, 1]), np.abs(loc_top[:, 1])),
-                        'peak_tau_12': np.maximum(np.abs(loc_bot[:, 2]), np.abs(loc_top[:, 2])),
-                        'peak_tau_xy': np.maximum(np.abs(sig_bot[:, 2]), np.abs(sig_top[:, 2])),
-                        'peak_tau_xz': np.max(np.abs([tau_xz_bot, tau_xz_mid, tau_xz_top]), axis=0),
-                        'peak_von_mises': np.maximum(np.abs(vm_bot), np.abs(vm_top)),
-                        'min_sf_max': np.minimum(sf_max_bot, sf_max_top),
-                        'min_sf_tsai_hill': np.minimum(sf_th_bot, sf_th_top),
-                        'min_sf_tsai_wu': np.minimum(sf_tw_bot, sf_tw_top),
-                        'sigma_bot': sig_bot, 'sigma_mid': sig_mid, 'sigma_top': sig_top,
-                        'local_bot': loc_bot, 'local_mid': loc_mid, 'local_top': loc_top,
-                        'axial_sigma_x': sig_a,
-                        'bending_sigma_x_bot': sig_b_bot,
-                        'bending_sigma_x_top': sig_b_top
-                    })
-                    z_ply += ply.thickness
-
-                # Map ply stresses back to Y, Z grid for standard results
-                # In our 1D beam model, Y is the thickness direction for laminates.
-                for idx_in_sub, global_idx in enumerate(indices):
-                    for ply_info in ply_stresses:
-                        z_b, z_t = ply_info['z_range']
-                        # mask_ply identifies points in the grid that belong to this ply
-                        mask_ply = mask & (Y >= z_b) & (Y <= z_t)
-                        if not np.any(mask_ply):
-                            continue
-
-                        # --- Through-Thickness Interpolation ---
-                        # Linear interpolation for sigma_x (axial + bending)
-                        # sigma(y) = sigma_bot + (sigma_top - sigma_bot) * (y - z_b) / (z_t - z_b)
-
-                        # Heights relative to ply bottom [0, 1]
-                        h_ply = z_t - z_b
-                        y_rel = (Y[mask_ply] - z_b) / h_ply if h_ply > 0 else 0.5
-
-                        # Axial is constant through ply in standard CLT but bending is linear
-                        sig_a_val = ply_info['axial_sigma_x'][idx_in_sub]
-                        sb_bot = ply_info['bending_sigma_x_bot'][idx_in_sub]
-                        sb_top = ply_info['bending_sigma_x_top'][idx_in_sub]
-
-                        sigma_a[global_idx, mask_ply] = sig_a_val
-                        sigma_b[global_idx, mask_ply] = sb_bot + (sb_top - sb_bot) * y_rel
-
-                        # Transverse Shear (Quadratic interpolation for tau_xz)
-                        # We have bot, mid, top. Fit a parabola: tau = a*y^2 + b*y + c
-                        # Local coords: y_rel in [0, 1], mid at 0.5
-                        t_bot = ply_info['tau_xz_bot'][idx_in_sub]
-                        t_mid = ply_info['tau_xz_mid'][idx_in_sub]
-                        t_top = ply_info['tau_xz_top'][idx_in_sub]
-
-                        # Parabolic fit: tau(y_rel)
-                        # L0 = (y-0.5)(y-1) / (0-0.5)(0-1) = 2(y-0.5)(y-1)
-                        # L1 = (y-0)(y-1) / (0.5-0)(0.5-1) = -4(y)(y-1)
-                        # L2 = (y-0)(y-0.5) / (1-0)(1-0.5) = 2(y)(y-0.5)
-                        tau_interp = (t_bot * 2 * (y_rel - 0.5) * (y_rel - 1.0) +
-                                      t_mid * (-4 * y_rel * (y_rel - 1.0)) +
-                                      t_top * 2 * y_rel * (y_rel - 0.5))
-                        tau_s[global_idx, mask_ply] = tau_interp
-
-                        # Von Mises re-evaluated at each grid point using interpolated stress components.
-                        s_x_grid = sig_a_val + (sb_bot + (sb_top - sb_bot) * y_rel)
-
-                        # NOTE: sigma_y and tau_xy from CLT are in-plane membrane/coupling stresses
-                        # that are theoretically constant within each ply (they depend only on the
-                        # ply lamina coordinates and angle, not on z-position within the ply).
-                        # This is not an approximation — it is the correct CLT behaviour.
-                        # Only sigma_x (bending) and tau_xz (transverse shear) vary through thickness.
-                        s_y_grid = ply_info['sigma_bot'][idx_in_sub, 1]  # constant per CLT
-                        t_xy_grid = ply_info['sigma_bot'][idx_in_sub, 2]  # constant per CLT
-
-                        sigma_vm[global_idx, mask_ply] = np.sqrt(
-                            s_x_grid**2 + s_y_grid**2 - s_x_grid*s_y_grid +
-                            3*(t_xy_grid**2 + tau_interp**2)
-                        )
-
-                # Store ply-by-ply data in a separate attribute for querying
-                if not hasattr(solver, 'laminate_results'):
-                    solver.laminate_results = {}
-                solver.laminate_results[eid] = {
-                    'ply_data': ply_stresses,
-                    'strains_mid': strains_mid,
-                    'x_positions': x_positions[indices]
-                }
+            if not hasattr(solver, 'laminate_results'):
+                solver.laminate_results = {}
+            solver.laminate_results[eid] = {
+                'ply_data': ply_stresses,
+                'strains_mid': strains_mid,
+                'x_positions': x_positions[indices]
+            }
 
         return {
             'x': x_positions, 'y': Y, 'z': Z, 'mask': mask,
@@ -769,12 +744,12 @@ class ResultsEngine:
         max_res = disp_df.iloc[disp_df['res'].idxmax()] if not disp_df.empty else None
         
         # 2. Internal Forces
-        forces = InternalForceEngine.calculate(solver)
+        forces = solver.calculate_internal_forces()
         v_idx = np.argmax(np.abs(forces['shear_forces']))
         m_idx = np.argmax(np.abs(forces['bending_moments']))
         
         # 3. Peak Stresses
-        stresses = StressEngine.calculate(solver)
+        stresses = solver.calculate_stresses()
         vm_flat = stresses['von_mises'].flatten()
         max_vm_idx_flat = np.argmax(vm_flat)
         vm_peak = vm_flat[max_vm_idx_flat]

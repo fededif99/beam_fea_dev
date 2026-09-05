@@ -189,10 +189,16 @@ class Mesh:
         elif isinstance(grading_ratios, float):
             grading_ratios = [grading_ratios] * num_segments
 
+        total_elements = sum(elements_per_segment)
         mesh = Mesh()
-        mesh.nodes = np.array([points[0][:2]], dtype=float)
+        mesh.nodes = np.zeros((total_elements + 1, 2), dtype=float)
+        mesh.elements = np.zeros((total_elements, 2), dtype=int)
+        
+        mesh.nodes[0] = points[0][:2]
         mesh.waypoint_nodes.append(0)
 
+        node_idx = 1
+        elem_idx = 0
         for i in range(num_segments):
             # Internal logic for graded segments
             p1 = np.array(points[i][:2], dtype=float)
@@ -215,13 +221,16 @@ class Mesh:
                 seg_nodes = p1[None, :] + direction[None, :] * positions[:, None]
             
             # Assemble into global mesh
-            start_num = mesh.nodes.shape[0] - 1
-            mesh.nodes = np.vstack([mesh.nodes, seg_nodes[1:]])
+            start_num = node_idx - 1
+            mesh.nodes[node_idx : node_idx + num_elements] = seg_nodes[1:]
             
             new_elems = np.vstack((np.arange(num_elements), np.arange(1, num_elements + 1))).T + start_num
-            mesh.elements = np.vstack([mesh.elements, new_elems]) if mesh.elements.size else new_elems
+            mesh.elements[elem_idx : elem_idx + num_elements] = new_elems
             
-            mesh.waypoint_nodes.append(mesh.nodes.shape[0] - 1)
+            node_idx += num_elements
+            elem_idx += num_elements
+            
+            mesh.waypoint_nodes.append(node_idx - 1)
 
         return mesh
 
@@ -263,30 +272,27 @@ class MeshRefinement:
             orig_nodes = current_mesh.nodes
             orig_elems = current_mesh.elements
             
+            num_orig_nodes = orig_nodes.shape[0]
+            num_orig_elems = orig_elems.shape[0]
+
+            new_mesh.nodes = np.empty((num_orig_nodes + num_orig_elems, 2), dtype=float)
+            new_mesh.nodes[:num_orig_nodes] = orig_nodes
+            
             # Midpoints of all original elements
             n1_coords = orig_nodes[orig_elems[:, 0]]
             n2_coords = orig_nodes[orig_elems[:, 1]]
             midpoints = (n1_coords + n2_coords) / 2.0
             
-            # New nodes array: append midpoints to the end of original nodes
-            new_mesh.nodes = np.vstack([orig_nodes, midpoints])
-            
-            # Form new elements
-            num_orig_nodes = orig_nodes.shape[0]
-            num_orig_elems = orig_elems.shape[0]
+            new_mesh.nodes[num_orig_nodes:] = midpoints
             
             midnode_ids = np.arange(num_orig_nodes, num_orig_nodes + num_orig_elems)
             
-            # Two new elements for each old one:
-            # 1. n1 to midnode
-            # 2. midnode to n2
-            elems_part1 = np.column_stack((orig_elems[:, 0], midnode_ids))
-            elems_part2 = np.column_stack((midnode_ids, orig_elems[:, 1]))
-            
-            # Flatten to shape (2 * E, 2) keeping connectivity order
+            # Form new elements
             new_mesh.elements = np.empty((2 * num_orig_elems, 2), dtype=int)
-            new_mesh.elements[0::2] = elems_part1
-            new_mesh.elements[1::2] = elems_part2
+            new_mesh.elements[0::2, 0] = orig_elems[:, 0]
+            new_mesh.elements[0::2, 1] = midnode_ids
+            new_mesh.elements[1::2, 0] = midnode_ids
+            new_mesh.elements[1::2, 1] = orig_elems[:, 1]
             
             # Update waypoint IDs if they exist. 
             new_mesh.waypoint_nodes = list(current_mesh.waypoint_nodes)

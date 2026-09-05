@@ -386,7 +386,10 @@ class DistributedLoad(Load):
             wxb = seg_wx0 + (seg_wx1 - seg_wx0) * t2
             
             # Apply trapezoidal integration
-            self._apply_linear_vectorized(F, n1, n2, L, xi1, xi2, wya, wyb, wxa, wxb)
+            dx_arr = p2_all[idx] - p1_all[idx]
+            c = dx_arr[:, 0] / L
+            s = dx_arr[:, 1] / L
+            self._apply_linear_vectorized(F, n1, n2, L, xi1, xi2, wya, wyb, wxa, wxb, c, s)
         
         return F
 
@@ -428,12 +431,15 @@ class DistributedLoad(Load):
             else:
                 continue
             
-            self._apply_linear_vectorized(F, n1, n2, L_arr, xi1, xi2, wya, wyb, wxa, wxb)
+            dx_arr = coords[node2] - coords[node1]
+            c = np.array([dx_arr[0] / L_arr[0]])
+            s = np.array([dx_arr[1] / L_arr[0]])
+            self._apply_linear_vectorized(F, n1, n2, L_arr, xi1, xi2, wya, wyb, wxa, wxb, c, s)
         
         return F
 
     @staticmethod
-    def _apply_linear_vectorized(F, n1, n2, L, xi1, xi2, wya, wyb, wxa, wxb):
+    def _apply_linear_vectorized(F, n1, n2, L, xi1, xi2, wya, wyb, wxa, wxb, c=None, s=None):
         """
         Vectorized work-equivalent nodal forces for linearly varying load.
         
@@ -447,6 +453,9 @@ class DistributedLoad(Load):
         n1, n2 = n1[valid], n2[valid]
         L, xi1, xi2 = L[valid], xi1[valid], xi2[valid]
         wya, wyb, wxa, wxb = wya[valid], wyb[valid], wxa[valid], wxb[valid]
+        if c is not None and s is not None:
+            c, s = c[valid], s[valid]
+
         
         # w(xi) = base + slope * xi
         wy_slope = (wyb - wya) / (xi2 - xi1)
@@ -500,13 +509,26 @@ class DistributedLoad(Load):
         fx_1 = L * (wx_base * dIa[0] + wx_slope * dIa[1])
         fx_2 = L * (wx_base * dIa[2] + wx_slope * dIa[3])
         
+        # Transform local to global if orientation is provided
+        if c is not None and s is not None:
+            fx_1_global = c * fx_1 - s * fy_v1
+            fy_1_global = s * fx_1 + c * fy_v1
+            fth_1_global = fy_th1
+
+            fx_2_global = c * fx_2 - s * fy_v2
+            fy_2_global = s * fx_2 + c * fy_v2
+            fth_2_global = fy_th2
+        else:
+            fx_1_global, fy_1_global, fth_1_global = fx_1, fy_v1, fy_th1
+            fx_2_global, fy_2_global, fth_2_global = fx_2, fy_v2, fy_th2
+            
         # Scatter into global force vector
-        np.add.at(F, 3 * n1,     fx_1)
-        np.add.at(F, 3 * n1 + 1, fy_v1)
-        np.add.at(F, 3 * n1 + 2, fy_th1)
-        np.add.at(F, 3 * n2,     fx_2)
-        np.add.at(F, 3 * n2 + 1, fy_v2)
-        np.add.at(F, 3 * n2 + 2, fy_th2)
+        np.add.at(F, 3 * n1,     fx_1_global)
+        np.add.at(F, 3 * n1 + 1, fy_1_global)
+        np.add.at(F, 3 * n1 + 2, fth_1_global)
+        np.add.at(F, 3 * n2,     fx_2_global)
+        np.add.at(F, 3 * n2 + 1, fy_2_global)
+        np.add.at(F, 3 * n2 + 2, fth_2_global)
 
     def _apply_custom(self, F: np.ndarray, mesh) -> np.ndarray:
         """Apply custom load function using Gauss-Legendre quadrature per element."""
