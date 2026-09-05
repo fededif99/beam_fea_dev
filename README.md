@@ -20,10 +20,15 @@
 
 ## 📅 Version History
 
-### Latest Version: v2.19.3 *(2026-04-14)*
+### Latest Version: v2.20.0 *(2026-08-24)*
 
+- **Bugfix**: Resolved angled element distributed load transformation bug in `loads.py` and `post_processing.py` by applying direction cosine transformations during equivalent nodal load assembly and internal force recovery.
+- **Bugfix**: Fixed dense boundary condition solver fallback in `boundary_conditions.py` to properly subtract coupling forces prior to matrix row/column zeroing.
+- **Bugfix**: Corrected C-channel section centroid formula and thin-walled box section torsional constant in `cross_sections.py`.
+- **Performance**: Converted `mesh.py` mesh generation to pre-allocated array assignment; removed redundant SVD condition-number check from the dense static solver; added memoization to cross-section property evaluations.
+- **Architecture**: Decomposed the monolithic `report_generator.py` into modular submodules (`batch_report.py`, `diagrams.py`, streamlined `report_generator.py`); modularized `StressEngine.calculate()` into single-responsibility helpers.
+- **Refactor**: Eliminated duplicated failure criteria formulations in `composites.py` by delegating to `failure_criteria.py`.
 - **Docs**: Re-sequenced API Reference rendering the `Failure Criteria` section directly below `Report Generation`.
-- **Workflow**: Automated `release_public` AI agent workflow added to standardize public releases.
 
 ### v2.19.2 *(2026-04-14)*
 

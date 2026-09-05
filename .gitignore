@@ -12,6 +12,11 @@ dist/
 examples/*.md
 !examples/README.md
 
+# Generated example/batch run outputs (not source)
+/batch_results*.csv
+/batch_*.md
+/parametric_study.csv
+
 # Environment & Internal
 .agent/
 .gemini/
