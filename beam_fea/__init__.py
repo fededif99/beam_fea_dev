@@ -18,8 +18,6 @@ Module Organization:
 
 Usage Example:
 --------------
-Usage Example:
---------------
 >>> from beam_fea import BeamSolver, Mesh, get_material
 >>> from beam_fea.cross_sections import rectangular
 >>> from beam_fea.loads import LoadCase
@@ -89,7 +87,7 @@ from .failure_criteria import (
 from .modal_analysis import ModalAnalysis
 from .visualizer import BeamVisualizer
 from .solver import BeamSolver
-from .report_generator import BeamReportGenerator, BatchReportGenerator
+from .report_generator import BeamReportGenerator
 from .batch_report import BatchReportGenerator
 from .plot_style import PlotStyle, smart_units, DEFAULT_STYLE
 
